@@ -43,7 +43,11 @@ export default function Sidebar({
     if (onLogout) {
       onLogout();
     } else {
-      alert("Anda telah keluar dari akun.");
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("user_session");
+        localStorage.removeItem("auth_token");
+        window.location.href = "/login";
+      }
     }
   };
 
