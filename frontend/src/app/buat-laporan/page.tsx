@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Sidebar from "../../components/Sidebar";
 import Navbar from "../../components/Navbar";
+import { authApi } from "@/lib/api";
 import {
   MapPin,
   Send,
@@ -25,6 +26,22 @@ export default function BuatLaporanPage() {
   const [activeMenu, setActiveMenu] = useState("buat-laporan");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  // Authenticated User State
+  const [currentUser, setCurrentUser] = useState({
+    nama: "Agustinus",
+    role: "Mahasiswa",
+  });
+
+  useEffect(() => {
+    const user = authApi.getCurrentUser();
+    if (user && user.nama) {
+      setCurrentUser({
+        nama: user.nama,
+        role: user.role || (user.tipe_user === "karyawan" ? "Karyawan" : "Mahasiswa"),
+      });
+    }
+  }, []);
 
   // Form State
   const today = new Date().toISOString().split("T")[0];
@@ -137,8 +154,8 @@ export default function BuatLaporanPage() {
         {/* --------------------------------------------------------- */}
         <Navbar
           pageTitle={getPageTitle(activeMenu)}
-          userName="Agustinus"
-          userRole="Mahasiswa"
+          userName={currentUser.nama}
+          userRole={currentUser.role}
           onToggleSidebar={() => setIsSidebarOpen(true)}
         />
 

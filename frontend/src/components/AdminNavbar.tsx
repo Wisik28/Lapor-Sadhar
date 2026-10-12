@@ -74,7 +74,11 @@ export default function AdminNavbar({
     if (onLogout) {
       onLogout();
     } else {
-      alert("Anda telah keluar dari akun Administrator SiLapor.");
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("user_session");
+        localStorage.removeItem("auth_token");
+        window.location.href = "/login";
+      }
     }
   };
 

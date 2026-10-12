@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import AdminNavbar from "@/components/AdminNavbar";
+import { authApi } from "@/lib/api";
 import {
   Inbox,
   Clock,
@@ -199,6 +200,22 @@ export default function AdminDashboardPage() {
   // State Modal Detail
   const [selectedReport, setSelectedReport] = useState<ReportItem | null>(null);
 
+  // Authenticated Admin User
+  const [adminUser, setAdminUser] = useState({
+    nama: "Bapak Hendro",
+    role: "Admin Pengelola Sarpras",
+  });
+
+  useEffect(() => {
+    const user = authApi.getCurrentUser();
+    if (user && (user.role === "Admin" || user.admin_id)) {
+      setAdminUser({
+        nama: user.nama,
+        role: (user as any).role_detail || "Admin Pengelola Sarpras",
+      });
+    }
+  }, []);
+
   // Filter Data Laporan Sesuai Periode Bulan & Tahun serta Filter Tabel
   const filteredReports = useMemo(() => {
     return MOCK_REPORTS.filter((item) => {
@@ -382,8 +399,8 @@ export default function AdminDashboardPage() {
       {/* 1. TOP NAVBAR ADMIN DENGAN FILTER BULAN & TAHUN */}
       {/* ------------------------------------------------------------- */}
       <AdminNavbar
-        adminName="Bapak Hendro"
-        adminRole="Admin Pengelola Sarpras"
+        adminName={adminUser.nama}
+        adminRole={adminUser.role}
         selectedMonth={selectedMonth}
         selectedYear={selectedYear}
         onMonthChange={(m) => {
