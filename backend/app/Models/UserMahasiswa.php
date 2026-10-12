@@ -1,16 +1,18 @@
+
 <?php
 
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 
-class UserMahasiswa extends Model
+class UserMahasiswa extends Authenticatable
 {
     use HasFactory;
 
     protected $table = 'user_mahasiswa';
     protected $primaryKey = 'nim';
+
     public $incrementing = false;
     protected $keyType = 'string';
 
