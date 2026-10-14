@@ -119,3 +119,69 @@ export const authApi = {
     }
   },
 };
+
+// ---------------------------------------------------------------------------
+// Laporan API
+// ---------------------------------------------------------------------------
+
+export interface LaporanPayload {
+  nim: string;
+  kategori_laporan: string;
+  tanggal_kejadian: string; // format: YYYY-MM-DD
+  lokasi: string;
+  deskripsi: string;
+  fotoFiles?: File[];
+}
+
+export interface LaporanResponse {
+  status: "success" | "error";
+  message: string;
+  id_laporan?: number;
+  errors?: Record<string, string[]>;
+}
+
+export const laporanApi = {
+  async kirim(payload: LaporanPayload): Promise<LaporanResponse> {
+    try {
+      const token =
+        typeof window !== "undefined"
+          ? localStorage.getItem("auth_token")
+          : null;
+
+      // Gunakan FormData agar bisa mengirim file foto sekaligus
+      const form = new FormData();
+      form.append("nim", payload.nim);
+      form.append("kategori_laporan", payload.kategori_laporan);
+      form.append("tanggal_kejadian", payload.tanggal_kejadian);
+      form.append("lokasi", payload.lokasi);
+      form.append("deskripsi", payload.deskripsi);
+
+      if (payload.fotoFiles && payload.fotoFiles.length > 0) {
+        payload.fotoFiles.forEach((file) => {
+          form.append("foto[]", file);
+        });
+      }
+
+      const response = await fetch(`${API_BASE_URL}/laporan`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          // Jangan set Content-Type — biarkan browser isi boundary multipart
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: form,
+      });
+
+      const result = await response.json();
+      return result as LaporanResponse;
+    } catch (error: any) {
+      return {
+        status: "error",
+        message:
+          error.message ||
+          "Gagal menghubungi server backend. Pastikan server Laravel aktif di port 8000.",
+      };
+    }
+  },
+};
+

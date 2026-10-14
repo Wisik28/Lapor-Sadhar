@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Sidebar from "../../components/Sidebar";
 import Navbar from "../../components/Navbar";
-import { authApi } from "@/lib/api";
+import { authApi, laporanApi } from "@/lib/api";
 import {
   MapPin,
   Send,
@@ -20,6 +20,7 @@ interface Attachment {
   id: string;
   url: string;
   name: string;
+  file: File; // File asli untuk dikirim ke API
 }
 
 export default function BuatLaporanPage() {
@@ -51,56 +52,53 @@ export default function BuatLaporanPage() {
   const [lokasi, setLokasi] = useState("");
   const [deskripsi, setDeskripsi] = useState("");
 
-  // Default Mock Thumbnails
-  const [attachments, setAttachments] = useState<Attachment[]>([
-    {
-      id: "1",
-      name: "proyektor_rusak.jpg",
-      url: "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=400&q=80"
-    },
-    {
-      id: "2",
-      name: "kursi_patah.jpg",
-      url: "https://images.unsplash.com/photo-1580481072645-022f9a6d83d0?auto=format&fit=crop&w=400&q=80"
-    },
-    {
-      id: "3",
-      name: "lampu_mati.jpg",
-      url: "https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=400&q=80"
-    }
-  ]);
+  // Daftar lampiran foto (preview + File asli)
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
 
-  // Remove thumbnail handler
+  // Hapus lampiran berdasarkan id
   const handleRemoveAttachment = (id: string) => {
-    setAttachments(attachments.filter((item) => item.id !== id));
+    setAttachments((prev) => {
+      const removed = prev.find((item) => item.id === id);
+      if (removed) URL.revokeObjectURL(removed.url); // bebaskan memory
+      return prev.filter((item) => item.id !== id);
+    });
   };
 
-  // Add new photo handler
+  // Tambah foto — simpan File asli sekaligus preview URL
   const handleAddAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const newAttachment: Attachment = {
-        id: Date.now().toString(),
-        name: file.name,
-        url: URL.createObjectURL(file)
-      };
-      setAttachments([...attachments, newAttachment]);
+    if (!e.target.files || !e.target.files[0]) return;
+    if (attachments.length >= 5) {
+      alert("Maksimal 5 foto yang dapat dilampirkan.");
+      return;
     }
+    const file = e.target.files[0];
+    const newAttachment: Attachment = {
+      id: Date.now().toString(),
+      name: file.name,
+      url: URL.createObjectURL(file),
+      file,
+    };
+    setAttachments((prev) => [...prev, newAttachment]);
+    // reset value input agar file yang sama bisa dipilih ulang
+    e.target.value = "";
   };
 
   // Reset Form
   const handleBatal = () => {
+    attachments.forEach((a) => URL.revokeObjectURL(a.url));
     setKategori("");
     setTanggal(today);
     setJudul("");
     setLokasi("");
     setDeskripsi("");
+    setAttachments([]);
     setSubmitted(false);
   };
 
-  // Submit Form
-  const handleSubmit = (e: React.FormEvent) => {
+  // Submit Form — kirim ke API backend
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!kategori || !lokasi || !deskripsi) {
       alert("Mohon lengkapi seluruh kolom formulir!");
       return;
@@ -109,12 +107,35 @@ export default function BuatLaporanPage() {
       alert("Tanggal kejadian tidak boleh melebihi tanggal hari ini!");
       return;
     }
+
+    // Ambil nim dari session; fallback ke string kosong (akan ditolak validator)
+    const user = authApi.getCurrentUser();
+    const nim = user?.nim ?? user?.nomor_identitas ?? "";
+
+    if (!nim) {
+      alert("Sesi login tidak ditemukan. Silakan login ulang.");
+      return;
+    }
+
     setSubmitted(true);
-    setTimeout(() => {
-      setSubmitted(false);
+
+    const result = await laporanApi.kirim({
+      nim,
+      kategori_laporan: kategori,
+      tanggal_kejadian: tanggal,
+      lokasi,
+      deskripsi,
+      fotoFiles: attachments.map((a) => a.file),
+    });
+
+    setSubmitted(false);
+
+    if (result.status === "success") {
       handleBatal();
-      alert("Laporan Anda berhasil dikirim ke pihak pengelola USD!");
-    }, 2000);
+      alert(result.message || "Laporan Anda berhasil dikirim ke pihak pengelola USD!");
+    } else {
+      alert(result.message || "Gagal mengirim laporan. Coba lagi.");
+    }
   };
 
   // Title Mapper berdasarkan Menu Aktif
