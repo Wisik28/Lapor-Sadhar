@@ -1,3 +1,4 @@
+
 <?php
 
 namespace App\Models;
@@ -22,4 +23,9 @@ class Admin extends Authenticatable
     protected $hidden = [
         'password',
     ];
+
+    public function getAuthPasswordName()
+    {
+        return 'password';
+    }
 }

@@ -1,3 +1,4 @@
+
 <?php
 
 namespace App\Models;
@@ -11,6 +12,7 @@ class UserMahasiswa extends Authenticatable
 
     protected $table = 'user_mahasiswa';
     protected $primaryKey = 'nim';
+
     public $incrementing = false;
     protected $keyType = 'string';
 
