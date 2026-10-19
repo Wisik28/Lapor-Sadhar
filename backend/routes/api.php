@@ -17,9 +17,9 @@ Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout']);
 
-// Routing buat laporan
-Route::post('/laporan', [LaporanController::class, 'store']);
-
-// Routing lihat status
-// Routing riwayat laporan
-// Routing rubah pengajuan
+// Laporan Routes
+Route::get('/laporan', [LaporanController::class, 'index']);          // GET /api/laporan?nim=xxx
+Route::post('/laporan', [LaporanController::class, 'store']);          // POST /api/laporan
+Route::get('/laporan/{id}', [LaporanController::class, 'show']);       // GET /api/laporan/{id}
+Route::put('/laporan/{id}', [LaporanController::class, 'update']);     // PUT /api/laporan/{id}
+Route::delete('/laporan/{id}', [LaporanController::class, 'destroy']); // DELETE /api/laporan/{id}
