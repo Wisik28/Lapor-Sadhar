@@ -20,7 +20,6 @@ Route::post('/logout', [AuthController::class, 'logout']);
 // Laporan Routes
 Route::get('/laporan', [LaporanController::class, 'index']);          // GET /api/laporan?nim=xxx
 Route::post('/laporan', [LaporanController::class, 'store']);          // POST /api/laporan
-Route::get('/laporan/rekap', [LaporanController::class, 'rekap']);    // GET /api/laporan/rekap?nim=xxx
 Route::get('/laporan/{id}', [LaporanController::class, 'show']);       // GET /api/laporan/{id}
 Route::put('/laporan/{id}', [LaporanController::class, 'update']);     // PUT /api/laporan/{id}
 Route::delete('/laporan/{id}', [LaporanController::class, 'destroy']); // DELETE /api/laporan/{id}

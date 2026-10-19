@@ -52,32 +52,6 @@ export interface LaporanResponse {
   errors?: Record<string, string[]>;
 }
 
-export interface RekapData {
-  nim: string;
-  total_laporan: number;
-  per_status: {
-    Terkirim: number;
-    Diverifikasi: number;
-    Diproses: number;
-    Selesai: number;
-    Ditolak: number;
-  };
-  per_kategori: {
-    Fasilitas: number;
-    Kebersihan: number;
-  };
-  per_bulan: { bulan: string; key: string; jumlah: number }[];
-  laporan_aktif: number;
-  laporan_selesai: number;
-  laporan_ditolak: number;
-}
-
-export interface RekapResponse {
-  status: "success" | "error";
-  message?: string;
-  data?: RekapData;
-}
-
 // ─── Auth API ───────────────────────────────────────────────────────────────
 
 export const authApi = {
@@ -270,17 +244,4 @@ export const laporanApi = {
       return { status: "error", message: error.message || "Gagal menghapus laporan." };
     }
   },
-
-  /** Rekap / statistik laporan per user */
-  async getRekap(nim: string): Promise<RekapResponse> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/laporan/rekap?nim=${encodeURIComponent(nim)}`, {
-        headers: getAuthHeaders(),
-      });
-      return await res.json();
-    } catch (error: any) {
-      return { status: "error", message: error.message || "Gagal mengambil data rekap." };
-    }
-  },
 };
-
