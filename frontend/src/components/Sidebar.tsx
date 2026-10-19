@@ -29,7 +29,7 @@ const MENU_ITEMS: MenuItem[] = [
   { id: "buat-laporan", label: "Buat Laporan", icon: FilePlus },
   { id: "lihat-status", label: "Lihat Status", icon: Eye },
   { id: "riwayat-laporan", label: "Riwayat Laporan", icon: History },
-  { id: "rubah-pengajuan", label: "Rubah Pengajuan", icon: FileEdit }
+  { id: "rubah-pengajuan", label: "Rubah Pengajuan", icon: FileEdit },
 ];
 
 export default function Sidebar({
