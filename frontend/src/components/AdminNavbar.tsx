@@ -2,7 +2,8 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import Image from "next/image";
+import { usePathname, useRouter } from "next/navigation";
 import {
   ShieldCheck,
   Menu,
@@ -10,6 +11,7 @@ import {
   LogOut,
   Calendar
 } from "lucide-react";
+import { authApi } from "@/lib/api";
 
 export interface AdminNavbarProps {
   adminName?: string;
@@ -31,6 +33,7 @@ export default function AdminNavbar({
   onYearChange
 }: AdminNavbarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const months = [
@@ -57,6 +60,10 @@ export default function AdminNavbar({
       href: "/admin/dashboard"
     },
     {
+      label: "Akun",
+      href: "/admin/account"
+    },
+    {
       label: "Ubah Status",
       href: "/admin/ubah-status"
     },
@@ -70,15 +77,12 @@ export default function AdminNavbar({
     }
   ];
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (onLogout) {
       onLogout();
     } else {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("user_session");
-        localStorage.removeItem("auth_token");
-        window.location.href = "/login";
-      }
+      await authApi.adminLogout();
+      router.replace("/admin/login");
     }
   };
 
@@ -86,22 +90,24 @@ export default function AdminNavbar({
     <header className="sticky top-0 z-30 w-full bg-white border-b border-gray-200/80 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Sisi Kiri: Logo USD & Nama SiLapor */}
+          {/* Sisi Kiri: Logo USD & Nama Lapor Sadhar */}
           <div className="flex items-center gap-3">
             <Link
               href="/admin/dashboard"
               className="flex items-center gap-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8C1515] rounded-xl"
             >
-              <div className="w-10 h-10 rounded-xl bg-[#8C1515] flex items-center justify-center p-1.5 shadow-xs transition-transform group-hover:scale-105">
-                <img
+              <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center p-1.5 shadow-xs transition-transform group-hover:scale-105">
+                <Image
                   src="/assets/logo_usd.png"
                   alt="Logo USD"
-                  className="w-full h-full object-contain filter brightness-0 invert"
+                  width={32}
+                  height={32}
+                  className="w-full h-full object-contain"
                 />
               </div>
               <div className="flex flex-col">
                 <span className="text-lg font-bold tracking-tight text-gray-900 group-hover:text-[#8C1515] transition-colors leading-tight">
-                  SiLapor
+                  Lapor Sadhar
                 </span>
                 <span className="text-[11px] font-medium text-gray-500 hidden sm:block leading-none">
                   Universitas Sanata Dharma

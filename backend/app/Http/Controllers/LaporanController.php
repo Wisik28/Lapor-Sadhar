@@ -5,8 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Laporan;
 use App\Models\Status;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 
 class LaporanController extends Controller
 {
@@ -16,7 +16,7 @@ class LaporanController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'nim'              => 'required|string|exists:user_mahasiswa,nim',
+            'nim'              => 'required|string|exists:pelapor,nomor_identitas',
             'kategori_laporan' => 'required|string|in:Fasilitas,Kebersihan',
             'deskripsi'        => 'required|string|min:10',
             'tanggal_kejadian' => 'required|date|before_or_equal:today',
@@ -24,7 +24,7 @@ class LaporanController extends Controller
             'foto'             => 'nullable|string',
         ], [
             'nim.required'              => 'NIM pelapor wajib diisi.',
-            'nim.exists'                => 'NIM tidak ditemukan di sistem.',
+            'nim.exists'                => 'Identitas pelapor tidak ditemukan di sistem.',
             'kategori_laporan.required' => 'Kategori laporan wajib dipilih.',
             'kategori_laporan.in'       => 'Kategori harus Fasilitas atau Kebersihan.',
             'deskripsi.required'        => 'Deskripsi masalah wajib diisi.',
@@ -126,7 +126,7 @@ class LaporanController extends Controller
         try {
             $laporan = Laporan::with(['statuses' => function ($q) {
                 $q->orderBy('tanggal_merubah', 'desc');
-            }, 'userMahasiswa'])->findOrFail($id);
+            }, 'pelapor.mahasiswa', 'pelapor.pegawai'])->findOrFail($id);
 
             $latestStatus = $laporan->statuses->first();
 
@@ -135,7 +135,7 @@ class LaporanController extends Controller
                 'data'   => [
                     'id_laporan'       => $laporan->id_laporan,
                     'nim'              => $laporan->nim,
-                    'nama_pelapor'     => $laporan->userMahasiswa?->nama,
+                    'nama_pelapor'     => $laporan->pelapor?->mahasiswa?->nama ?? $laporan->pelapor?->pegawai?->nama,
                     'kategori_laporan' => $laporan->kategori_laporan,
                     'deskripsi'        => $laporan->deskripsi,
                     'tanggal_kejadian' => $laporan->tanggal_kejadian,

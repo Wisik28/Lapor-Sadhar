@@ -2,6 +2,10 @@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export interface UserSession {
   nomor_identitas?: string;
   nim?: string;
@@ -9,6 +13,8 @@ export interface UserSession {
   username?: string;
   nama: string;
   no_handphone?: string;
+  campus?: string;
+  role_detail?: string;
   tipe_user?: "mahasiswa" | "karyawan" | string;
   role: "Mahasiswa" | "Karyawan" | "Admin" | string;
 }
@@ -55,6 +61,96 @@ export interface LaporanResponse {
 // ─── Auth API ───────────────────────────────────────────────────────────────
 
 export const authApi = {
+  async adminLogin(credentials: {
+    username: string;
+    password: string;
+    role: "BLU" | "BPS";
+    campus: "Kampus I" | "Kampus II" | "Kampus III" | "Kampus IV";
+  }): Promise<AuthResponse> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(credentials),
+      });
+
+      const result = await response.json();
+      if (response.ok && result.status === "success" && result.user) {
+        localStorage.setItem("user_session", JSON.stringify(result.user));
+        if (result.token) sessionStorage.setItem("admin_token", result.token);
+      }
+      return result;
+    } catch (error: unknown) {
+      return {
+        status: "error",
+        message: getErrorMessage(error, "Gagal menghubungi server backend."),
+      };
+    }
+  },
+
+  async getAdminSession(): Promise<AuthResponse> {
+    try {
+      const token = sessionStorage.getItem("admin_token");
+      if (!token) return { status: "error", message: "Sesi admin tidak ditemukan." };
+
+      const response = await fetch(`${API_BASE_URL}/admin/me`, {
+        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json();
+      if (response.ok && result.status === "success" && result.user) {
+        localStorage.setItem("user_session", JSON.stringify(result.user));
+        return result;
+      }
+
+      localStorage.removeItem("user_session");
+      sessionStorage.removeItem("admin_token");
+      return result;
+    } catch (error: unknown) {
+      return { status: "error", message: getErrorMessage(error, "Gagal memeriksa sesi admin.") };
+    }
+  },
+
+  async adminLogout(): Promise<void> {
+    try {
+      const token = sessionStorage.getItem("admin_token");
+      if (token) {
+        await fetch(`${API_BASE_URL}/admin/logout`, {
+          method: "POST",
+          headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+        });
+      }
+    } catch {
+    } finally {
+      localStorage.removeItem("user_session");
+      sessionStorage.removeItem("admin_token");
+    }
+  },
+
+  async changeAdminPassword(data: {
+    current_password: string;
+    password: string;
+    password_confirmation: string;
+  }): Promise<AuthResponse> {
+    try {
+      const token = sessionStorage.getItem("admin_token");
+      const response = await fetch(`${API_BASE_URL}/admin/password`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(data),
+      });
+      return await response.json();
+    } catch (error: unknown) {
+      return { status: "error", message: getErrorMessage(error, "Gagal mengubah kata sandi.") };
+    }
+  },
+
   async register(data: {
     tipe_user: "mahasiswa" | "karyawan";
     nomor_identitas: string;
@@ -81,10 +177,10 @@ export const authApi = {
         }
       }
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       return {
         status: "error",
-        message: error.message || "Gagal menghubungi server backend. Pastikan server Laravel aktif di port 8000.",
+        message: getErrorMessage(error, "Gagal menghubungi server backend. Pastikan server Laravel aktif di port 8000."),
       };
     }
   },
@@ -92,7 +188,7 @@ export const authApi = {
   async login(credentials: {
     identifier: string;
     password: string;
-    role?: "mahasiswa" | "karyawan" | "admin" | "semua";
+    role?: "mahasiswa" | "karyawan" | "semua";
   }): Promise<AuthResponse> {
     try {
       const response = await fetch(`${API_BASE_URL}/login`, {
@@ -112,10 +208,10 @@ export const authApi = {
         }
       }
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       return {
         status: "error",
-        message: error.message || "Gagal menghubungi server backend. Pastikan server Laravel aktif di port 8000.",
+        message: getErrorMessage(error, "Gagal menghubungi server backend. Pastikan server Laravel aktif di port 8000."),
       };
     }
   },
@@ -171,8 +267,8 @@ export const laporanApi = {
         headers: getAuthHeaders(),
       });
       return await res.json();
-    } catch (error: any) {
-      return { status: "error", message: error.message || "Gagal mengambil data laporan." };
+    } catch (error: unknown) {
+      return { status: "error", message: getErrorMessage(error, "Gagal mengambil data laporan.") };
     }
   },
 
@@ -183,8 +279,8 @@ export const laporanApi = {
         headers: getAuthHeaders(),
       });
       return await res.json();
-    } catch (error: any) {
-      return { status: "error", message: error.message || "Gagal mengambil detail laporan." };
+    } catch (error: unknown) {
+      return { status: "error", message: getErrorMessage(error, "Gagal mengambil detail laporan.") };
     }
   },
 
@@ -204,8 +300,8 @@ export const laporanApi = {
         body: JSON.stringify(data),
       });
       return await res.json();
-    } catch (error: any) {
-      return { status: "error", message: error.message || "Gagal mengirim laporan." };
+    } catch (error: unknown) {
+      return { status: "error", message: getErrorMessage(error, "Gagal mengirim laporan.") };
     }
   },
 
@@ -227,8 +323,8 @@ export const laporanApi = {
         body: JSON.stringify(data),
       });
       return await res.json();
-    } catch (error: any) {
-      return { status: "error", message: error.message || "Gagal memperbarui laporan." };
+    } catch (error: unknown) {
+      return { status: "error", message: getErrorMessage(error, "Gagal memperbarui laporan.") };
     }
   },
 
@@ -240,8 +336,8 @@ export const laporanApi = {
         headers: getAuthHeaders(),
       });
       return await res.json();
-    } catch (error: any) {
-      return { status: "error", message: error.message || "Gagal menghapus laporan." };
+    } catch (error: unknown) {
+      return { status: "error", message: getErrorMessage(error, "Gagal menghapus laporan.") };
     }
   },
 };

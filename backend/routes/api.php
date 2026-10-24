@@ -1,14 +1,14 @@
 <?php
 
+use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\LaporanController;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/ping', function () {
     return response()->json([
         'status' => 'ok',
-        'message' => 'API Lapor-Sadhar is running'
+        'message' => 'API Lapor-Sadhar is running',
     ]);
 });
 
@@ -16,6 +16,13 @@ Route::get('/ping', function () {
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout']);
+
+Route::post('/admin/login', [AdminAuthController::class, 'login'])->middleware('throttle:5,1');
+Route::middleware('admin.session')->prefix('admin')->group(function () {
+    Route::get('/me', [AdminAuthController::class, 'me']);
+    Route::post('/logout', [AdminAuthController::class, 'logout']);
+    Route::put('/password', [AdminAuthController::class, 'changePassword']);
+});
 
 // Laporan Routes
 Route::get('/laporan', [LaporanController::class, 'index']);          // GET /api/laporan?nim=xxx

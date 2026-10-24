@@ -754,12 +754,12 @@ export default function BuatLaporanPage() {
 
             {/* Footer */}
             <footer className="pt-4 border-t border-slate-200/60 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-3 text-center sm:text-left">
-              <p>SiLapor USD © 2026 Universitas Sanata Dharma</p>
+              <p>Lapor Sadhar © 2026 Universitas Sanata Dharma</p>
               <div className="flex items-center gap-4">
-                <a href="#privasi" onClick={(e) => { e.preventDefault(); alert("Kebijakan Privasi SiLapor USD"); }}
+                <a href="#privasi" onClick={(e) => { e.preventDefault(); alert("Kebijakan Privasi Lapor Sadhar"); }}
                   className="hover:text-[#7A0C0C] transition-colors py-1 inline-block">Kebijakan Privasi</a>
                 <span className="text-slate-300">•</span>
-                <a href="#bantuan" onClick={(e) => { e.preventDefault(); alert("Bantuan & FAQ SiLapor USD"); }}
+                <a href="#bantuan" onClick={(e) => { e.preventDefault(); alert("Bantuan & FAQ Lapor Sadhar"); }}
                   className="hover:text-[#7A0C0C] transition-colors py-1 inline-block">Bantuan & FAQ</a>
               </div>
             </footer>

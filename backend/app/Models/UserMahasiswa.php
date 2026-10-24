@@ -10,8 +10,11 @@ class UserMahasiswa extends Authenticatable
     use HasFactory;
 
     protected $table = 'user_mahasiswa';
+
     protected $primaryKey = 'nim';
+
     public $incrementing = false;
+
     protected $keyType = 'string';
 
     protected $fillable = [
@@ -19,7 +22,6 @@ class UserMahasiswa extends Authenticatable
         'nama',
         'password',
         'no_handphone',
-        'tipe_user',
     ];
 
     protected $hidden = [
