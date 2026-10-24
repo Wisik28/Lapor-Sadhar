@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Lock,
@@ -58,7 +59,7 @@ export default function LoginPage() {
       } else {
         setErrorMessage(res.message || "Gagal masuk. Periksa kembali data login Anda.");
       }
-    } catch (err: any) {
+    } catch {
       setErrorMessage("Terjadi kesalahan saat menghubungkan ke server.");
     } finally {
       setIsLoading(false);
@@ -74,9 +75,11 @@ export default function LoginPage() {
         <div className="relative z-10 flex flex-col items-center py-4 sm:py-5 px-4">
           {/* University Logo */}
           <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/10 backdrop-blur-sm border-2 border-white/20 p-1 mb-2.5 shadow-lg shadow-black/20">
-            <img
+            <Image
               src="/assets/logo_usd.png"
               alt="Logo Universitas Sanata Dharma"
+              width={56}
+              height={56}
               className="w-full h-full object-contain drop-shadow-md"
             />
           </div>
@@ -243,6 +246,12 @@ export default function LoginPage() {
                   className="font-bold text-[#7A0C0C] hover:text-[#9E1B1B] hover:underline transition-colors"
                 >
                   Registrasi
+                </Link>
+              </p>
+              <p className="mt-3 text-xs text-slate-500">
+                Admin BLU/BPS?{" "}
+                <Link href="/admin/login" className="font-bold text-[#7A0C0C] hover:text-[#9E1B1B] hover:underline">
+                  Masuk ke portal admin
                 </Link>
               </p>
             </div>

@@ -10,6 +10,7 @@ class Laporan extends Model
     use HasFactory;
 
     protected $table = 'laporan';
+
     protected $primaryKey = 'id_laporan';
 
     protected $fillable = [
@@ -23,9 +24,9 @@ class Laporan extends Model
         'tanggal_rubah',
     ];
 
-    public function userMahasiswa()
+    public function pelapor()
     {
-        return $this->belongsTo(UserMahasiswa::class, 'nim', 'nim');
+        return $this->belongsTo(Pelapor::class, 'nim', 'nomor_identitas');
     }
 
     public function statuses()

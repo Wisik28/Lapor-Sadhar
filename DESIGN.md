@@ -1,4 +1,4 @@
-# SiLapor - Facility Service & Complaints Information System
+# Lapor Sadhar - Facility Service & Complaints Information System
 **Target Audience:** Students (Mahasiswa) and Administrators/Technicians of Universitas Sanata Dharma.
 **Core Purpose:** A ticketing and tracking system for reporting broken facilities, tracking repair status, and managing maintenance tasks.
 
@@ -35,7 +35,7 @@
 
 ### 2.1. Student Portal Layout
 *   **Left Sidebar:** Fixed width. Deep red background, white text. Contains logo, app name, navigation links with icons (Submit Report, View Status, Report History, Edit Submission), and a Logout button at the bottom.
-*   **Top Header (Content Area):** App title "SiLapor - Universitas Sanata Dharma" on the left, User Profile (Avatar, Name, Role) on the right.
+*   **Top Header (Content Area):** App title "Lapor Sadhar - Universitas Sanata Dharma" on the left, User Profile (Avatar, Name, Role) on the right.
 *   **Main Content:** Scrollable area containing the active page content (cards, forms, tables).
 
 ### 2.2. Admin Portal Layout

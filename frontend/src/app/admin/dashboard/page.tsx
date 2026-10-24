@@ -1154,7 +1154,7 @@ export default function AdminDashboardPage() {
       {/* ------------------------------------------------------------- */}
       {/* <footer className="w-full bg-white border-t border-gray-200/80 py-4 px-4 sm:px-6 mt-auto">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between text-xs text-gray-500 gap-2">
-          <p>© 2026 SiLapor - Universitas Sanata Dharma. Biro Layanan Umum & Sarpras.</p>
+          <p>© 2026 Lapor Sadhar - Universitas Sanata Dharma. Biro Layanan Umum & Sarpras.</p>
           <div className="flex items-center gap-4">
             <span>Admin Portal v1.0</span>
             <span>•</span>
