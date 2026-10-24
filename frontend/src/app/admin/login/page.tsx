@@ -34,11 +34,10 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#f3f0e9] px-4 py-10">
-      <div className="absolute inset-0 bg-[url('/assets/bg_kampus.jpg')] bg-cover bg-center opacity-20" />
-      <div className="absolute inset-0 bg-gradient-to-br from-[#f3f0e9]/60 via-[#f3f0e9]/85 to-[#dce7e2]/80" />
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[url('/assets/bg_kampus.jpg')] bg-cover bg-center px-4 py-10">
+      <div className="absolute inset-0 bg-black/40" />
 
-      <section className="relative grid w-full max-w-4xl overflow-hidden rounded-2xl border border-white/70 bg-white shadow-2xl shadow-slate-900/10 md:grid-cols-[0.9fr_1.1fr]">
+      <section className="relative grid w-full max-w-4xl overflow-hidden rounded-2xl border border-white/50 bg-white/95 shadow-2xl shadow-black/30 backdrop-blur-md md:grid-cols-[0.9fr_1.1fr]">
         <div className="flex flex-col justify-between bg-[#7a171b] p-7 text-white sm:p-10">
           <div className="flex items-center gap-3">
             <div className="grid h-11 w-11 place-items-center rounded-xl border border-white/20 bg-white/10">
