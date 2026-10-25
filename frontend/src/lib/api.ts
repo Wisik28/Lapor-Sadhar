@@ -341,3 +341,59 @@ export const laporanApi = {
     }
   },
 };
+
+// ─── Admin Laporan API ──────────────────────────────────────────────────────
+
+export const adminLaporanApi = {
+  /** Mengambil seluruh laporan untuk halaman admin */
+  async getAll() {
+    const response = await fetch(`${API_BASE_URL}/admin/laporan`, {
+      method: "GET",
+      headers: getAuthHeaders(),
+      cache: "no-store",
+    });
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        result?.message ||
+          `Gagal mengambil laporan. HTTP ${response.status}`
+      );
+    }
+
+    // Mendukung respons Laravel berbentuk { data: [...] }
+    // maupun array laporan secara langsung.
+    return Array.isArray(result) ? result : result?.data ?? [];
+  },
+
+  /** Mengubah status laporan dan menyimpan tanggapan admin */
+  async updateStatus(
+    id: number,
+    status: string,
+    pesan_tanggapan?: string
+  ) {
+    const response = await fetch(
+      `${API_BASE_URL}/admin/laporan/${id}/status`,
+      {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          status_laporan: status,
+          pesan_tanggapan: pesan_tanggapan ?? "",
+        }),
+      }
+    );
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        result?.message ||
+          `Gagal memperbarui status. HTTP ${response.status}`
+      );
+    }
+
+    return result;
+  },
+};
