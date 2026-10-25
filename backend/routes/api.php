@@ -30,3 +30,15 @@ Route::post('/laporan', [LaporanController::class, 'store']);          // POST /
 Route::get('/laporan/{id}', [LaporanController::class, 'show']);       // GET /api/laporan/{id}
 Route::put('/laporan/{id}', [LaporanController::class, 'update']);     // PUT /api/laporan/{id}
 Route::delete('/laporan/{id}', [LaporanController::class, 'destroy']); // DELETE /api/laporan/{id}
+
+// Admin: mengambil seluruh laporan
+Route::get('/admin/laporan', [
+    LaporanController::class,
+    'adminIndex'
+]);
+
+// Admin: mengubah status laporan
+Route::patch('/admin/laporan/{id}/status', [
+    LaporanController::class,
+    'adminUpdateStatus'
+]);

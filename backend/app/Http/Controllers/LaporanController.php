@@ -364,4 +364,110 @@ class LaporanController extends Controller
             'message' => 'Terjadi kesalahan server: ' . $e->getMessage(),
         ], 500);
     }
+/**
+ * Mengambil seluruh laporan untuk halaman admin.
+ */
+public function adminIndex()
+{
+    try {
+        $laporans = Laporan::with([
+            'statuses' => function ($query) {
+                $query->orderBy('tanggal_merubah', 'desc');
+            },
+            'pelapor.mahasiswa',
+        ])
+            ->orderBy('tanggal_buat', 'desc')
+            ->get()
+            ->map(function ($laporan) {
+                $statusTerbaru = $laporan->statuses->first();
+
+                return [
+                    'id_laporan'       => $laporan->id_laporan,
+                    'nim'              => $laporan->nim,
+                    'nama_pelapor'     => $laporan->pelapor?->mahasiswa?->nama ?? '-',
+                    'kategori_laporan' => $laporan->kategori_laporan,
+                    'deskripsi'        => $laporan->deskripsi,
+                    'tanggal_kejadian' => $laporan->tanggal_kejadian,
+                    'tanggal_buat'     => $laporan->tanggal_buat,
+                    'tanggal_rubah'    => $laporan->tanggal_rubah,
+                    'lokasi'            => $laporan->lokasi,
+                    'foto'              => $laporan->foto,
+                    'pesan_tanggapan'   => $laporan->pesan_tanggapan ?? '',
+                    'status_terkini'    => $statusTerbaru?->status_laporan ?? 'Terkirim',
+                    'riwayat_status'   => $laporan->statuses,
+                ];
+            });
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $laporans,
+        ]);
+    } catch (\Throwable $e) {
+        report($e);
+
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Gagal mengambil data laporan admin.',
+        ], 500);
+    }
+}
+
+
+    /**
+     * Mengubah status laporan dan menyimpan tanggapan admin.
+     */
+    public function adminUpdateStatus(Request $request, $id)
+    {
+        $validator = Validator::make($request->all(), [
+            'status_laporan' => [
+                'required',
+                'string',
+                'in:Terkirim,Sedang Diverifikasi,Terverifikasi,Proses,Selesai,Ditolak'
+            ],
+            'pesan_tanggapan' => 'nullable|string|max:2000',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => $validator->errors()->first(),
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $hasil = DB::transaction(function () use ($request, $id) {
+                $laporan = Laporan::findOrFail($id);
+
+                $status = Status::create([
+                    'id_laporan'      => $laporan->id_laporan,
+                    'status_laporan'  => $request->input('status_laporan'),
+                    'tanggal_merubah' => now(),
+                ]);
+
+                $laporan->pesan_tanggapan = $request->input('pesan_tanggapan', '');
+                $laporan->tanggal_rubah = now();
+                $laporan->save();
+
+                return [
+                    'laporan' => $laporan->fresh(),
+                    'status'  => $status,
+                ];
+            });
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Status laporan berhasil diperbarui.',
+                'data'    => $hasil,
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Laporan tidak ditemukan.',
+            ], 404);
+        } catch (\Throwable $e) {
+            return $this->handleDbError($e);
+        }
+    }
+
 }
