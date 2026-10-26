@@ -293,10 +293,11 @@ class LaporanController extends Controller
             $bulanCounts = [];
 
             foreach ($laporans as $laporan) {
-                // Status terkini
+                // Status terkini — normalisasi ke bucket rekap
                 $terkini = $laporan->statuses->first()?->status_laporan ?? 'Terkirim';
-                if (isset($statusCounts[$terkini])) {
-                    $statusCounts[$terkini]++;
+                $bucket  = $this->normalizeBucketStatus($terkini);
+                if (isset($statusCounts[$bucket])) {
+                    $statusCounts[$bucket]++;
                 }
 
                 // Kategori
@@ -339,6 +340,27 @@ class LaporanController extends Controller
         } catch (\Throwable $e) {
             return $this->handleDbError($e);
         }
+    }
+
+    /**
+     * Normalisasi semua varian nama status ke bucket rekap:
+     * - Terkirim
+     * - Diverifikasi  (mencakup: Sedang Diverifikasi, Terverifikasi, Diverifikasi)
+     * - Diproses      (mencakup: Proses, Diproses)
+     * - Selesai
+     * - Ditolak
+     */
+    private function normalizeBucketStatus(string $status): string
+    {
+        $s = strtolower(trim($status));
+
+        if ($s === 'terkirim') return 'Terkirim';
+        if (in_array($s, ['sedang diverifikasi', 'diverifikasi', 'terverifikasi'])) return 'Diverifikasi';
+        if (in_array($s, ['proses', 'diproses'])) return 'Diproses';
+        if ($s === 'selesai') return 'Selesai';
+        if ($s === 'ditolak') return 'Ditolak';
+
+        return 'Terkirim'; // fallback
     }
 
     /**
@@ -457,10 +479,11 @@ public function adminRekap(Request $request)
         $selesaiDalamSLA  = 0;
 
         foreach ($laporans as $laporan) {
-            // Status terkini
+            // Status terkini — normalisasi semua varian nama status ke bucket rekap
             $terkini = $laporan->statuses->first()?->status_laporan ?? 'Terkirim';
-            if (isset($statusCounts[$terkini])) {
-                $statusCounts[$terkini]++;
+            $bucket  = $this->normalizeBucketStatus($terkini);
+            if (isset($statusCounts[$bucket])) {
+                $statusCounts[$bucket]++;
             }
 
             // Kategori
@@ -478,7 +501,7 @@ public function adminRekap(Request $request)
             $bulanCounts[$bln] = ($bulanCounts[$bln] ?? 0) + 1;
 
             // Per bulan selesai + resolusi
-            if ($terkini === 'Selesai' && $laporan->tanggal_rubah) {
+            if ($bucket === 'Selesai' && $laporan->tanggal_rubah) {
                 $bulanSelesaiCount[$bln] = ($bulanSelesaiCount[$bln] ?? 0) + 1;
 
                 $jamResolusi = \Carbon\Carbon::parse($laporan->tanggal_buat)
@@ -488,7 +511,7 @@ public function adminRekap(Request $request)
                 if ($jamResolusi <= $SLA_TARGET_JAM) {
                     $selesaiDalamSLA++;
                 }
-            } elseif ($terkini === 'Selesai') {
+            } elseif ($bucket === 'Selesai') {
                 $bulanSelesaiCount[$bln] = ($bulanSelesaiCount[$bln] ?? 0) + 1;
             }
         }
@@ -547,7 +570,9 @@ public function adminRekap(Request $request)
         $selesaiFasilitas  = 0;
         $selesaiKebersihan = 0;
         foreach ($laporans as $laporan) {
-            $terkiniCheck = $laporan->statuses->first()?->status_laporan ?? 'Terkirim';
+            $terkiniCheck = $this->normalizeBucketStatus(
+                $laporan->statuses->first()?->status_laporan ?? 'Terkirim'
+            );
             if ($terkiniCheck === 'Selesai') {
                 if ($laporan->kategori_laporan === 'Fasilitas') {
                     $selesaiFasilitas++;

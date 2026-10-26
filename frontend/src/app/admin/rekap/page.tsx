@@ -37,7 +37,13 @@ interface RekapData {
   realisasi_anggaran: number;
   budget_target: number;
   pct_anggaran: number;
-  per_status: { Terkirim: number; Diverifikasi: number; Diproses: number; Selesai: number; Ditolak: number };
+  per_status: {
+    Terkirim: number;
+    Diverifikasi: number; // mencakup: Sedang Diverifikasi, Terverifikasi
+    Diproses: number;     // mencakup: Proses, Diproses
+    Selesai: number;
+    Ditolak: number;
+  };
   per_kategori: { Fasilitas: number; Kebersihan: number };
   per_bulan: BulanData[];
   top_lokasi: LokasiData[];
@@ -531,18 +537,53 @@ export default function AdminRekapPage() {
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {([
-                      { key:"Terkirim",     label:"Terkirim",     icon:<Inbox className="w-3.5 h-3.5"/>,         count: d.per_status.Terkirim },
-                      { key:"Diverifikasi", label:"Diverifikasi", icon:<Clock className="w-3.5 h-3.5"/>,         count: d.per_status.Diverifikasi },
-                      { key:"Diproses",     label:"Diproses",     icon:<Wrench className="w-3.5 h-3.5"/>,       count: d.per_status.Diproses },
-                      { key:"Selesai",      label:"Selesai",      icon:<CheckCircle2 className="w-3.5 h-3.5"/>,  count: d.per_status.Selesai },
-                      { key:"Ditolak",      label:"Ditolak",      icon:<AlertCircle className="w-3.5 h-3.5"/>,   count: d.per_status.Ditolak },
+                      {
+                        key: "Terkirim",
+                        label: "Terkirim",
+                        sublabel: "Menunggu verifikasi",
+                        icon: <Inbox className="w-3.5 h-3.5"/>,
+                        count: d.per_status.Terkirim,
+                      },
+                      {
+                        key: "Diverifikasi",
+                        label: "Diverifikasi",
+                        sublabel: "Sedang Diverifikasi / Terverifikasi",
+                        icon: <Clock className="w-3.5 h-3.5"/>,
+                        count: d.per_status.Diverifikasi,
+                      },
+                      {
+                        key: "Diproses",
+                        label: "Diproses",
+                        sublabel: "Sedang dalam penanganan",
+                        icon: <Wrench className="w-3.5 h-3.5"/>,
+                        count: d.per_status.Diproses,
+                      },
+                      {
+                        key: "Selesai",
+                        label: "Selesai",
+                        sublabel: "Telah ditangani",
+                        icon: <CheckCircle2 className="w-3.5 h-3.5"/>,
+                        count: d.per_status.Selesai,
+                      },
+                      {
+                        key: "Ditolak",
+                        label: "Ditolak",
+                        sublabel: "Tidak dapat diproses",
+                        icon: <AlertCircle className="w-3.5 h-3.5"/>,
+                        count: d.per_status.Ditolak,
+                      },
                     ] as const).map((s) => {
                       const pct = d.total_laporan > 0 ? Math.round((s.count / d.total_laporan) * 100) : 0;
                       return (
                         <tr key={s.key} className="hover:bg-gray-50/60 transition-colors">
                           <td className="px-5 py-3.5">
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border border-gray-200 bg-gray-50 text-gray-700">
-                              {s.icon} {s.label}
+                            <div className="flex flex-col gap-0.5">
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border border-gray-200 bg-gray-50 text-gray-700 w-fit">
+                                {s.icon} {s.label}
+                              </div>
+                              {"sublabel" in s && s.sublabel && (
+                                <span className="text-[10px] text-gray-400 pl-1">{s.sublabel}</span>
+                              )}
                             </div>
                           </td>
                           <td className="px-5 py-3.5 text-center">
