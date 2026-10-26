@@ -396,4 +396,26 @@ export const adminLaporanApi = {
 
     return result;
   },
+
+  /** Mengambil data rekap & analitik laporan untuk admin */
+  async getRekap(params?: { bulan?: string; tahun?: string }) {
+    const searchParams = new URLSearchParams();
+    if (params?.bulan) searchParams.set("bulan", params.bulan);
+    else if (params?.tahun) searchParams.set("tahun", params.tahun);
+
+    const url = `${API_BASE_URL}/admin/rekap${searchParams.toString() ? "?" + searchParams.toString() : ""}`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: getAuthHeaders(),
+      cache: "no-store",
+    });
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(result?.message || `Gagal mengambil rekap. HTTP ${response.status}`);
+    }
+
+    return result?.data ?? null;
+  },
 };

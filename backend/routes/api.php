@@ -42,3 +42,9 @@ Route::patch('/admin/laporan/{id}/status', [
     LaporanController::class,
     'adminUpdateStatus'
 ]);
+
+// Admin: rekap & analitik laporan
+Route::get('/admin/rekap', [
+    LaporanController::class,
+    'adminRekap'
+]);
