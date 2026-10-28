@@ -1,5 +1,7 @@
 // Client API Helper untuk terhubung ke Backend Laravel
 
+import { setAuthSession, clearAuthSession } from './auth';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -78,9 +80,8 @@ export const authApi = {
       });
 
       const result = await response.json();
-      if (response.ok && result.status === "success" && result.user) {
-        localStorage.setItem("user_session", JSON.stringify(result.user));
-        if (result.token) sessionStorage.setItem("admin_token", result.token);
+      if (response.ok && result.status === "success" && result.user && result.token) {
+        await setAuthSession(result.user, result.token, true);
       }
       return result;
     } catch (error: unknown) {
@@ -124,8 +125,7 @@ export const authApi = {
       }
     } catch {
     } finally {
-      localStorage.removeItem("user_session");
-      sessionStorage.removeItem("admin_token");
+      await clearAuthSession(true);
     }
   },
 
@@ -170,11 +170,8 @@ export const authApi = {
       });
 
       const result = await response.json();
-      if (response.ok && result.status === "success") {
-        if (typeof window !== "undefined" && result.user) {
-          localStorage.setItem("user_session", JSON.stringify(result.user));
-          if (result.token) localStorage.setItem("auth_token", result.token);
-        }
+      if (response.ok && result.status === "success" && result.user && result.token) {
+        await setAuthSession(result.user, result.token, false);
       }
       return result;
     } catch (error: unknown) {
@@ -201,11 +198,8 @@ export const authApi = {
       });
 
       const result = await response.json();
-      if (response.ok && result.status === "success") {
-        if (typeof window !== "undefined" && result.user) {
-          localStorage.setItem("user_session", JSON.stringify(result.user));
-          if (result.token) localStorage.setItem("auth_token", result.token);
-        }
+      if (response.ok && result.status === "success" && result.user && result.token) {
+        await setAuthSession(result.user, result.token, false);
       }
       return result;
     } catch (error: unknown) {
@@ -230,10 +224,7 @@ export const authApi = {
     } catch {
       // Ignore error on logout network fail
     } finally {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("user_session");
-        localStorage.removeItem("auth_token");
-      }
+      await clearAuthSession(false);
     }
   },
 
