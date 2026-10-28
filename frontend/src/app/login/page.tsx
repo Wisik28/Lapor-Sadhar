@@ -15,6 +15,7 @@ import {
   IdCard,
 } from "lucide-react";
 import { authApi } from "@/lib/api";
+import { setAuthSession } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -45,7 +46,9 @@ export default function LoginPage() {
         role: "semua",
       });
 
-      if (res.status === "success") {
+      if (res.status === "success" && res.user && res.token) {
+        // Ensure session is set via cookies
+        await setAuthSession(res.user, res.token, false);
         setSuccessMessage(res.message || "Login berhasil! Sedang mengalihkan...");
         setTimeout(() => {
           if (res.redirect_to) {

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Sidebar from "../../components/Sidebar";
 import Navbar from "../../components/Navbar";
 import { authApi, laporanApi, type LaporanItem } from "@/lib/api";
+import { useAuthProtection } from "@/lib/useAuth";
 import {
   MapPin,
   Send,
@@ -126,21 +127,31 @@ export default function BuatLaporanPage() {
   const [activeMenu, setActiveMenu] = useState("buat-laporan");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // ── Auth User ──
+  // ── Auth Protection ──
+  const { isLoading: authLoading, user: authUser } = useAuthProtection();
   const [currentUser, setCurrentUser] = useState({ nama: "Pengguna", role: "Mahasiswa", nim: "" });
 
   useEffect(() => {
-    const user = authApi.getCurrentUser();
-    if (!user) {
-      router.push("/login");
-      return;
+    if (!authLoading && authUser) {
+      setCurrentUser({
+        nama: authUser.nama,
+        role: authUser.role || (authUser.tipe_user === "karyawan" ? "Karyawan" : "Mahasiswa"),
+        nim: authUser.nim || authUser.nomor_identitas || "",
+      });
     }
-    setCurrentUser({
-      nama: user.nama,
-      role: user.role || (user.tipe_user === "karyawan" ? "Karyawan" : "Mahasiswa"),
-      nim: user.nim || user.nomor_identitas || "",
-    });
-  }, [router]);
+  }, [authLoading, authUser]);
+
+  // Show loading while checking auth
+  if (authLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#F3F4F6]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-[#7A0C0C]/20 border-t-[#7A0C0C] rounded-full animate-spin" />
+          <p className="text-slate-600 text-sm font-medium">Memeriksa autentikasi...</p>
+        </div>
+      </div>
+    );
+  }
 
   // ── Shared laporan state (untuk semua menu yang membutuhkan list laporan) ──
   const [allLaporan, setAllLaporan] = useState<LaporanItem[]>([]);

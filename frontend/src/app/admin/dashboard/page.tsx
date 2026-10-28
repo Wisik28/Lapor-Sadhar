@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import AdminNavbar from "@/components/AdminNavbar";
 import { authApi } from "@/lib/api";
+import { useAdminProtection } from "@/lib/useAuth";
 import {
   Inbox,
   Clock,
@@ -183,6 +184,9 @@ const MOCK_REPORTS: ReportItem[] = [
 ];
 
 export default function AdminDashboardPage() {
+  // ── Auth Protection ──
+  const { isLoading: authLoading, user: authUser } = useAdminProtection();
+
   // State Filter Periode Navbar (Bulan & Tahun)
   const [selectedMonth, setSelectedMonth] = useState("10"); // Default Oktober
   const [selectedYear, setSelectedYear] = useState("2026"); // Default 2026
@@ -207,14 +211,13 @@ export default function AdminDashboardPage() {
   });
 
   useEffect(() => {
-    const user = authApi.getCurrentUser();
-    if (user && (user.role === "Admin" || user.admin_id)) {
+    if (!authLoading && authUser) {
       setAdminUser({
-        nama: user.nama,
-        role: (user as any).role_detail || "Admin Pengelola Sarpras",
+        nama: authUser.nama,
+        role: (authUser as any).role_detail || "Admin Pengelola Sarpras",
       });
     }
-  }, []);
+  }, [authLoading, authUser]);
 
   // Filter Data Laporan Sesuai Periode Bulan & Tahun serta Filter Tabel
   const filteredReports = useMemo(() => {
@@ -391,7 +394,19 @@ export default function AdminDashboardPage() {
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#F9FAFB] text-gray-900 flex flex-col font-sans antialiased">
+    <>
+      {/* Auth Loading State */}
+      {authLoading && (
+        <div className="flex h-screen w-full items-center justify-center bg-[#F3F4F6]">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-4 border-[#7A0C0C]/20 border-t-[#7A0C0C] rounded-full animate-spin" />
+            <p className="text-slate-600 text-sm font-medium">Memeriksa autentikasi admin...</p>
+          </div>
+        </div>
+      )}
+
+      {!authLoading && (
+        <div className="min-h-screen w-full bg-[#F9FAFB] text-gray-900 flex flex-col font-sans antialiased">
       {/* ------------------------------------------------------------- */}
       {/* 1. TOP NAVBAR ADMIN (Sesuai DESIGN.md & Permintaan User) */}
       {/* ------------------------------------------------------------- */}
@@ -1165,6 +1180,8 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       </footer> */}
-    </div>
+      </div>
+      )}
+    </>
   );
 }

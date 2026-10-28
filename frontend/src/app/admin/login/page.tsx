@@ -6,8 +6,9 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, LockKeyhole, UserRound, Building2, ShieldCheck } from "lucide-react";
 import { authApi } from "@/lib/api";
+import { setAuthSession } from "@/lib/auth";
 
-const campuses = ["Kampus I", "Kampus II", "Kampus III", "Kampus IV", "Kampus V"] as const;
+const campuses = ["Kampus I", "Kampus II", "Kampus III", "Kampus IV"] as const;
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -25,7 +26,9 @@ export default function AdminLoginPage() {
     setIsLoading(true);
 
     const result = await authApi.adminLogin({ username: username.trim(), password, role, campus });
-    if (result.status === "success") {
+    if (result.status === "success" && result.user && result.token) {
+      // Ensure session is set via cookies
+      await setAuthSession(result.user, result.token, true);
       router.replace("/admin/dashboard");
     } else {
       setError(result.message || "Username atau kata sandi tidak sesuai.");
