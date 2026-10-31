@@ -22,6 +22,7 @@ class UserMahasiswa extends Authenticatable
         'nama',
         'password',
         'no_handphone',
+        'email',
     ];
 
     protected $hidden = [

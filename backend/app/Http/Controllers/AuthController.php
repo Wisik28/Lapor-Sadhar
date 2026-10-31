@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Admin;
 use App\Models\Pelapor;
 use App\Models\UserMahasiswa;
 use App\Models\UserPegawai;
+use App\Models\UserSession;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -22,6 +24,7 @@ class AuthController extends Controller
             'tipe_user' => 'required|in:mahasiswa,karyawan',
             'nomor_identitas' => 'required|string|max:50',
             'nama' => 'required|string|max:255',
+            'email' => 'required|email|max:255',
             'no_handphone' => 'required|string|max:20',
             'password' => 'required|string|min:6|confirmed',
         ], [
@@ -29,6 +32,8 @@ class AuthController extends Controller
             'tipe_user.in' => 'Tipe pengguna harus berupa mahasiswa atau karyawan.',
             'nomor_identitas.required' => 'Nomor Identitas wajib diisi.',
             'nama.required' => 'Nama lengkap wajib diisi.',
+            'email.required' => 'Email wajib diisi.',
+            'email.email' => 'Format email tidak valid.',
             'no_handphone.required' => 'Nomor WhatsApp / Handphone wajib diisi.',
             'password.required' => 'Kata sandi wajib diisi.',
             'password.min' => 'Kata sandi minimal 6 karakter.',
@@ -45,9 +50,21 @@ class AuthController extends Controller
 
         $nomorIdentitas = trim($request->nomor_identitas);
         $tipeUser = $request->tipe_user;
+        $email = mb_strtolower(trim($request->email));
         $labelIdentitas = $tipeUser === 'karyawan' ? 'Nomor Identitas Pegawai / NIP / NPK' : 'NIM';
 
         try {
+            if (
+                UserMahasiswa::where('email', $email)->exists()
+                || UserPegawai::where('email', $email)->exists()
+                || Admin::where('email', $email)->exists()
+            ) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Email tersebut sudah digunakan oleh akun lain.',
+                ], 409);
+            }
+
             $exists = Pelapor::where('nomor_identitas', $nomorIdentitas)->exists();
             if ($exists) {
                 return response()->json([
@@ -56,7 +73,7 @@ class AuthController extends Controller
                 ], 409);
             }
 
-            $user = DB::transaction(function () use ($nomorIdentitas, $tipeUser, $request) {
+            $user = DB::transaction(function () use ($nomorIdentitas, $tipeUser, $request, $email) {
                 Pelapor::create([
                     'nomor_identitas' => $nomorIdentitas,
                     'tipe_user' => $tipeUser,
@@ -64,6 +81,7 @@ class AuthController extends Controller
 
                 $userData = [
                     'nama' => trim($request->nama),
+                    'email' => $email,
                     'password' => Hash::make($request->password),
                     'no_handphone' => trim($request->no_handphone),
                 ];
@@ -83,6 +101,7 @@ class AuthController extends Controller
 
             $token = Str::random(60);
             $userIdentifier = $tipeUser === 'karyawan' ? $user->nomor_identitas : $user->nim;
+            $this->createUserSession($tipeUser, $userIdentifier, $token);
 
             return response()->json([
                 'status' => 'success',
@@ -92,6 +111,7 @@ class AuthController extends Controller
                     'nomor_identitas' => $userIdentifier,
                     'nim' => $userIdentifier,
                     'nama' => $user->nama,
+                    'email' => $user->email,
                     'no_handphone' => $user->no_handphone,
                     'tipe_user' => $tipeUser,
                     'role' => $tipeUser === 'karyawan' ? 'Karyawan' : 'Mahasiswa',
@@ -162,6 +182,7 @@ class AuthController extends Controller
                 $roleLabel = $tipe === 'karyawan' ? 'Karyawan' : 'Mahasiswa';
                 $token = Str::random(60);
                 $userIdentifier = $tipe === 'karyawan' ? $user->nomor_identitas : $user->nim;
+                $this->createUserSession($tipe, $userIdentifier, $token);
 
                 return response()->json([
                     'status' => 'success',
@@ -171,6 +192,7 @@ class AuthController extends Controller
                         'nomor_identitas' => $userIdentifier,
                         'nim' => $userIdentifier,
                         'nama' => $user->nama,
+                        'email' => $user->email,
                         'no_handphone' => $user->no_handphone,
                         'tipe_user' => $tipe,
                         'role' => $roleLabel,
@@ -211,9 +233,23 @@ class AuthController extends Controller
      */
     public function logout(Request $request)
     {
+        if ($token = $request->bearerToken()) {
+            UserSession::where('token_hash', hash('sha256', $token))->delete();
+        }
+
         return response()->json([
             'status' => 'success',
             'message' => 'Berhasil keluar dari akun.',
+        ]);
+    }
+
+    private function createUserSession(string $type, string $identifier, string $token): void
+    {
+        UserSession::create([
+            'account_type' => $type,
+            'account_id' => $identifier,
+            'token_hash' => hash('sha256', $token),
+            'expires_at' => now()->addHours(12),
         ]);
     }
 }

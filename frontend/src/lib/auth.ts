@@ -5,10 +5,13 @@ export interface AuthUser {
   nim?: string;
   admin_id?: number | string;
   username?: string;
+  email?: string;
   nama: string;
   no_handphone?: string;
   campus?: string;
   role_detail?: string;
+  jabatan?: string;
+  jabatan_label?: string;
   tipe_user?: "mahasiswa" | "karyawan" | string;
   role: "Mahasiswa" | "Karyawan" | "Admin" | string;
 }

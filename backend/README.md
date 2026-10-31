@@ -7,6 +7,21 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## Akun admin dan email
+
+Jalankan migrasi lalu seeder admin untuk memetakan 10 akun lama ke jabatan baru dan membuat akun Wakil Rektor II:
+
+```powershell
+php artisan migrate
+php artisan db:seed --class=AdminSeeder
+```
+
+Seeder mempertahankan kata sandi akun lama, membuat username berdasarkan jabatan untuk akun baru, dan mencetak kata sandi awal akun yang baru dibuat. Ubah kata sandi setelah login.
+
+Untuk mengirim kode reset password dan verifikasi perubahan email melalui Gmail, atur `MAIL_USERNAME` ke alamat pengirim dan `MAIL_PASSWORD` ke Gmail App Password di `backend/.env`. Jangan gunakan atau kirim kata sandi login Gmail. Email tujuan dua akun admin awal diatur melalui `ADMIN_EMAIL_KEPALA_BLU` dan `ADMIN_EMAIL_KEPALA_BPS`; alamat email admin lainnya dapat ditambahkan ke kolom `email` tabel `admin`.
+
+Kode verifikasi berlaku 10 menit dan maksimal dapat dicoba lima kali.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:

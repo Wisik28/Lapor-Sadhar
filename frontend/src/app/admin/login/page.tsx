@@ -4,18 +4,16 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, LockKeyhole, UserRound, Building2, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, LockKeyhole, UserRound, ShieldCheck } from "lucide-react";
 import { authApi } from "@/lib/api";
 import { setAuthSession } from "@/lib/auth";
-
-const campuses = ["Kampus I", "Kampus II", "Kampus III", "Kampus IV"] as const;
+import { adminPositions, AdminPosition } from "@/lib/admin-positions";
 
 export default function AdminLoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"BLU" | "BPS">("BLU");
-  const [campus, setCampus] = useState<(typeof campuses)[number]>(campuses[0]);
+  const [jabatan, setJabatan] = useState<AdminPosition>("kepala_blu");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -25,7 +23,7 @@ export default function AdminLoginPage() {
     setError("");
     setIsLoading(true);
 
-    const result = await authApi.adminLogin({ username: username.trim(), password, role, campus });
+    const result = await authApi.adminLogin({ username: username.trim(), password, jabatan });
     if (result.status === "success" && result.user && result.token) {
       // Ensure session is set via cookies
       await setAuthSession(result.user, result.token, true);
@@ -59,7 +57,7 @@ export default function AdminLoginPage() {
             <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-white/70">Akses terbatas</p>
             <h1 className="max-w-xs text-3xl font-semibold leading-tight">Portal Admin BLU &amp; BPS</h1>
             <p className="mt-4 max-w-sm text-sm leading-6 text-white/75">
-              Masuk menggunakan akun admin yang telah diberikan untuk unit dan kampus Anda.
+              Masuk menggunakan akun dan jabatan yang telah ditetapkan untuk Anda.
             </p>
           </div>
 
@@ -70,7 +68,7 @@ export default function AdminLoginPage() {
           <div className="mb-7">
             <p className="text-sm font-medium text-[#7a171b]">Masuk ke akun</p>
             <h2 className="mt-1 text-2xl font-semibold text-slate-900">Login admin</h2>
-            <p className="mt-2 text-sm text-slate-500">Pilih unit dan kampus yang sesuai dengan akun Anda.</p>
+            <p className="mt-2 text-sm text-slate-500">Pilih jabatan sesuai akun admin Anda.</p>
           </div>
 
           {error && (
@@ -81,21 +79,10 @@ export default function AdminLoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="admin-role" className="mb-1.5 block text-sm font-medium text-slate-700">Unit admin</label>
-              <select id="admin-role" value={role} onChange={(event) => setRole(event.target.value as "BLU" | "BPS")} className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15">
-                <option value="BLU">BLU</option>
-                <option value="BPS">BPS</option>
+              <label htmlFor="admin-position" className="mb-1.5 block text-sm font-medium text-slate-700">Jabatan admin</label>
+              <select id="admin-position" value={jabatan} onChange={(event) => setJabatan(event.target.value as AdminPosition)} className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15">
+                {adminPositions.map((position) => <option key={position.value} value={position.value}>{position.label}</option>)}
               </select>
-            </div>
-
-            <div>
-              <label htmlFor="admin-campus" className="mb-1.5 block text-sm font-medium text-slate-700">Kampus</label>
-              <div className="relative">
-                <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <select id="admin-campus" value={campus} onChange={(event) => setCampus(event.target.value as (typeof campuses)[number])} className="h-11 w-full appearance-none rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15">
-                  {campuses.map((campusOption) => <option key={campusOption} value={campusOption}>{campusOption}</option>)}
-                </select>
-              </div>
             </div>
 
             <div>
@@ -122,6 +109,9 @@ export default function AdminLoginPage() {
             </button>
           </form>
 
+          <div className="mt-4 text-center">
+            <Link href="/admin/forgot-password" className="text-sm font-medium text-[#7a171b] hover:underline">Lupa kata sandi admin?</Link>
+          </div>
           <div className="mt-6 border-t border-slate-100 pt-4 text-center">
             <Link href="/login" className="text-sm font-medium text-slate-500 hover:text-[#7a171b]">Kembali ke login civitas</Link>
           </div>

@@ -8,6 +8,7 @@ import {
   Briefcase,
   User,
   Phone,
+  Mail,
   Lock,
   Eye,
   EyeOff,
@@ -26,6 +27,7 @@ export default function RegisterPage() {
   const [tipeUser, setTipeUser] = useState<UserType>("mahasiswa");
   const [nomorIdentitas, setNomorIdentitas] = useState("");
   const [nama, setNama] = useState("");
+  const [email, setEmail] = useState("");
   const [noHandphone, setNoHandphone] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
@@ -42,7 +44,7 @@ export default function RegisterPage() {
     setErrorMessage("");
     setSuccessMessage("");
 
-    if (!nomorIdentitas.trim() || !nama.trim() || !noHandphone.trim() || !password) {
+    if (!nomorIdentitas.trim() || !nama.trim() || !email.trim() || !noHandphone.trim() || !password) {
       setErrorMessage("Semua kolom formulir pendaftaran wajib diisi!");
       return;
     }
@@ -69,6 +71,7 @@ export default function RegisterPage() {
         tipe_user: tipeUser,
         nomor_identitas: nomorIdentitas.trim(),
         nama: nama.trim(),
+        email: email.trim().toLowerCase(),
         no_handphone: noHandphone.trim(),
         password,
         password_confirmation: passwordConfirmation,
@@ -92,7 +95,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="h-screen w-full flex flex-col font-sans antialiased overflow-hidden">
+    <div className="min-h-screen w-full flex flex-col font-sans antialiased">
       {/* ═══════════ TOP BANNER: Maroon Header (compact) ═══════════ */}
       <header className="relative bg-[#7A0C0C] w-full shrink-0">
         <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-transparent pointer-events-none" />
@@ -115,7 +118,7 @@ export default function RegisterPage() {
 
       {/* ═══════════ MAIN CONTENT: Campus BG + Register Card ═══════════ */}
       <main
-        className="relative flex-1 flex items-center justify-center px-4"
+        className="relative flex-1 flex items-center justify-center px-4 py-4"
         style={{
           backgroundImage: "url('/assets/bg_kampus.jpg')",
           backgroundSize: "cover",
@@ -257,8 +260,29 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              {/* Row 2: WhatsApp */}
-              <div>
+              {/* Row 2: Email and WhatsApp */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label htmlFor="register-email" className="block text-xs font-semibold text-slate-700 mb-1">
+                    Gmail <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative flex items-center">
+                    <div className="absolute left-3 text-slate-400 pointer-events-none">
+                      <Mail className="w-4 h-4" />
+                    </div>
+                    <input
+                      id="register-email"
+                      type="email"
+                      autoComplete="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="nama@gmail.com"
+                      className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
+                    />
+                  </div>
+                </div>
+                <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   No. WhatsApp <span className="text-red-500">*</span>
                 </label>
@@ -290,6 +314,7 @@ export default function RegisterPage() {
                     className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
                   />
                 </div>
+              </div>
               </div>
 
               {/* Row 3: Kata Sandi & Konfirmasi */}

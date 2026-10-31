@@ -218,7 +218,7 @@ export default function AdminRekapPage() {
   useEffect(() => {
     const user = authApi.getCurrentUser();
     if (user && (user.role === "Admin" || user.admin_id)) {
-      setAdminUser({ nama: user.nama, role: (user as any).role_detail || "Admin Pengelola Sarpras" });
+      setAdminUser({ nama: user.nama, role: user.jabatan_label || user.role_detail || "Admin Pengelola Sarpras" });
     }
   }, []);
 

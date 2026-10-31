@@ -1,18 +1,41 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { KeyRound, ShieldCheck } from "lucide-react";
+import { KeyRound, ShieldCheck, UserRound } from "lucide-react";
 import AdminNavbar from "@/components/AdminNavbar";
 import { authApi } from "@/lib/api";
+import { setAuthSession } from "@/lib/auth";
 
 export default function AdminAccountPage() {
+  const [user, setUser] = useState(authApi.getCurrentUser());
+  const [name, setName] = useState(user?.nama || "");
+  const [profileMessage, setProfileMessage] = useState("");
+  const [profileError, setProfileError] = useState("");
+  const [profileLoading, setProfileLoading] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const user = authApi.getCurrentUser();
+
+  const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setProfileError("");
+    setProfileMessage("");
+    setProfileLoading(true);
+    const result = await authApi.updateAdminProfile({ nama: name.trim() });
+    if (result.status === "success" && result.user) {
+      setUser(result.user);
+      setName(result.user.nama);
+      const token = localStorage.getItem("admin_token");
+      if (token) await setAuthSession(result.user, token, true);
+      setProfileMessage(result.message);
+    } else {
+      setProfileError(result.message || "Profil admin tidak dapat diperbarui.");
+    }
+    setProfileLoading(false);
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -43,7 +66,7 @@ export default function AdminAccountPage() {
 
   return (
     <div className="min-h-screen bg-[#f7f7f5] text-slate-900">
-      <AdminNavbar adminName={user?.nama} adminRole={`${user?.role_detail || "Admin"} · ${user?.campus || ""}`} />
+      <AdminNavbar adminName={user?.nama} adminRole={user?.jabatan_label || user?.role_detail || "Admin"} />
       <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-7">
           <p className="text-xs font-semibold uppercase tracking-wider text-[#7a171b]">Pengaturan akun</p>
@@ -52,6 +75,35 @@ export default function AdminAccountPage() {
         </div>
 
         <section className="max-w-2xl border-y border-slate-200 bg-white px-5 py-6 sm:px-7">
+          <div className="mb-6 border-b border-slate-100 pb-6">
+            <div className="mb-5 flex items-start gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#7a171b]/10 text-[#7a171b]">
+                <UserRound className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="font-semibold">Profil admin</h2>
+                <p className="mt-1 text-sm text-slate-500">Nama dapat diubah. Jabatan dan hak akses tetap ditentukan oleh akun admin.</p>
+              </div>
+            </div>
+
+            {profileError && <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-800">{profileError}</p>}
+            {profileMessage && <p role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">{profileMessage}</p>}
+
+            <form onSubmit={handleProfileSubmit} className="space-y-4">
+              <div>
+                <label htmlFor="admin-name" className="mb-1.5 block text-sm font-medium text-slate-700">Nama tampilan</label>
+                <input id="admin-name" required maxLength={255} value={name} onChange={(event) => setName(event.target.value)} className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15" />
+              </div>
+              <div className="text-sm text-slate-600">
+                Jabatan: <span className="font-medium text-slate-900">{user?.jabatan_label || user?.role_detail || "—"}</span>
+                {user?.email && <span className="ml-3">Email: <span className="font-medium text-slate-900">{user.email}</span></span>}
+              </div>
+              <button disabled={profileLoading} className="h-10 rounded-lg bg-[#7a171b] px-4 text-sm font-semibold text-white hover:bg-[#641216] disabled:opacity-60">
+                {profileLoading ? "Menyimpan..." : "Simpan nama"}
+              </button>
+            </form>
+          </div>
+
           <div className="mb-6 flex items-start gap-3">
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#7a171b]/10 text-[#7a171b]">
               <ShieldCheck className="h-5 w-5" />

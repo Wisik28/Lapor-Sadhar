@@ -2,6 +2,7 @@
 
 import React from "react";
 import { User, Menu } from "lucide-react";
+import Link from "next/link";
 
 export interface NavbarProps {
   pageTitle: string;
@@ -41,7 +42,7 @@ export default function Navbar({
       </div>
 
       {/* Right Side: Profile Icon & User Info */}
-      <div className="flex items-center gap-2 sm:gap-3 pl-3 sm:pl-4 border-l border-slate-200">
+      <Link href="/profile" className="flex items-center gap-2 sm:gap-3 pl-3 sm:pl-4 border-l border-slate-200 rounded-lg hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-[#7A0C0C]" aria-label="Edit profil">
         <div className="text-right hidden sm:block">
           <p className="text-sm font-semibold text-slate-800 leading-none">
             {userName}
@@ -53,7 +54,7 @@ export default function Navbar({
         <div className="w-10 h-10 rounded-full bg-slate-100 border-2 border-[#7A0C0C]/30 flex items-center justify-center text-[#7A0C0C] shadow-xs">
           <User className="w-5 h-5" />
         </div>
-      </div>
+      </Link>
     </header>
   );
 }

@@ -8,6 +8,7 @@ const PROTECTED_ROUTES = [
   '/buat-laporan',
   '/admin/dashboard',
   '/admin/account',
+  '/profile',
   '/admin/ubah-status',
 ];
 

@@ -9,36 +9,78 @@ use Illuminate\Support\Str;
 
 class AdminSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
-        foreach (['BLU', 'BPS'] as $role) {
-            foreach (range(1, 5) as $campusNumber) {
-                $campus = "Kampus {$this->romanNumeral($campusNumber)}";
-                $username = strtolower($role).'.kampus'.$campusNumber;
+        foreach (Admin::POSITIONS as $position => $definition) {
+            $username = 'admin.'.$position;
+            $admin = Admin::where('username', $username)->first();
 
-                if (Admin::where('username', $username)->exists()) {
-                    continue;
+            if (! $admin) {
+                $legacyUsername = $this->legacyUsername($position);
+                $admin = $legacyUsername ? Admin::where('username', $legacyUsername)->first() : null;
+            }
+
+            $email = config("admin.emails.{$position}");
+
+            if ($admin) {
+                if (
+                    $admin->username !== $username
+                    || $admin->role !== $definition['role']
+                    || $admin->jabatan !== $position
+                ) {
+                    $admin->sessions()->delete();
                 }
 
-                $initialPassword = Str::random(20);
-                Admin::create([
-                    'nama_admin' => "Admin {$role} {$campus}",
+                $attributes = [
+                    'nama_admin' => str_starts_with($admin->nama_admin, 'Admin ')
+                        ? $definition['label']
+                        : $admin->nama_admin,
                     'username' => $username,
-                    'password' => Hash::make($initialPassword),
-                    'role' => $role,
-                    'campus' => $campus,
-                ]);
+                    'role' => $definition['role'],
+                    'campus' => null,
+                    'jabatan' => $position,
+                ];
 
-                $this->command?->info("{$campus} / {$role}: {$username} / {$initialPassword}");
+                if ($email) {
+                    $attributes['email'] = $email;
+                }
+
+                $admin->update($attributes);
+
+                continue;
             }
+
+            $initialPassword = Str::random(24);
+            Admin::create([
+                'nama_admin' => $definition['label'],
+                'username' => $username,
+                'password' => Hash::make($initialPassword),
+                'role' => $definition['role'],
+                'campus' => null,
+                'jabatan' => $position,
+                'email' => $email,
+            ]);
+
+            $this->command?->info("{$definition['label']}: {$username} / {$initialPassword}");
         }
     }
 
-    private function romanNumeral(int $number): string
+    private function legacyUsername(string $position): ?string
     {
-        return ['I', 'II', 'III', 'IV', 'V'][$number - 1];
+        if ($position === 'kepala_blu') {
+            return 'blu.kampus1';
+        }
+
+        if ($position === 'kepala_bps') {
+            return 'bps.kampus1';
+        }
+
+        if (preg_match('/^kepala_bagian_(blu|bps)_([1-4])$/', $position, $matches)) {
+            $campusNumber = (int) $matches[2] + 1;
+
+            return "{$matches[1]}.kampus{$campusNumber}";
+        }
+
+        return null;
     }
 }
