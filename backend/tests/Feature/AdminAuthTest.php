@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Mail\VerificationCodeMail;
 use App\Models\Admin;
+use App\Models\AdminSession;
 use App\Models\EmailVerificationCode;
 use Database\Seeders\AdminSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -189,6 +190,47 @@ class AdminAuthTest extends TestCase
             'password' => 'Changed-pass-456',
             'jabatan' => 'kepala_blu',
         ])->assertOk();
+    }
+
+    public function test_legacy_admin_password_reset_changes_only_the_ten_legacy_accounts(): void
+    {
+        foreach (Admin::POSITIONS as $position => $definition) {
+            $admin = Admin::create([
+                'nama_admin' => $definition['label'],
+                'username' => 'admin.'.$position,
+                'password' => Hash::make('Legacy-pass-123'),
+                'role' => $definition['role'],
+                'campus' => null,
+                'jabatan' => $position,
+            ]);
+
+            AdminSession::create([
+                'admin_id' => $admin->admin_id,
+                'token_hash' => hash('sha256', 'session-'.$position),
+                'expires_at' => now()->addHour(),
+            ]);
+        }
+
+        $this->artisan('admin:reset-legacy-passwords')
+            ->expectsConfirmation('Reset 10 password admin lama dan keluarkan semua sesi aktif mereka? Password lama tidak akan berlaku lagi.', 'yes')
+            ->expectsOutputToContain('admin.kepala_blu')
+            ->assertExitCode(0);
+
+        foreach (Admin::POSITIONS as $position => $definition) {
+            $admin = Admin::where('jabatan', $position)->firstOrFail();
+
+            if ($position === 'wakil_rektor_ii') {
+                $this->assertTrue(Hash::check('Legacy-pass-123', $admin->password));
+                $this->assertDatabaseHas('admin_sessions', ['admin_id' => $admin->admin_id]);
+
+                continue;
+            }
+
+            $this->assertFalse(Hash::check('Legacy-pass-123', $admin->password));
+            $this->assertSame(0, $admin->sessions()->count());
+        }
+
+        $this->assertDatabaseCount('admin_sessions', 1);
     }
 
     private function createAdmin(): Admin

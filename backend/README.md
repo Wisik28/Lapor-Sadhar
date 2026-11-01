@@ -22,6 +22,8 @@ Untuk mengirim kode reset password dan verifikasi perubahan email melalui Gmail,
 
 Kode verifikasi berlaku 10 menit dan maksimal dapat dicoba lima kali.
 
+Jika password 10 akun admin lama perlu diganti, jalankan `php artisan admin:reset-legacy-passwords` dari folder `backend`. Perintah ini meminta konfirmasi, membuat password acak unik, mengakhiri sesi aktif akun tersebut, dan menampilkan password baru sekali di terminal. WR II tidak diubah. Bagikan password melalui jalur pribadi yang aman dan jangan kirimkan hasil terminal di chat atau commit.
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
