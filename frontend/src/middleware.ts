@@ -40,20 +40,8 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // Jika akses halaman public dan sudah login, redirect ke dashboard sesuai role
+  // Public pages must remain reachable even if browser cookies are stale.
   if (PUBLIC_ROUTES.includes(pathname)) {
-    if (isAuthenticated) {
-      try {
-        const user = userSession ? JSON.parse(userSession) : null;
-        if (user?.role === 'Admin') {
-          return NextResponse.redirect(new URL('/admin/dashboard', request.url));
-        }
-        return NextResponse.redirect(new URL('/buat-laporan', request.url));
-      } catch {
-        // Jika error parsing, biarkan lanjut ke login page
-      }
-    }
-    // Jika belum login, boleh akses halaman login/register
     return NextResponse.next();
   }
 

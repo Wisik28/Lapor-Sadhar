@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useCallback } from "react";
+import Link from "next/link";
 import Sidebar from "../../components/Sidebar";
 import Navbar from "../../components/Navbar";
 import { authApi, laporanApi, type LaporanItem } from "@/lib/api";
@@ -123,40 +123,20 @@ function LaporanCard({ lap, expandedId, setExpandedId }: {
 // ─── Component Utama ──────────────────────────────────────────────────────────
 
 export default function BuatLaporanPage() {
-  const router = useRouter();
   const [activeMenu, setActiveMenu] = useState("buat-laporan");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // ── Auth Protection ──
   const { isLoading: authLoading, user: authUser } = useAuthProtection();
-  const [currentUser, setCurrentUser] = useState({ nama: "Pengguna", role: "Mahasiswa", nim: "" });
-
-  useEffect(() => {
-    if (!authLoading && authUser) {
-      setCurrentUser({
-        nama: authUser.nama,
-        role: authUser.role || (authUser.tipe_user === "karyawan" ? "Karyawan" : "Mahasiswa"),
-        nim: authUser.nim || authUser.nomor_identitas || "",
-      });
-    }
-  }, [authLoading, authUser]);
-
-  // Show loading while checking auth
-  if (authLoading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-[#F3F4F6]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-[#7A0C0C]/20 border-t-[#7A0C0C] rounded-full animate-spin" />
-          <p className="text-slate-600 text-sm font-medium">Memeriksa autentikasi...</p>
-        </div>
-      </div>
-    );
-  }
+  const currentUser = {
+    nama: authUser?.nama ?? "Pengguna",
+    role: authUser?.role || (authUser?.tipe_user === "karyawan" ? "Karyawan" : "Mahasiswa"),
+    nim: authUser?.nim || authUser?.nomor_identitas || "",
+  };
 
   // ── Shared laporan state (untuk semua menu yang membutuhkan list laporan) ──
   const [allLaporan, setAllLaporan] = useState<LaporanItem[]>([]);
   const [listLoading, setListLoading] = useState(false);
-  const listFetchedRef = useRef(false);
 
   const fetchAllLaporan = useCallback(async (nim: string) => {
     if (!nim) return;
@@ -168,22 +148,16 @@ export default function BuatLaporanPage() {
     setListLoading(false);
   }, []);
 
-  // Fetch laporan saat NIM tersedia pertama kali
-  useEffect(() => {
-    if (currentUser.nim && !listFetchedRef.current) {
-      listFetchedRef.current = true;
+  const handleMenuChange = useCallback((menu: string) => {
+    setActiveMenu(menu);
+    if (
+      menu !== activeMenu &&
+      currentUser.nim &&
+      ["rubah-pengajuan", "lihat-status", "riwayat-laporan"].includes(menu)
+    ) {
       fetchAllLaporan(currentUser.nim);
     }
-  }, [currentUser.nim, fetchAllLaporan]);
-
-  // Fetch data saat menu aktif berubah
-  useEffect(() => {
-    if (!currentUser.nim) return;
-    if (activeMenu === "rubah-pengajuan" || activeMenu === "lihat-status" || activeMenu === "riwayat-laporan") {
-      fetchAllLaporan(currentUser.nim);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMenu]);
+  }, [activeMenu, currentUser.nim, fetchAllLaporan]);
 
   // ─── Buat Laporan State ────────────────────────────────────────────────────
 
@@ -333,11 +307,36 @@ export default function BuatLaporanPage() {
   };
 
   // ─── Render ────────────────────────────────────────────────────────────────
+  if (authLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#F3F4F6]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-[#7A0C0C]/20 border-t-[#7A0C0C] rounded-full animate-spin" />
+          <p className="text-slate-600 text-sm font-medium">Memeriksa autentikasi...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return (
+      <div className="flex h-screen w-full flex-col items-center justify-center gap-3 bg-[#F3F4F6] px-4 text-center">
+        <p className="text-slate-700">Sesi login tidak ditemukan. Silakan masuk kembali.</p>
+        <Link
+          href="/login"
+          className="rounded-xl bg-[#7A0C0C] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#9E1B1B]"
+        >
+          Ke halaman login
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#F3F4F6] font-sans antialiased text-slate-800">
       <Sidebar
         activeMenu={activeMenu}
-        setActiveMenu={setActiveMenu}
+        setActiveMenu={handleMenuChange}
         isOpenMobile={isSidebarOpen}
         onCloseMobile={() => setIsSidebarOpen(false)}
       />

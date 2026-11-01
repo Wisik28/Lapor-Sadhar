@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getCurrentAuthUser, isAuthenticated, isAdmin, AuthUser } from '@/lib/auth';
+import { getCurrentAuthUser, isAuthenticated, AuthUser } from '@/lib/auth';
 
 /**
  * Hook untuk proteksi halaman yang memerlukan autentikasi
@@ -15,8 +15,9 @@ export function useAuthProtection() {
     const checkAuth = () => {
       const currentUser = getCurrentAuthUser();
       
-      if (!currentUser) {
-        router.push('/login');
+      if (!currentUser || !isAuthenticated()) {
+        setIsLoading(false);
+        router.replace('/login');
         return;
       }
 
@@ -44,12 +45,14 @@ export function useAdminProtection() {
       const currentUser = getCurrentAuthUser();
       
       if (!currentUser) {
-        router.push('/login');
+        setIsLoading(false);
+        router.replace('/login');
         return;
       }
 
       if (currentUser.role !== 'Admin') {
-        router.push('/buat-laporan');
+        setIsLoading(false);
+        router.replace('/buat-laporan');
         return;
       }
 
