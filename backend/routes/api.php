@@ -39,8 +39,10 @@ Route::middleware('user.session')->prefix('profile')->group(function () {
 });
 
 // Laporan Routes
-Route::get('/laporan', [LaporanController::class, 'index']);          // GET /api/laporan?nim=xxx
+Route::middleware('user.session')->group(function () {
+Route::get('/laporan', [LaporanController::class, 'index']);            // GET /api/laporan?nim=xxx
 Route::post('/laporan', [LaporanController::class, 'store']);          // POST /api/laporan
 Route::get('/laporan/{id}', [LaporanController::class, 'show']);       // GET /api/laporan/{id}
 Route::put('/laporan/{id}', [LaporanController::class, 'update']);     // PUT /api/laporan/{id}
 Route::delete('/laporan/{id}', [LaporanController::class, 'destroy']); // DELETE /api/laporan/{id}
+});

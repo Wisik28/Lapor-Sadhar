@@ -6,6 +6,7 @@ import Sidebar from "../../components/Sidebar";
 import Navbar from "../../components/Navbar";
 import { authApi, laporanApi, type LaporanItem } from "@/lib/api";
 import { useAuthProtection } from "@/lib/useAuth";
+import { useRouter } from "next/navigation";
 import {
   MapPin,
   Send,
@@ -125,6 +126,7 @@ function LaporanCard({ lap, expandedId, setExpandedId }: {
 export default function BuatLaporanPage() {
   const [activeMenu, setActiveMenu] = useState("buat-laporan");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const router = useRouter();
 
   // ── Auth Protection ──
   const { isLoading: authLoading, user: authUser } = useAuthProtection();
@@ -149,6 +151,12 @@ export default function BuatLaporanPage() {
   }, []);
 
   const handleMenuChange = useCallback((menu: string) => {
+    if (menu === "lihat-status") {
+    router.push("/lihat-status");
+    return;
+  }
+
+
     setActiveMenu(menu);
     if (
       menu !== activeMenu &&
