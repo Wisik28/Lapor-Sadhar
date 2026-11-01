@@ -6,6 +6,7 @@ const PUBLIC_ROUTES = ['/login', '/register', '/admin/login'];
 // Halaman yang memerlukan autentikasi (private routes)
 const PROTECTED_ROUTES = [
   '/buat-laporan',
+  '/lihat-status',
   '/admin/dashboard',
   '/admin/account',
   '/profile',

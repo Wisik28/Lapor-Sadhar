@@ -71,91 +71,98 @@ class LaporanController extends Controller
     }
 
     /**
-     * Ambil semua laporan milik user (berdasarkan NIM)
-     */
-    public function index(Request $request)
-    {
-        $nim = $request->query('nim');
+ * Ambil semua laporan milik user yang sedang login.
+ */
+public function index(Request $request)
+{
+    try {
+        // Ambil identitas pengguna dari sesi login.
+        $session = $request->attributes->get('user_session');
+        $identifier = $session?->account_id;
 
-        if (!$nim) {
+        if (!$identifier) {
             return response()->json([
                 'status'  => 'error',
-                'message' => 'Parameter NIM wajib disertakan.',
-            ], 422);
+                'message' => 'Sesi pengguna tidak valid. Silakan login kembali.',
+                'data'    => [],
+            ], 401);
         }
 
-        try {
-            $laporans = Laporan::with(['statuses' => function ($q) {
-                $q->orderBy('tanggal_merubah', 'desc');
-            }])
-                ->where('nim', $nim)
-                ->orderBy('tanggal_buat', 'desc')
-                ->get()
-                ->map(function ($laporan) {
-                    $latestStatus = $laporan->statuses->first();
-                    return [
-                        'id_laporan'       => $laporan->id_laporan,
-                        'nim'              => $laporan->nim,
-                        'kategori_laporan' => $laporan->kategori_laporan,
-                        'deskripsi'        => $laporan->deskripsi,
-                        'tanggal_kejadian' => $laporan->tanggal_kejadian,
-                        'tanggal_buat'     => $laporan->tanggal_buat,
-                        'tanggal_rubah'    => $laporan->tanggal_rubah,
-                        'lokasi'           => $laporan->lokasi,
-                        'foto'             => $laporan->foto,
-                        'status_terkini'   => $latestStatus?->status_laporan ?? 'Terkirim',
-                        'riwayat_status'   => $laporan->statuses,
-                    ];
-                });
+        // Ambil laporan berdasarkan identitas pengguna.
+        $laporans = Laporan::with([
+            'statuses' => function ($query) {
+                $query->orderBy('tanggal_merubah', 'desc');
+            }
+        ])
+            ->where('nim', $identifier)
+            ->orderBy('tanggal_buat', 'desc')
+            ->get()
+            ->map(function ($laporan) {
+                $latestStatus = $laporan->statuses->first();
 
-            return response()->json([
-                'status' => 'success',
-                'data'   => $laporans,
-                'total'  => $laporans->count(),
-            ]);
-        } catch (\Throwable $e) {
-            return $this->handleDbError($e);
-        }
-    }
-
-    /**
-     * Ambil detail satu laporan
-     */
-    public function show($id)
-    {
-        try {
-            $laporan = Laporan::with(['statuses' => function ($q) {
-                $q->orderBy('tanggal_merubah', 'desc');
-            }, 'pelapor.mahasiswa', 'pelapor.pegawai'])->findOrFail($id);
-
-            $latestStatus = $laporan->statuses->first();
-
-            return response()->json([
-                'status' => 'success',
-                'data'   => [
+                return [
                     'id_laporan'       => $laporan->id_laporan,
                     'nim'              => $laporan->nim,
-                    'nama_pelapor'     => $laporan->pelapor?->mahasiswa?->nama ?? $laporan->pelapor?->pegawai?->nama,
                     'kategori_laporan' => $laporan->kategori_laporan,
                     'deskripsi'        => $laporan->deskripsi,
                     'tanggal_kejadian' => $laporan->tanggal_kejadian,
                     'tanggal_buat'     => $laporan->tanggal_buat,
                     'tanggal_rubah'    => $laporan->tanggal_rubah,
-                    'lokasi'           => $laporan->lokasi,
-                    'foto'             => $laporan->foto,
-                    'status_terkini'   => $latestStatus?->status_laporan ?? 'Terkirim',
-                    'riwayat_status'   => $laporan->statuses,
-                ],
-            ]);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'Laporan tidak ditemukan.',
-            ], 404);
-        } catch (\Throwable $e) {
-            return $this->handleDbError($e);
-        }
+                    'lokasi'            => $laporan->lokasi,
+                    'foto'              => $laporan->foto,
+
+                    // Status terbaru laporan.
+                    'status_terkini' => $latestStatus?->status_laporan ?? 'Terkirim',
+
+                    // Seluruh riwayat perubahan status.
+                    'riwayat_status' => $laporan->statuses,
+
+                    // Tanggapan admin.
+                    'pesan_tanggapan' => $laporan->pesan_tanggapan ?? '',
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'status'  => 'success',
+            'message' => 'Data laporan berhasil dimuat.',
+            'total'   => $laporans->count(),
+            'data'    => $laporans,
+        ], 200);
+
+    } catch (\Throwable $e) {
+        report($e);
+
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Gagal mengambil data laporan.',
+            'data'    => [],
+        ], 500);
     }
+}
+
+    /**
+     * Ambil detail satu laporan
+     */
+    public function show(Request $request, $id)
+{
+    $session = $request->attributes->get('user_session');
+
+    $identifier = $session?->account_id;
+
+    if (!$identifier) {
+        return response()->json([
+            'message' => 'Sesi pengguna tidak valid.'
+        ], 401);
+    }
+
+    $laporan = Laporan::with('statuses')
+        ->where('nim', $identifier)
+        ->where('id_laporan', $id)
+        ->firstOrFail();
+
+    return response()->json($laporan);
+}
 
     /**
      * Rubah / Update Pengajuan Laporan

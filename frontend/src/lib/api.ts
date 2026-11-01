@@ -349,14 +349,44 @@ function getAuthHeaders(isAdmin = false) {
 export const laporanApi = {
   /** Ambil semua laporan milik user berdasarkan NIM */
   async getAll(nim: string): Promise<LaporanResponse> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/laporan?nim=${encodeURIComponent(nim)}`, {
+  try {
+    const res = await fetch(
+      `${API_BASE_URL}/laporan?nim=${encodeURIComponent(nim)}`,
+      {
+        method: "GET",
         headers: getAuthHeaders(),
-      });
-      return await res.json();
-    } catch (error: unknown) {
-      return { status: "error", message: getErrorMessage(error, "Gagal mengambil data laporan.") };
+        cache: "no-store",
+      }
+    );
+
+    const result = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      return {
+        status: "error",
+        message:
+          result?.message ||
+          `Gagal mengambil laporan. HTTP ${res.status}`,
+      };
     }
+
+    if (!result) {
+      return {
+        status: "error",
+        message: "Respons server tidak valid.",
+      };
+    }
+
+    return result;
+  } catch (error: unknown) {
+    return {
+      status: "error",
+      message: getErrorMessage(
+        error,
+        "Gagal mengambil data laporan."
+      ),
+    };
+  }
   },
 
   /** Ambil detail satu laporan */
