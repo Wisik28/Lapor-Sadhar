@@ -165,6 +165,8 @@ function DonutChart({ segments, total, cx = 90, cy = 90, r = 65, stroke = 22 }: 
 // ─── Line/Area Chart ──────────────────────────────────────────────────────────
 
 function TrenLineChart({ data }: { data: BulanData[] }) {
+  const [hoveredIdx, setHoveredIdx] = React.useState<number | null>(null);
+
   if (!data || data.length === 0) {
     return (
       <div className="flex items-center justify-center h-44 text-gray-400 text-sm">
@@ -173,24 +175,28 @@ function TrenLineChart({ data }: { data: BulanData[] }) {
     );
   }
 
-  const W = 540, H = 160, PAD_L = 30, PAD_B = 28, PAD_T = 16, PAD_R = 16;
+  const W = 560, H = 210, PAD_L = 38, PAD_B = 34, PAD_T = 24, PAD_R = 16;
   const chartW = W - PAD_L - PAD_R;
   const chartH = H - PAD_T - PAD_B;
 
   const allVals = data.flatMap((d) => [d.masuk, d.selesai]);
   const maxVal = Math.max(...allVals, 1);
+  const totalMasuk = data.reduce((s, d) => s + d.masuk, 0);
+  const totalSelesai = data.reduce((s, d) => s + d.selesai, 0);
 
-  const xStep = data.length > 1 ? chartW / (data.length - 1) : chartW;
+  const xStep = data.length > 1 ? chartW / (data.length - 1) : chartW / 2;
 
   const pts = (key: "masuk" | "selesai") =>
     data.map((d, i) => ({
       x: PAD_L + i * xStep,
       y: PAD_T + chartH - (d[key] / maxVal) * chartH,
       val: d[key],
+      label: d.bulan_en || d.bulan.slice(0, 3),
     }));
 
   const toPath = (points: { x: number; y: number }[]) => {
     if (points.length === 0) return "";
+    if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
     let d = `M ${points[0].x} ${points[0].y}`;
     for (let i = 1; i < points.length; i++) {
       const cp1x = (points[i - 1].x + points[i].x) / 2;
@@ -214,143 +220,185 @@ function TrenLineChart({ data }: { data: BulanData[] }) {
   const masukPts = pts("masuk");
   const selesaiPts = pts("selesai");
 
-  // Y-axis labels
-  const yTicks = [0, 0.25, 0.5, 0.75, 1];
+  // Rounded y-axis ticks
+  const yTickCount = 4;
+  const yTicks = Array.from({ length: yTickCount + 1 }, (_, i) => i / yTickCount);
+
+  const hovered = hoveredIdx !== null ? data[hoveredIdx] : null;
 
   return (
-    <div className="w-full overflow-x-auto">
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
-        <defs>
-          <linearGradient id="gradMasuk" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#10b981" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="#10b981" stopOpacity="0.02" />
-          </linearGradient>
-          <linearGradient id="gradSelesai" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.2" />
-            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
+    <div className="w-full flex flex-col gap-2">
+      {/* Summary pills */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-100">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
+          <span className="text-[10px] font-semibold text-emerald-700">Total Masuk</span>
+          <span className="text-[13px] font-extrabold text-emerald-800 ml-0.5">{totalMasuk}</span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-100">
+          <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+          <span className="text-[10px] font-semibold text-blue-700">Total Selesai</span>
+          <span className="text-[13px] font-extrabold text-blue-800 ml-0.5">{totalSelesai}</span>
+        </div>
+        {totalMasuk > 0 && (
+          <div className="ml-auto text-[10px] font-semibold text-gray-400">
+            Selesai:{" "}
+            <span className="text-gray-700 font-bold">
+              {Math.round((totalSelesai / totalMasuk) * 100)}%
+            </span>
+          </div>
+        )}
+      </div>
 
-        {/* Grid lines */}
-        {yTicks.map((t) => {
-          const y = PAD_T + chartH - t * chartH;
-          return (
-            <g key={t}>
-              <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y}
-                stroke={t === 0 ? "#d1d5db" : "#f3f4f6"} strokeWidth={t === 0 ? 1 : 0.8} />
-              {t > 0 && (
-                <text x={PAD_L - 4} y={y + 3.5} fontSize="8" fill="#9ca3af" textAnchor="end">
-                  {Math.round(t * maxVal)}
+      {/* Tooltip */}
+      {hovered && (
+        <div className="flex items-center gap-3 px-3 py-1.5 rounded-lg bg-gray-900 text-white text-[11px] font-semibold w-fit">
+          <span className="text-gray-400">{hovered.bulan_en || hovered.bulan}</span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+            Masuk: <b>{hovered.masuk}</b>
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />
+            Selesai: <b>{hovered.selesai}</b>
+          </span>
+        </div>
+      )}
+      {!hovered && (
+        <div className="text-[10px] text-gray-400 italic">Arahkan kursor ke titik data untuk detail</div>
+      )}
+
+      {/* SVG Chart */}
+      <div className="w-full overflow-x-auto">
+        <svg
+          width="100%"
+          viewBox={`0 0 ${W} ${H}`}
+          preserveAspectRatio="xMidYMid meet"
+          style={{ overflow: "visible" }}
+        >
+          <defs>
+            <linearGradient id="gradMasukV2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#10b981" stopOpacity="0.22" />
+              <stop offset="100%" stopColor="#10b981" stopOpacity="0.02" />
+            </linearGradient>
+            <linearGradient id="gradSelesaiV2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.16" />
+              <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.02" />
+            </linearGradient>
+          </defs>
+
+          {/* Chart background */}
+          <rect x={PAD_L} y={PAD_T} width={chartW} height={chartH}
+            fill="#fafafa" rx="6" />
+
+          {/* Horizontal grid lines + Y labels */}
+          {yTicks.map((t) => {
+            const y = PAD_T + chartH - t * chartH;
+            const val = Math.round(t * maxVal);
+            return (
+              <g key={t}>
+                <line
+                  x1={PAD_L} y1={y} x2={W - PAD_R} y2={y}
+                  stroke={t === 0 ? "#d1d5db" : "#e5e7eb"}
+                  strokeWidth={t === 0 ? 1.2 : 0.7}
+                  strokeDasharray={t > 0 ? "4 3" : ""}
+                />
+                <text x={PAD_L - 6} y={y + 4}
+                  fontSize="10" fill="#9ca3af" textAnchor="end" fontWeight="600">
+                  {val}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* Vertical guide per column */}
+          {masukPts.map((p, i) => (
+            <line key={`vg${i}`}
+              x1={p.x} y1={PAD_T} x2={p.x} y2={PAD_T + chartH}
+              stroke={hoveredIdx === i ? "#d1d5db" : "#f3f4f6"}
+              strokeWidth={hoveredIdx === i ? 1.2 : 0.6} />
+          ))}
+
+          {/* Area fills */}
+          <path d={toArea(masukPts)} fill="url(#gradMasukV2)" />
+          <path d={toArea(selesaiPts)} fill="url(#gradSelesaiV2)" />
+
+          {/* Lines */}
+          <path d={toPath(masukPts)} fill="none" stroke="#10b981"
+            strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d={toPath(selesaiPts)} fill="none" stroke="#3b82f6"
+            strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            strokeDasharray="6 3" />
+
+          {/* Masuk dots + value labels */}
+          {masukPts.map((p, i) => (
+            <g key={`m${i}`}
+              onMouseEnter={() => setHoveredIdx(i)}
+              onMouseLeave={() => setHoveredIdx(null)}
+              style={{ cursor: "pointer" }}>
+              {/* Invisible hit area */}
+              <circle cx={p.x} cy={p.y} r="14" fill="transparent" />
+              {/* Glow on hover */}
+              {hoveredIdx === i && (
+                <circle cx={p.x} cy={p.y} r="9" fill="#10b981" fillOpacity="0.15" />
+              )}
+              {/* Dot */}
+              <circle cx={p.x} cy={p.y} r="4.5" fill="#10b981"
+                stroke="#fff" strokeWidth="2" />
+              {/* Value label above */}
+              <text x={p.x} y={p.y - 10}
+                fontSize="11" fill="#059669"
+                textAnchor="middle" fontWeight="800">
+                {p.val}
+              </text>
+            </g>
+          ))}
+
+          {/* Selesai dots + value labels */}
+          {selesaiPts.map((p, i) => (
+            <g key={`s${i}`}
+              onMouseEnter={() => setHoveredIdx(i)}
+              onMouseLeave={() => setHoveredIdx(null)}
+              style={{ cursor: "pointer" }}>
+              <circle cx={p.x} cy={p.y} r="14" fill="transparent" />
+              {hoveredIdx === i && (
+                <circle cx={p.x} cy={p.y} r="8" fill="#3b82f6" fillOpacity="0.12" />
+              )}
+              <circle cx={p.x} cy={p.y} r="4"
+                fill="#fff" stroke="#3b82f6" strokeWidth="2.5" />
+              {p.val > 0 && (
+                <text x={p.x} y={p.y + 18}
+                  fontSize="11" fill="#2563eb"
+                  textAnchor="middle" fontWeight="800">
+                  {p.val}
                 </text>
               )}
             </g>
-          );
-        })}
+          ))}
 
-        {/* Area fills */}
-        <path d={toArea(masukPts)} fill="url(#gradMasuk)" />
-        <path d={toArea(selesaiPts)} fill="url(#gradSelesai)" />
+          {/* X-axis bulan labels */}
+          {data.map((d, i) => {
+            const x = PAD_L + i * xStep;
+            return (
+              <text key={i} x={x} y={H - 10}
+                fontSize="11" fill={hoveredIdx === i ? "#374151" : "#6b7280"}
+                textAnchor="middle" fontWeight={hoveredIdx === i ? "800" : "600"}>
+                {d.bulan_en || d.bulan.slice(0, 3)}
+              </text>
+            );
+          })}
 
-        {/* Lines */}
-        <path d={toPath(masukPts)} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-        <path d={toPath(selesaiPts)} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="5 3" />
-
-        {/* Dots + labels */}
-        {masukPts.map((p, i) => (
-          <g key={`m${i}`}>
-            <circle cx={p.x} cy={p.y} r="3.5" fill="#10b981" />
-            {p.val > 0 && (
-              <text x={p.x} y={p.y - 7} fontSize="8" fill="#10b981" textAnchor="middle" fontWeight="700">{p.val}</text>
-            )}
-          </g>
-        ))}
-        {selesaiPts.map((p, i) => (
-          <g key={`s${i}`}>
-            <circle cx={p.x} cy={p.y} r="3" fill="#fff" stroke="#3b82f6" strokeWidth="2" />
-          </g>
-        ))}
-
-        {/* X-axis labels */}
-        {data.map((d, i) => {
-          const x = PAD_L + i * xStep;
-          return (
-            <text key={i} x={x} y={H - 6} fontSize="9" fill="#6b7280" textAnchor="middle" fontWeight="600">
-              {d.bulan_en || d.bulan.slice(0, 3)}
-            </text>
-          );
-        })}
-      </svg>
-    </div>
-  );
-}
-
-// ─── Map Placeholder ──────────────────────────────────────────────────────────
-
-function MapPlaceholder({ lokasi }: { lokasi: LokasiData[] }) {
-  const dots = [
-    { x: "30%", y: "35%", size: 28, label: lokasi[0]?.jumlah ?? "?" },
-    { x: "55%", y: "28%", size: 19, label: lokasi[1]?.jumlah ?? "?" },
-    { x: "20%", y: "58%", size: 15, label: lokasi[2]?.jumlah ?? "?" },
-    { x: "65%", y: "55%", size: 16, label: lokasi[3]?.jumlah ?? "?" },
-    { x: "78%", y: "38%", size: 18, label: lokasi[4]?.jumlah ?? "?" },
-  ];
-
-  return (
-    <div className="relative w-full h-full min-h-[200px] bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 rounded-xl overflow-hidden">
-      {/* SVG "roads" background */}
-      <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <pattern id="mapGrid" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#d1fae5" strokeWidth="0.5" />
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#mapGrid)" />
-        {/* Road lines */}
-        <line x1="0" y1="45%" x2="100%" y2="45%" stroke="#a7f3d0" strokeWidth="2" />
-        <line x1="0" y1="70%" x2="100%" y2="70%" stroke="#a7f3d0" strokeWidth="1.5" />
-        <line x1="35%" y1="0" x2="35%" y2="100%" stroke="#a7f3d0" strokeWidth="2" />
-        <line x1="65%" y1="0" x2="65%" y2="100%" stroke="#a7f3d0" strokeWidth="1.5" />
-        <path d="M 0,30% Q 25%,20% 50%,45% T 100%,40%" fill="none" stroke="#6ee7b7" strokeWidth="1.5" />
-        <path d="M 0,75% Q 30%,60% 70%,70% T 100%,65%" fill="none" stroke="#6ee7b7" strokeWidth="1" />
-      </svg>
-
-      {/* Cluster dots */}
-      {dots.slice(0, lokasi.length || dots.length).map((dot, i) => (
-        <div
-          key={i}
-          className="absolute flex items-center justify-center rounded-full text-white font-bold shadow-lg cursor-pointer transition-transform hover:scale-110"
-          style={{
-            left: dot.x, top: dot.y,
-            width: dot.size + 16, height: dot.size + 16,
-            background: i === 0
-              ? "rgba(5,150,105,0.85)"
-              : i === 1
-              ? "rgba(16,185,129,0.75)"
-              : "rgba(52,211,153,0.7)",
-            fontSize: dot.size < 20 ? "10px" : "12px",
-            transform: "translate(-50%, -50%)",
-          }}
-        >
-          {dot.label}
-        </div>
-      ))}
-
-      {/* Area labels */}
-      <span className="absolute text-[10px] font-semibold text-teal-700/70" style={{ left: "5%", top: "12%" }}>Godean</span>
-      <span className="absolute text-[10px] font-semibold text-teal-700/70" style={{ left: "60%", top: "8%" }}>Pakem</span>
-      <span className="absolute text-[10px] font-semibold text-teal-700/70" style={{ left: "72%", top: "42%" }}>Kalasan</span>
-      <span className="absolute text-[10px] font-semibold text-teal-700/70" style={{ left: "5%", top: "72%" }}>Gamping</span>
-      <span className="absolute text-[10px] font-semibold text-teal-700/70" style={{ left: "65%", top: "75%" }}>Prambanan</span>
-      <span className="absolute text-[10px] font-semibold text-teal-700/70" style={{ left: "78%", top: "88%" }}>Depok</span>
-
-      {/* Zoom buttons */}
-      <div className="absolute bottom-3 right-3 flex flex-col gap-1">
-        <button className="w-6 h-6 bg-white rounded shadow text-gray-600 text-sm font-bold flex items-center justify-center hover:bg-gray-50">+</button>
-        <button className="w-6 h-6 bg-white rounded shadow text-gray-600 text-sm font-bold flex items-center justify-center hover:bg-gray-50">−</button>
+          {/* X-axis baseline */}
+          <line x1={PAD_L} y1={PAD_T + chartH}
+            x2={W - PAD_R} y2={PAD_T + chartH}
+            stroke="#d1d5db" strokeWidth="1.2" />
+        </svg>
       </div>
     </div>
   );
 }
+
+
 
 // ─── Halaman Utama ─────────────────────────────────────────────────────────────
 
@@ -472,17 +520,13 @@ export default function AdminRekapPage() {
     },
   ] : [];
 
-  // Category bars (more detail from reference image)
+  // Hanya 2 kategori real sesuai data sistem
   const categoryItems = d ? [
-    { label: "Sampah / Kebersihan",   count: d.per_kategori.Kebersihan, color: "#f97316" },
-    { label: "AC & Fasilitas Pendingin", count: Math.round(d.per_kategori.Fasilitas * 0.45), color: "#3b82f6" },
-    { label: "Kelistrikan & Lampu",   count: Math.round(d.per_kategori.Fasilitas * 0.30), color: "#eab308" },
-    { label: "Sarana Ruang Kelas",    count: Math.round(d.per_kategori.Fasilitas * 0.15), color: "#8b5cf6" },
-    { label: "Pipa Air & Sanitasi",   count: Math.round(d.per_kategori.Fasilitas * 0.07), color: "#06b6d4" },
-    { label: "Lainnya",               count: Math.round(d.per_kategori.Fasilitas * 0.03), color: "#9ca3af" },
+    { label: "Fasilitas",  count: d.per_kategori.Fasilitas,  color: "#3b82f6" },
+    { label: "Kebersihan", count: d.per_kategori.Kebersihan, color: "#f97316" },
   ] : [];
 
-  const categoryTotal = categoryItems.reduce((s, c) => s + c.count, 0) || 1;
+  const categoryTotal = d ? (d.per_kategori.Fasilitas + d.per_kategori.Kebersihan) || 1 : 1;
 
   return (
     <div className="min-h-screen w-full bg-[#F5F5F5] flex flex-col font-sans antialiased">
@@ -528,17 +572,26 @@ export default function AdminRekapPage() {
             <section className="grid grid-cols-3 gap-3">
               {statusCards.map((card) => (
                 <div key={card.label}
-                  className="bg-white rounded-xl border border-gray-200 shadow-sm p-3.5 hover:shadow-md transition-shadow flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-semibold text-gray-500 leading-tight">{card.label}</p>
-                    <div className={`w-7 h-7 rounded-lg ${card.iconBg} flex items-center justify-center shrink-0`}>
-                      <card.Icon className={`w-3.5 h-3.5 ${card.iconColor}`} />
+                  className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 flex flex-col gap-2 overflow-hidden"
+                  style={{ borderLeft: `3px solid ${card.accentColor}` }}>
+                  <div className="p-3.5 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide leading-tight">{card.label}</p>
+                      <div className={`w-8 h-8 rounded-xl ${card.iconBg} flex items-center justify-center shrink-0 shadow-sm`}>
+                        <card.Icon className={`w-4 h-4 ${card.iconColor}`} />
+                      </div>
+                    </div>
+                    <p className="text-3xl font-black text-gray-900 leading-none">{card.count}</p>
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex-1 h-1 rounded-full bg-gray-100 overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-700"
+                          style={{ width: `${card.pctVal}%`, background: card.accentColor, opacity: 0.7 }} />
+                      </div>
+                      <p className="text-[10px] font-bold shrink-0" style={{ color: card.accentColor }}>
+                        {card.pctVal}%
+                      </p>
                     </div>
                   </div>
-                  <p className="text-2xl font-extrabold text-gray-900 leading-none">{card.count}</p>
-                  <p className="text-[10px] font-medium" style={{ color: card.accentColor }}>
-                    {card.pctVal}% dari total
-                  </p>
                 </div>
               ))}
             </section>
@@ -546,78 +599,82 @@ export default function AdminRekapPage() {
             {/* ═══ ROW 2 — TREN CHART + DONUT STATUS + KATEGORI ══════════════ */}
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-              {/* Tren Laporan per Hari */}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-bold text-gray-900">Tren Laporan per Hari</h2>
-                  <span className="text-[11px] font-semibold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-lg">Per Hari</span>
+              {/* Tren Laporan per Bulan */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-300 p-5">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
+                  <div>
+                    <h2 className="text-sm font-bold text-gray-900">Tren Laporan per Bulan</h2>
+                    <p className="text-[10px] text-gray-400 mt-0.5">Masuk vs Selesai</p>
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-lg">Per Bulan</span>
                 </div>
                 <TrenLineChart data={d.per_bulan} />
-                {/* Legend */}
-                <div className="flex items-center gap-4 mt-2 pt-2 border-t border-gray-100">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-3 h-1.5 rounded-full bg-[#10b981] inline-block" />
-                    <span className="text-[10px] text-gray-500 font-medium">Masuk</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-3 h-1.5 rounded-full bg-[#3b82f6] inline-block" style={{ borderTop: "2px dashed #3b82f6" }} />
-                    <span className="text-[10px] text-gray-500 font-medium">Selesai</span>
-                  </div>
-                </div>
               </div>
 
               {/* Donut — Laporan Berdasarkan Status */}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                <h2 className="text-sm font-bold text-gray-900 mb-3">Laporan Berdasarkan Status</h2>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-300 p-5">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
+                  <div>
+                    <h2 className="text-sm font-bold text-gray-900">Laporan Berdasarkan Status</h2>
+                    <p className="text-[10px] text-gray-400 mt-0.5">Distribusi semua status</p>
+                  </div>
+                </div>
                 <div className="flex items-center gap-4">
                   <div className="shrink-0">
                     <DonutChart segments={donutSegments} total={d.total_laporan} />
                   </div>
-                  <div className="flex-1 space-y-2 min-w-0">
+                  <div className="flex-1 space-y-2.5 min-w-0">
                     {[
                       { label: "Terkirim",    count: d.per_status.Terkirim,    color: "#f97316" },
-                      { label: "Sedang Diverifikasi", count: d.per_status.Diverifikasi, color: "#3b82f6" },
+                      { label: "Diverifikasi", count: d.per_status.Diverifikasi, color: "#3b82f6" },
                       { label: "Ditolak",    count: d.per_status.Ditolak,     color: "#ef4444" },
                       { label: "Terverifikasi", count: d.per_status.Diverifikasi, color: "#10b981" },
                       { label: "Diproses",   count: d.per_status.Diproses,    color: "#8b5cf6" },
                       { label: "Selesai",    count: d.per_status.Selesai,     color: "#6ee7b7" },
                     ].map((item) => (
-                      <div key={item.label} className="flex items-center gap-2">
-                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: item.color }} />
-                        <span className="text-[10px] text-gray-700 truncate flex-1">{item.label}</span>
-                        <span className="text-[10px] font-bold text-gray-900 shrink-0">{item.count}</span>
-                        <span className="text-[10px] text-gray-400 shrink-0">({pct(item.count, d.total_laporan)}%)</span>
+                      <div key={item.label} className="flex items-center gap-2 group">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: item.color }} />
+                        <span className="text-[10px] text-gray-600 truncate flex-1 group-hover:text-gray-900 transition-colors">{item.label}</span>
+                        <span className="text-[11px] font-extrabold text-gray-900 shrink-0">{item.count}</span>
+                        <span className="text-[10px] text-gray-400 shrink-0 tabular-nums">({pct(item.count, d.total_laporan)}%)</span>
                       </div>
                     ))}
                   </div>
                 </div>
-                <p className="text-[10px] text-gray-400 mt-3 pt-2 border-t border-gray-100">
-                  Diperbarui realtime • USD Kampus I, II, III & IV
+                <p className="text-[10px] text-gray-400 mt-3 pt-3 border-t border-gray-100 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block animate-pulse" />
+                  Diperbarui realtime • USD Kampus I, II, III &amp; IV
                 </p>
               </div>
 
               {/* Kategori Laporan */}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-bold text-gray-900">Laporan Berdasarkan Kategori</h2>
-                  <span className="text-[11px] font-semibold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-lg">Bulan Ini</span>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-300 p-5">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
+                  <div>
+                    <h2 className="text-sm font-bold text-gray-900">Laporan per Kategori</h2>
+                    <p className="text-[10px] text-gray-400 mt-0.5">Distribusi jenis laporan</p>
+                  </div>
+                  <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-lg">Semua Waktu</span>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-3.5">
                   {categoryItems.map((item) => {
                     const barPct = Math.round((item.count / categoryTotal) * 100);
                     return (
-                      <div key={item.label}>
-                        <div className="flex justify-between mb-1">
-                          <span className="text-[11px] font-semibold text-gray-700">{item.label}</span>
-                          <span className="text-[11px] font-bold text-gray-900">
+                      <div key={item.label} className="group">
+                        <div className="flex justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: item.color }} />
+                            <span className="text-[11px] font-semibold text-gray-700 group-hover:text-gray-900 transition-colors">{item.label}</span>
+                          </div>
+                          <span className="text-[11px] font-extrabold text-gray-900 tabular-nums">
                             {item.count}
                             <span className="text-gray-400 font-normal ml-1">({barPct}%)</span>
                           </span>
                         </div>
-                        <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                        <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
                           <div
                             className="h-full rounded-full transition-all duration-700"
-                            style={{ width: `${barPct}%`, background: item.color }}
+                            style={{ width: `${barPct}%`, background: item.color, opacity: 0.85 }}
                           />
                         </div>
                       </div>
@@ -627,100 +684,97 @@ export default function AdminRekapPage() {
               </div>
             </section>
 
-            {/* ═══ ROW 3 — LOKASI + LAPORAN TERBARU + PETA ════════════════════ */}
-            <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* ═══ ROW 3 — LOKASI + LAPORAN TERBARU ════════════════════════════ */}
+            <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
               {/* Laporan Berdasarkan Lokasi Top 5 */}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                <h2 className="text-sm font-bold text-gray-900 mb-3">Laporan Berdasarkan Lokasi (Top 5)</h2>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-300 p-5">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
+                  <div>
+                    <h2 className="text-sm font-bold text-gray-900">Laporan per Lokasi</h2>
+                    <p className="text-[10px] text-gray-400 mt-0.5">Top 5 lokasi terbanyak</p>
+                  </div>
+                  <span className="text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-100 px-2.5 py-1 rounded-lg">Top 5</span>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-gray-100">
-                        <th className="text-left py-2 pr-2 text-[11px] font-semibold text-gray-500">Lokasi</th>
-                        <th className="text-right py-2 px-2 text-[11px] font-semibold text-gray-500">Jumlah</th>
-                        <th className="text-right py-2 text-[11px] font-semibold text-gray-500">Persentase</th>
+                        <th className="text-left py-2 pr-2 text-[10px] font-bold text-gray-400 uppercase tracking-wide">Lokasi</th>
+                        <th className="text-right py-2 px-2 text-[10px] font-bold text-gray-400 uppercase tracking-wide">Jumlah</th>
+                        <th className="text-right py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wide">%</th>
                       </tr>
                     </thead>
                     <tbody>
                       {d.top_lokasi.length === 0 ? (
                         <tr>
-                          <td colSpan={3} className="py-4 text-center text-xs text-gray-400">Belum ada data lokasi</td>
+                          <td colSpan={3} className="py-6 text-center text-xs text-gray-400">Belum ada data lokasi</td>
                         </tr>
                       ) : d.top_lokasi.slice(0, 5).map((lok, idx) => {
                         const p = pct(lok.jumlah, d.total_laporan);
+                        const colors = ["#f97316","#3b82f6","#8b5cf6","#10b981","#eab308"];
                         return (
-                          <tr key={lok.nama} className="border-b border-gray-50 hover:bg-gray-50/60 transition-colors">
-                            <td className="py-2.5 pr-2">
-                              <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full shrink-0" style={{
-                                  background: ["#f97316","#3b82f6","#8b5cf6","#10b981","#eab308"][idx]
-                                }} />
-                                <span className="font-semibold text-gray-700 text-[11px]">{lok.nama}</span>
+                          <tr key={lok.nama} className="group border-b border-gray-50 last:border-0 hover:bg-gray-50/70 transition-colors rounded-lg">
+                            <td className="py-3 pr-2">
+                              <div className="flex items-center gap-2.5">
+                                <span className="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black text-white shrink-0"
+                                  style={{ background: colors[idx] }}>
+                                  {idx + 1}
+                                </span>
+                                <span className="font-semibold text-gray-700 text-[11px] group-hover:text-gray-900 transition-colors">{lok.nama}</span>
                               </div>
                             </td>
-                            <td className="py-2.5 px-2 text-right font-bold text-gray-900 text-sm">{lok.jumlah}</td>
-                            <td className="py-2.5 text-right font-semibold text-gray-500 text-[11px]">{p}%</td>
+                            <td className="py-3 px-2 text-right font-black text-gray-900 text-sm tabular-nums">{lok.jumlah}</td>
+                            <td className="py-3 text-right">
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                                style={{ color: colors[idx], background: colors[idx] + "18" }}>
+                                {p}%
+                              </span>
+                            </td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
                 </div>
-                <button className="mt-3 w-full text-center text-[11px] font-semibold text-[#8C1515] hover:underline">
+                <button className="mt-4 w-full py-2 text-center text-[11px] font-bold text-[#8C1515] bg-red-50 hover:bg-red-100 border border-red-100 rounded-xl transition-colors">
                   Lihat Selengkapnya
                 </button>
               </div>
 
               {/* Laporan Terbaru */}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-bold text-gray-900">Laporan Terbaru</h2>
-                  <span className="text-[11px] font-semibold text-gray-500 bg-gray-100 px-2.5 py-1 rounded-lg">5 Terakhir</span>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-300 p-5">
+                <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
+                  <div>
+                    <h2 className="text-sm font-bold text-gray-900">Laporan Terbaru</h2>
+                    <p className="text-[10px] text-gray-400 mt-0.5">Aktivitas laporan terkini</p>
+                  </div>
+                  <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-100 px-2.5 py-1 rounded-lg">5 Terakhir</span>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-1">
                   {laporanTerbaru.length === 0 ? (
-                    <p className="text-xs text-gray-400 text-center py-4">Belum ada laporan terbaru</p>
-                  ) : laporanTerbaru.map((lap) => (
-                    <div key={lap.id_laporan} className="flex items-start gap-3 pb-3 border-b border-gray-50 last:border-0 last:pb-0">
+                    <p className="text-xs text-gray-400 text-center py-6">Belum ada laporan terbaru</p>
+                  ) : laporanTerbaru.map((lap, i) => (
+                    <div key={lap.id_laporan}
+                      className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-gray-50 transition-colors group cursor-pointer"
+                      style={{ borderLeft: i === 0 ? "2px solid #8C1515" : "2px solid transparent" }}>
                       <KategoriIcon kategori={lap.kategori_laporan} />
                       <div className="flex-1 min-w-0">
-                        <p className="text-[11px] font-semibold text-gray-800 truncate">{lap.deskripsi}</p>
+                        <p className="text-[11px] font-semibold text-gray-800 truncate group-hover:text-gray-900">{lap.deskripsi}</p>
                         <p className="text-[10px] text-gray-400 mt-0.5">{lap.lokasi}</p>
-                        <div className="flex items-center justify-between mt-1">
-                          <p className="text-[10px] text-gray-400">{fmtDate(lap.tanggal_buat)}</p>
+                        <div className="flex items-center justify-between mt-1.5">
+                          <p className="text-[10px] text-gray-400 tabular-nums">{fmtDate(lap.tanggal_buat)}</p>
                           <StatusBadge status={lap.status_terkini} />
                         </div>
                       </div>
                     </div>
                   ))}
                 </div>
-                <button className="mt-3 w-full text-center text-[11px] font-semibold text-[#8C1515] hover:underline">
+                <button className="mt-4 w-full py-2 text-center text-[11px] font-bold text-[#8C1515] bg-red-50 hover:bg-red-100 border border-red-100 rounded-xl transition-colors">
                   Lihat Selengkapnya
                 </button>
               </div>
 
-              {/* Peta Sebaran Laporan */}
-              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-bold text-gray-900">Peta Sebaran Laporan</h2>
-                  <div className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-                    <span className="text-[11px] text-gray-500 font-medium">Yogyakarta / Sleman</span>
-                  </div>
-                </div>
-                <div className="flex-1 relative">
-                  <MapPlaceholder lokasi={d.top_lokasi} />
-                </div>
-                <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100">
-                  <span className="text-[10px] text-gray-400">
-                    {d.top_lokasi.length} Kluster Lokasi Terdeteksi
-                  </span>
-                  <button className="flex items-center gap-1 text-[11px] font-semibold text-[#8C1515] hover:underline">
-                    Buka Peta Penuh <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
             </section>
           </>
         )}

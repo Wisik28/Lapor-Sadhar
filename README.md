@@ -85,7 +85,7 @@ JIKA INGIN MULAI MENGERJAKAN MAKA JALANKAN INI AGAR SINKRON DENGAN UPDATE PENGER
    git pull origin main
    ```
 
-2. JIKA INIGN PUSH KE GITHUB MAKA: Buat dan berpindah ke branch baru
+2. JIKA INGIN PUSH KE GITHUB MAKA: Buat dan berpindah ke branch baru
    ```bash
    git checkout -b fitur/nama-fitur
    ```
