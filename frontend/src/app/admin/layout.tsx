@@ -7,11 +7,11 @@ import { authApi } from "@/lib/api";
 export default function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const pathname = usePathname();
   const router = useRouter();
-  const isLoginPage = pathname === "/admin/login";
+  const isPublicPage = pathname === "/admin/login" || pathname === "/admin/forgot-password";
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    if (isLoginPage) return;
+    if (isPublicPage) return;
 
     let isCurrent = true;
     authApi.getAdminSession().then((result) => {
@@ -26,9 +26,9 @@ export default function AdminLayout({ children }: Readonly<{ children: React.Rea
     return () => {
       isCurrent = false;
     };
-  }, [isLoginPage, pathname, router]);
+  }, [isPublicPage, pathname, router]);
 
-  if (isLoginPage) return children;
+  if (isPublicPage) return children;
 
   if (!isAuthenticated) {
     return (

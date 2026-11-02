@@ -39,6 +39,8 @@ DB_PASSWORD=password_supabase_anda
 DB_SSLMODE=require
 ```
 
+Jika memakai Supabase Transaction Pooler (port `6543`), backend menggunakan PDO emulated prepares agar prepared statement tidak bergantung pada koneksi PostgreSQL fisik yang dapat berganti di pooler.
+
 Jalankan database migration:
 
 ```bash

@@ -172,6 +172,16 @@ export const authApi = {
     }
   },
 
+  async requestAdminEmailChange(new_email: string): Promise<AuthResponse> {
+    const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
+    return this.authenticatedRequest("/admin/email-change/request", { new_email }, token, "Gagal meminta kode verifikasi email admin.");
+  },
+
+  async confirmAdminEmailChange(code: string): Promise<AuthResponse> {
+    const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
+    return this.authenticatedRequest("/admin/email-change/confirm", { code }, token, "Gagal memverifikasi email admin.");
+  },
+
   async register(data: {
     tipe_user: "mahasiswa" | "karyawan";
     nomor_identitas: string;
