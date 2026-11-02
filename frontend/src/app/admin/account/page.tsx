@@ -12,6 +12,12 @@ export default function AdminAccountPage() {
   const [profileMessage, setProfileMessage] = useState("");
   const [profileError, setProfileError] = useState("");
   const [profileLoading, setProfileLoading] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [emailStep, setEmailStep] = useState<"request" | "confirm">("request");
+  const [emailMessage, setEmailMessage] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [emailLoading, setEmailLoading] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -64,6 +70,42 @@ export default function AdminAccountPage() {
     setIsLoading(false);
   };
 
+  const requestEmailCode = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setEmailError("");
+    setEmailMessage("");
+    setEmailLoading(true);
+    const result = await authApi.requestAdminEmailChange(newEmail.trim().toLowerCase());
+    if (result.status === "success") {
+      setEmailStep("confirm");
+      setEmailMessage(result.message);
+    } else {
+      setEmailError(result.message || "Kode verifikasi tidak dapat dikirim.");
+    }
+    setEmailLoading(false);
+  };
+
+  const confirmEmailChange = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setEmailError("");
+    setEmailMessage("");
+    setEmailLoading(true);
+    const result = await authApi.confirmAdminEmailChange(emailCode);
+    if (result.status === "success" && result.email && user) {
+      const updatedUser = { ...user, email: result.email };
+      setUser(updatedUser);
+      const token = localStorage.getItem("admin_token");
+      if (token) await setAuthSession(updatedUser, token, true);
+      setNewEmail("");
+      setEmailCode("");
+      setEmailStep("request");
+      setEmailMessage(result.message);
+    } else {
+      setEmailError(result.message || "Email admin tidak dapat diperbarui.");
+    }
+    setEmailLoading(false);
+  };
+
   return (
     <div className="min-h-screen bg-[#f7f7f5] text-slate-900">
       <AdminNavbar adminName={user?.nama} adminRole={user?.jabatan_label || user?.role_detail || "Admin"} />
@@ -82,7 +124,7 @@ export default function AdminAccountPage() {
               </div>
               <div>
                 <h2 className="font-semibold">Profil admin</h2>
-                <p className="mt-1 text-sm text-slate-500">Nama dapat diubah. Jabatan dan hak akses tetap ditentukan oleh akun admin.</p>
+                <p className="mt-1 text-sm text-slate-500">Nama dan email dapat diperbarui. Jabatan dan hak akses tetap ditentukan oleh akun admin.</p>
               </div>
             </div>
 
@@ -96,12 +138,50 @@ export default function AdminAccountPage() {
               </div>
               <div className="text-sm text-slate-600">
                 Jabatan: <span className="font-medium text-slate-900">{user?.jabatan_label || user?.role_detail || "—"}</span>
-                {user?.email && <span className="ml-3">Email: <span className="font-medium text-slate-900">{user.email}</span></span>}
+                <span className="ml-3">Email: <span className="font-medium text-slate-900">{user?.email || "Belum diisi"}</span></span>
               </div>
               <button disabled={profileLoading} className="h-10 rounded-lg bg-[#7a171b] px-4 text-sm font-semibold text-white hover:bg-[#641216] disabled:opacity-60">
                 {profileLoading ? "Menyimpan..." : "Simpan nama"}
               </button>
             </form>
+          </div>
+
+          <div className="mb-6 border-b border-slate-100 pb-6">
+            <div className="mb-5">
+              <h2 className="font-semibold">Ganti email admin</h2>
+              <p className="mt-1 text-sm text-slate-500">Verifikasi kode yang dikirim ke email lama sebelum menyimpan email baru.</p>
+            </div>
+
+            {emailError && <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-800">{emailError}</p>}
+            {emailMessage && <p role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">{emailMessage}</p>}
+
+            {emailStep === "request" ? (
+              <form onSubmit={requestEmailCode} className="space-y-4">
+                <label htmlFor="admin-new-email" className="block text-sm font-medium text-slate-700">
+                  Email baru
+                  <input id="admin-new-email" type="email" autoComplete="email" required value={newEmail} onChange={(event) => setNewEmail(event.target.value)} className="mt-1.5 h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15" />
+                </label>
+                <p className="text-xs text-slate-500">
+                  {user?.email
+                    ? `Kode verifikasi akan dikirim ke email lama: ${user.email}`
+                    : "Akun ini belum memiliki email. Kode verifikasi awal akan dikirim ke email baru."}
+                </p>
+                <button disabled={emailLoading} className="h-10 rounded-lg bg-[#7a171b] px-4 text-sm font-semibold text-white hover:bg-[#641216] disabled:opacity-60">
+                  {emailLoading ? "Mengirim kode..." : "Kirim kode verifikasi"}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={confirmEmailChange} className="space-y-4">
+                <label htmlFor="admin-email-code" className="block text-sm font-medium text-slate-700">
+                  Kode verifikasi 6 digit
+                  <input id="admin-email-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={emailCode} onChange={(event) => setEmailCode(event.target.value)} className="mt-1.5 h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15" />
+                </label>
+                <p className="text-xs text-slate-500">Kode berlaku selama 10 menit.</p>
+                <button disabled={emailLoading} className="h-10 rounded-lg bg-[#7a171b] px-4 text-sm font-semibold text-white hover:bg-[#641216] disabled:opacity-60">
+                  {emailLoading ? "Memverifikasi..." : "Verifikasi dan simpan email"}
+                </button>
+              </form>
+            )}
           </div>
 
           <div className="mb-6 flex items-start gap-3">

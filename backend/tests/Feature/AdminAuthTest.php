@@ -141,6 +141,66 @@ class AdminAuthTest extends TestCase
         $this->assertNotNull($verification->fresh()->consumed_at);
     }
 
+    public function test_admin_email_change_requires_a_code_sent_to_the_old_address(): void
+    {
+        Mail::fake();
+        $admin = $this->createAdmin();
+        $admin->update(['email' => 'old.admin@example.com']);
+        $login = $this->postJson('/api/admin/login', [
+            'username' => $admin->username,
+            'password' => 'Initial-pass-123',
+            'jabatan' => 'kepala_blu',
+        ])->assertOk();
+
+        $this->withToken($login->json('token'))
+            ->postJson('/api/admin/email-change/request', ['new_email' => 'new.admin@example.com'])
+            ->assertOk();
+
+        $verification = EmailVerificationCode::where([
+            'account_type' => 'admin',
+            'account_id' => (string) $admin->admin_id,
+            'purpose' => 'email_change',
+            'email' => 'old.admin@example.com',
+            'target_email' => 'new.admin@example.com',
+        ])->firstOrFail();
+        Mail::assertSent(VerificationCodeMail::class, fn (VerificationCodeMail $mail): bool => $mail->hasTo('old.admin@example.com'));
+        $sentMail = Mail::sent(VerificationCodeMail::class)->last();
+
+        $this->withToken($login->json('token'))
+            ->postJson('/api/admin/email-change/confirm', ['code' => $sentMail->code])
+            ->assertOk()
+            ->assertJsonPath('email', 'new.admin@example.com');
+
+        $this->assertSame('new.admin@example.com', $admin->fresh()->email);
+        $this->assertNotNull($verification->fresh()->consumed_at);
+    }
+
+    public function test_admin_email_change_rejects_an_email_used_by_another_account(): void
+    {
+        $admin = $this->createAdmin();
+        $otherAdmin = Admin::create([
+            'nama_admin' => 'Other Admin',
+            'username' => 'other.admin',
+            'password' => Hash::make('Initial-pass-123'),
+            'role' => 'BPS',
+            'campus' => null,
+            'jabatan' => 'kepala_bps',
+            'email' => 'existing.admin@example.com',
+        ]);
+        $login = $this->postJson('/api/admin/login', [
+            'username' => $admin->username,
+            'password' => 'Initial-pass-123',
+            'jabatan' => 'kepala_blu',
+        ])->assertOk();
+
+        $this->withToken($login->json('token'))
+            ->postJson('/api/admin/email-change/request', ['new_email' => $otherAdmin->email])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Email tersebut sudah digunakan oleh akun lain.');
+
+        $this->assertDatabaseCount('email_verification_codes', 0);
+    }
+
     public function test_seeder_remaps_legacy_admin_accounts_without_changing_their_passwords(): void
     {
         foreach (['BLU', 'BPS'] as $role) {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Halaman yang bisa diakses tanpa autentikasi (public routes)
-const PUBLIC_ROUTES = ['/login', '/register', '/admin/login'];
+const PUBLIC_ROUTES = ['/login', '/register', '/admin/login', '/admin/forgot-password'];
 
 // Halaman yang memerlukan autentikasi (private routes)
 const PROTECTED_ROUTES = [

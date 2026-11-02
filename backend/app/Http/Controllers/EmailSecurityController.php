@@ -301,6 +301,110 @@ class EmailSecurityController extends Controller
         ]);
     }
 
+    public function requestAdminEmailChange(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'new_email' => 'required|email|max:255',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->validationError($validator);
+        }
+
+        $admin = $request->attributes->get('admin_session')->admin;
+        $newEmail = $this->normalizeEmail($request->new_email);
+
+        if (strcasecmp((string) $admin->email, $newEmail) === 0) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Email baru sama dengan email yang sedang digunakan.',
+            ], 422);
+        }
+
+        if ($this->adminEmailIsUsed($newEmail, $admin)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Email tersebut sudah digunakan oleh akun lain.',
+            ], 422);
+        }
+
+        $currentEmail = $admin->email;
+        $purpose = $currentEmail ? 'email_change' : 'email_setup';
+
+        try {
+            $this->emailCodes->send(
+                'admin',
+                (string) $admin->admin_id,
+                $purpose,
+                $currentEmail ?: $newEmail,
+                $newEmail,
+            );
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Email verifikasi tidak dapat dikirim saat ini. Coba lagi nanti.',
+            ], 503);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => $currentEmail
+                ? 'Kode verifikasi telah dikirim ke email lama Anda.'
+                : 'Akun ini belum memiliki email. Kode verifikasi awal telah dikirim ke email baru.',
+        ]);
+    }
+
+    public function confirmAdminEmailChange(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'code' => 'required|digits:6',
+        ]);
+
+        if ($validator->fails()) {
+            return $this->validationError($validator);
+        }
+
+        $admin = $request->attributes->get('admin_session')->admin;
+        $purpose = $admin->email ? 'email_change' : 'email_setup';
+
+        $updated = DB::transaction(function () use ($admin, $request, $purpose): bool {
+            $verification = $this->lockVerification(
+                'admin',
+                (string) $admin->admin_id,
+                $purpose,
+                $admin->email,
+                $request->code,
+            );
+
+            if (! $verification || ! $verification->target_email) {
+                return false;
+            }
+
+            if ($this->adminEmailIsUsed($verification->target_email, $admin)) {
+                $verification->update(['consumed_at' => now()]);
+
+                return false;
+            }
+
+            $admin->update(['email' => $verification->target_email]);
+            $verification->update(['consumed_at' => now()]);
+
+            return true;
+        });
+
+        if (! $updated) {
+            return $this->invalidCodeResponse();
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Email admin berhasil diperbarui.',
+            'email' => $admin->fresh()->email,
+        ]);
+    }
+
     /**
      * @return array{type: 'mahasiswa'|'karyawan', id: string, user: UserMahasiswa|UserPegawai}|null
      */
@@ -338,6 +442,15 @@ class EmailSecurityController extends Controller
         return $studentQuery->exists()
             || $employeeQuery->exists()
             || Admin::where('email', $email)->exists();
+    }
+
+    private function adminEmailIsUsed(string $email, Admin $except): bool
+    {
+        return UserMahasiswa::where('email', $email)->exists()
+            || UserPegawai::where('email', $email)->exists()
+            || Admin::where('email', $email)
+                ->where('admin_id', '!=', $except->admin_id)
+                ->exists();
     }
 
     private function lockVerification(

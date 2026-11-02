@@ -28,6 +28,8 @@ Route::middleware('admin.session')->prefix('admin')->group(function () {
     Route::post('/logout', [AdminAuthController::class, 'logout']);
     Route::put('/password', [AdminAuthController::class, 'changePassword']);
     Route::put('/profile', [AdminAuthController::class, 'updateProfile']);
+    Route::post('/email-change/request', [EmailSecurityController::class, 'requestAdminEmailChange'])->middleware('throttle:3,1');
+    Route::post('/email-change/confirm', [EmailSecurityController::class, 'confirmAdminEmailChange'])->middleware('throttle:10,1');
     Route::get('/laporan', [LaporanController::class, 'adminIndex']);
     Route::patch('/laporan/{id}/status', [LaporanController::class, 'adminUpdateStatus']);
     Route::get('/rekap', [LaporanController::class, 'adminRekap']);
