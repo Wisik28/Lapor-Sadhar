@@ -1,21 +1,29 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getCurrentAuthUser, isAuthenticated, isAdmin, AuthUser } from '@/lib/auth';
+import { getCurrentAuthUser, isAuthenticated, isAdmin, AuthUser, isSessionExpired, getSessionRemainingTime } from '@/lib/auth';
 
 /**
  * Hook untuk proteksi halaman yang memerlukan autentikasi
- * Redirect ke /login jika belum authenticated
+ * Redirect ke /login jika belum authenticated atau session expired
  */
 export function useAuthProtection() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [sessionMessage, setSessionMessage] = useState<string>('');
 
   useEffect(() => {
     const checkAuth = () => {
+      // Check session expiry
+      if (isSessionExpired()) {
+        setSessionMessage('Session Anda telah berakhir. Silakan login kembali.');
+        router.push('/login?session=expired');
+        return;
+      }
+
       const currentUser = getCurrentAuthUser();
       
-      if (!currentUser) {
+      if (!currentUser || !isAuthenticated()) {
         router.push('/login');
         return;
       }
@@ -25,9 +33,19 @@ export function useAuthProtection() {
     };
 
     checkAuth();
+
+    // Set up session check interval (setiap 30 detik)
+    const interval = setInterval(() => {
+      if (isSessionExpired()) {
+        setSessionMessage('Session Anda telah berakhir. Silakan login kembali.');
+        router.push('/login?session=expired');
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, [router]);
 
-  return { isLoading, user };
+  return { isLoading, user, sessionMessage };
 }
 
 /**
@@ -41,6 +59,12 @@ export function useAdminProtection() {
 
   useEffect(() => {
     const checkAuth = () => {
+      // Check session expiry
+      if (isSessionExpired()) {
+        router.push('/login?session=expired');
+        return;
+      }
+
       const currentUser = getCurrentAuthUser();
       
       if (!currentUser) {
@@ -71,8 +95,13 @@ export function useCurrentUser() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const currentUser = getCurrentAuthUser();
-    setUser(currentUser);
+    // Check session expiry
+    if (isSessionExpired()) {
+      setUser(null);
+    } else {
+      const currentUser = getCurrentAuthUser();
+      setUser(currentUser);
+    }
     setIsLoading(false);
   }, []);
 

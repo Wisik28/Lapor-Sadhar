@@ -163,6 +163,18 @@ class AuthController extends Controller
                 $token = Str::random(60);
                 $userIdentifier = $tipe === 'karyawan' ? $user->nomor_identitas : $user->nim;
 
+                // Set session dengan timestamp (60 menit timeout)
+                $request->session()->regenerate();
+                $request->session()->put('authenticated', true);
+                $request->session()->put('last_activity', time());
+                $request->session()->put('user', [
+                    'nomor_identitas' => $userIdentifier,
+                    'nim' => $userIdentifier,
+                    'nama' => $user->nama,
+                    'tipe_user' => $tipe,
+                    'role' => $roleLabel,
+                ]);
+
                 return response()->json([
                     'status' => 'success',
                     'message' => "Login berhasil! Selamat datang, {$user->nama}.",
@@ -211,6 +223,11 @@ class AuthController extends Controller
      */
     public function logout(Request $request)
     {
+        // Invalidate session di backend
+        $request->session()->flush();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
         return response()->json([
             'status' => 'success',
             'message' => 'Berhasil keluar dari akun.',

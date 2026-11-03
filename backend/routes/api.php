@@ -24,21 +24,25 @@ Route::middleware('admin.session')->prefix('admin')->group(function () {
     Route::put('/password', [AdminAuthController::class, 'changePassword']);
 });
 
-// Laporan Routes
-Route::get('/laporan', [LaporanController::class, 'index']);          // GET /api/laporan?nim=xxx
-Route::post('/laporan', [LaporanController::class, 'store']);          // POST /api/laporan
-Route::get('/laporan/{id}', [LaporanController::class, 'show']);       // GET /api/laporan/{id}
-Route::put('/laporan/{id}', [LaporanController::class, 'update']);     // PUT /api/laporan/{id}
-Route::delete('/laporan/{id}', [LaporanController::class, 'destroy']); // DELETE /api/laporan/{id}
+// Laporan Routes (Protected - Require Session)
+Route::middleware('validate.session')->group(function () {
+    Route::get('/laporan', [LaporanController::class, 'index']);          // GET /api/laporan?nim=xxx
+    Route::post('/laporan', [LaporanController::class, 'store']);          // POST /api/laporan
+    Route::get('/laporan/{id}', [LaporanController::class, 'show']);       // GET /api/laporan/{id}
+    Route::put('/laporan/{id}', [LaporanController::class, 'update']);     // PUT /api/laporan/{id}
+    Route::delete('/laporan/{id}', [LaporanController::class, 'destroy']); // DELETE /api/laporan/{id}
+});
 
-// Admin: mengambil seluruh laporan
-Route::get('/admin/laporan', [
-    LaporanController::class,
-    'adminIndex'
-]);
+// Admin: mengambil seluruh laporan (Protected)
+Route::middleware(['validate.session', 'admin.session'])->group(function () {
+    Route::get('/admin/laporan', [
+        LaporanController::class,
+        'adminIndex'
+    ]);
 
-// Admin: mengubah status laporan
-Route::patch('/admin/laporan/{id}/status', [
-    LaporanController::class,
-    'adminUpdateStatus'
-]);
+    // Admin: mengubah status laporan
+    Route::patch('/admin/laporan/{id}/status', [
+        LaporanController::class,
+        'adminUpdateStatus'
+    ]);
+});

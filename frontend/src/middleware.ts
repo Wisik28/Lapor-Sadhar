@@ -6,6 +6,9 @@ const PUBLIC_ROUTES = ['/login', '/register', '/admin/login'];
 // Halaman yang memerlukan autentikasi (private routes)
 const PROTECTED_ROUTES = [
   '/buat-laporan',
+  '/status-laporan',
+  '/riwayat-laporan',
+  '/ubah-pengajuan',
   '/admin/dashboard',
   '/admin/account',
   '/admin/ubah-status',
@@ -15,14 +18,13 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Cek kehadiran token autentikasi di cookie atau session storage
-  // Note: Di Next.js middleware, kita perlu cek dari cookie karena sessionStorage tidak tersedia di server
   const authToken = request.cookies.get('auth_token')?.value;
   const adminToken = request.cookies.get('admin_token')?.value;
   const userSession = request.cookies.get('user_session')?.value;
 
   const isAuthenticated = !!(authToken || adminToken) && !!userSession;
 
-  // Handle root path "/" - selalu redirect ke login jika belum auth, atau ke buat-laporan jika sudah auth
+  // Handle root path "/" - selalu redirect ke login jika belum auth
   if (pathname === '/') {
     if (!isAuthenticated) {
       return NextResponse.redirect(new URL('/login', request.url));
