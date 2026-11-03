@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FilePlus,
@@ -12,8 +13,8 @@ import {
 } from "lucide-react";
 
 export interface SidebarProps {
-  activeMenu: string;
-  setActiveMenu: (menu: string) => void;
+  activeMenu?: string;
+  setActiveMenu?: (menu: string) => void;
   onLogout?: () => void;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
@@ -23,22 +24,38 @@ interface MenuItem {
   id: string;
   label: string;
   icon: React.ElementType;
+  route: string;
 }
 
 const MENU_ITEMS: MenuItem[] = [
-  { id: "buat-laporan", label: "Buat Laporan", icon: FilePlus },
-  { id: "lihat-status", label: "Lihat Status", icon: Eye },
-  { id: "riwayat-laporan", label: "Riwayat Laporan", icon: History },
-  { id: "rubah-pengajuan", label: "Rubah Pengajuan", icon: FileEdit },
+  { id: "buat-laporan", label: "Buat Laporan", icon: FilePlus, route: "/buat-laporan" },
+  { id: "lihat-status", label: "Lihat Status", icon: Eye, route: "/status-laporan" },
+  { id: "riwayat-laporan", label: "Riwayat Laporan", icon: History, route: "/riwayat-laporan" },
+  { id: "ubah-pengajuan", label: "Ubah Pengajuan", icon: FileEdit, route: "/ubah-pengajuan" },
 ];
 
 export default function Sidebar({
-  activeMenu,
-  setActiveMenu,
+  activeMenu: propActiveMenu,
+  setActiveMenu: propSetActiveMenu,
   onLogout,
   isOpenMobile = false,
   onCloseMobile
 }: SidebarProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Detect active menu from current pathname instead of prop
+  const activeMenu = useMemo(() => {
+    // First try to find menu by exact route match
+    const menuItem = MENU_ITEMS.find(item => item.route === pathname);
+    if (menuItem) {
+      return menuItem.id;
+    }
+    
+    // If no exact match, fallback to prop (for backward compatibility)
+    return propActiveMenu || "";
+  }, [pathname, propActiveMenu]);
+
   const handleLogout = () => {
     if (onLogout) {
       onLogout();
@@ -51,8 +68,11 @@ export default function Sidebar({
     }
   };
 
-  const handleSelectMenu = (id: string) => {
-    setActiveMenu(id);
+  const handleSelectMenu = (id: string, route: string) => {
+    if (propSetActiveMenu) {
+      propSetActiveMenu(id);
+    }
+    router.push(route);
     if (onCloseMobile) {
       onCloseMobile();
     }
@@ -120,14 +140,14 @@ export default function Sidebar({
               return (
                 <button
                   key={item.id}
-                  onClick={() => handleSelectMenu(item.id)}
+                  onClick={() => handleSelectMenu(item.id, item.route)}
                   className={`relative w-full min-h-[48px] flex items-center justify-between px-4 py-3 rounded-2xl font-medium text-sm transition-colors duration-200 outline-none group ${
                     isActive
                       ? "text-[#7A0C0C] font-bold"
                       : "text-red-100/90 hover:bg-white/10 hover:text-white"
                   }`}
                 >
-                  {/* HIGHLIGHT MENU AKTIF */}
+                  {/* HIGHLIGHT MENU AKTIF - White Background */}
                   {isActive && (
                     <motion.div
                       layoutId="active-menu-pill"

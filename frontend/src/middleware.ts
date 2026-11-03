@@ -1,30 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Halaman yang bisa diakses tanpa autentikasi (public routes)
-const PUBLIC_ROUTES = ['/login', '/register', '/admin/login', '/admin/forgot-password'];
+const PUBLIC_ROUTES = ['/login', '/register', '/admin/login', '/admin/forgot-password', '/forgot-password'];
 
 // Halaman yang memerlukan autentikasi (private routes)
 const PROTECTED_ROUTES = [
   '/buat-laporan',
+  '/(laporan)',
+  '/profile',
   '/lihat-status',
   '/admin/dashboard',
   '/admin/account',
-  '/profile',
   '/admin/ubah-status',
+  '/admin/rekap',
 ];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Cek kehadiran token autentikasi di cookie atau session storage
-  // Note: Di Next.js middleware, kita perlu cek dari cookie karena sessionStorage tidak tersedia di server
+  // Cek kehadiran token autentikasi di cookie (HTTP-only, set oleh backend)
   const authToken = request.cookies.get('auth_token')?.value;
   const adminToken = request.cookies.get('admin_token')?.value;
   const userSession = request.cookies.get('user_session')?.value;
 
   const isAuthenticated = !!(authToken || adminToken) && !!userSession;
 
-  // Handle root path "/" - selalu redirect ke login jika belum auth, atau ke buat-laporan jika sudah auth
+  // Handle root path "/" - selalu redirect ke login jika belum auth
   if (pathname === '/') {
     if (!isAuthenticated) {
       return NextResponse.redirect(new URL('/login', request.url));
@@ -41,7 +42,7 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // Public pages must remain reachable even if browser cookies are stale.
+  // Public pages must remain reachable even if browser cookies are stale
   if (PUBLIC_ROUTES.includes(pathname)) {
     return NextResponse.next();
   }

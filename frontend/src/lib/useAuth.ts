@@ -14,7 +14,7 @@ export function useAuthProtection() {
   useEffect(() => {
     const checkAuth = () => {
       const currentUser = getCurrentAuthUser();
-      
+
       if (!currentUser || !isAuthenticated()) {
         setIsLoading(false);
         router.replace('/login');
@@ -43,7 +43,7 @@ export function useAdminProtection() {
   useEffect(() => {
     const checkAuth = () => {
       const currentUser = getCurrentAuthUser();
-      
+
       if (!currentUser) {
         setIsLoading(false);
         router.replace('/login');
@@ -81,3 +81,4 @@ export function useCurrentUser() {
 
   return { user, isLoading };
 }
+

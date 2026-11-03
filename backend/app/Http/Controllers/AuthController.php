@@ -101,7 +101,7 @@ class AuthController extends Controller
 
             $token = Str::random(60);
             $userIdentifier = $tipeUser === 'karyawan' ? $user->nomor_identitas : $user->nim;
-            $this->createUserSession($tipeUser, $userIdentifier, $token);
+            $this->createUserSession($tipeUser, $user->id, $token);
 
             return response()->json([
                 'status' => 'success',
@@ -182,7 +182,7 @@ class AuthController extends Controller
                 $roleLabel = $tipe === 'karyawan' ? 'Karyawan' : 'Mahasiswa';
                 $token = Str::random(60);
                 $userIdentifier = $tipe === 'karyawan' ? $user->nomor_identitas : $user->nim;
-                $this->createUserSession($tipe, $userIdentifier, $token);
+                $this->createUserSession($tipe, $user->id, $token);
 
                 return response()->json([
                     'status' => 'success',

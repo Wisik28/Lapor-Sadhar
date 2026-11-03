@@ -40,11 +40,11 @@ Route::middleware('user.session')->prefix('profile')->group(function () {
     Route::post('/email-change/confirm', [EmailSecurityController::class, 'confirmUserEmailChange'])->middleware('throttle:10,1');
 });
 
-// Laporan Routes
+// Laporan Routes (Protected - Require Bearer Token)
 Route::middleware('user.session')->group(function () {
-Route::get('/laporan', [LaporanController::class, 'index']);            // GET /api/laporan?nim=xxx
-Route::post('/laporan', [LaporanController::class, 'store']);          // POST /api/laporan
-Route::get('/laporan/{id}', [LaporanController::class, 'show']);       // GET /api/laporan/{id}
-Route::put('/laporan/{id}', [LaporanController::class, 'update']);     // PUT /api/laporan/{id}
-Route::delete('/laporan/{id}', [LaporanController::class, 'destroy']); // DELETE /api/laporan/{id}
+    Route::get('/laporan', [LaporanController::class, 'index']);            // GET /api/laporan?nim=xxx
+    Route::post('/laporan', [LaporanController::class, 'store']);          // POST /api/laporan
+    Route::get('/laporan/{id}', [LaporanController::class, 'show']);       // GET /api/laporan/{id}
+    Route::put('/laporan/{id}', [LaporanController::class, 'update']);     // PUT /api/laporan/{id}
+    Route::delete('/laporan/{id}', [LaporanController::class, 'destroy']); // DELETE /api/laporan/{id}
 });
