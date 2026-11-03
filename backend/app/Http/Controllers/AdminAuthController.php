@@ -17,8 +17,7 @@ class AdminAuthController extends Controller
         $validator = Validator::make($request->all(), [
             'username' => 'required|string|max:255',
             'password' => 'required|string',
-            'role' => 'required|in:BLU,BPS',
-            'campus' => 'required|in:Kampus I,Kampus II,Kampus III,Kampus IV,Kampus V',
+            'jabatan' => ['required', 'string', 'in:'.implode(',', array_keys(Admin::POSITIONS))],
         ]);
 
         if ($validator->fails()) {
@@ -30,11 +29,15 @@ class AdminAuthController extends Controller
         }
 
         $admin = Admin::where('username', trim($request->username))
-            ->where('role', $request->role)
-            ->where('campus', $request->campus)
+            ->where('jabatan', $request->jabatan)
             ->first();
 
-        if (! $admin || ! Hash::check($request->password, $admin->password)) {
+        if (
+            ! $admin
+            || ! isset(Admin::POSITIONS[$admin->jabatan])
+            || Admin::POSITIONS[$admin->jabatan]['role'] !== $admin->role
+            || ! Hash::check($request->password, $admin->password)
+        ) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Username atau kata sandi admin tidak valid.',
@@ -123,6 +126,33 @@ class AdminAuthController extends Controller
             'role' => 'Admin',
             'role_detail' => $admin->role,
             'campus' => $admin->campus,
+            'jabatan' => $admin->jabatan,
+            'jabatan_label' => Admin::POSITIONS[$admin->jabatan]['label'] ?? null,
+            'email' => $admin->email,
         ];
+    }
+
+    public function updateProfile(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'nama' => 'required|string|max:255',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $validator->errors()->first(),
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $admin = $request->attributes->get('admin_session')->admin;
+        $admin->update(['nama_admin' => trim($request->nama)]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Profil admin berhasil diperbarui.',
+            'user' => $this->adminData($admin->fresh()),
+        ]);
     }
 }

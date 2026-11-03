@@ -13,10 +13,13 @@ export interface UserSession {
   nim?: string;
   admin_id?: number | string;
   username?: string;
+  email?: string;
   nama: string;
   no_handphone?: string;
   campus?: string;
   role_detail?: string;
+  jabatan?: string;
+  jabatan_label?: string;
   tipe_user?: "mahasiswa" | "karyawan" | string;
   role: "Mahasiswa" | "Karyawan" | "Admin" | string;
 }
@@ -24,6 +27,7 @@ export interface UserSession {
 export interface AuthResponse {
   status: "success" | "error";
   message: string;
+  email?: string;
   token?: string;
   user?: UserSession;
   redirect_to?: string;
@@ -66,8 +70,7 @@ export const authApi = {
   async adminLogin(credentials: {
     username: string;
     password: string;
-    role: "BLU" | "BPS";
-    campus: "Kampus I" | "Kampus II" | "Kampus III" | "Kampus IV";
+    jabatan: string;
   }): Promise<AuthResponse> {
     try {
       const response = await fetch(`${API_BASE_URL}/admin/login`, {
@@ -94,7 +97,7 @@ export const authApi = {
 
   async getAdminSession(): Promise<AuthResponse> {
     try {
-      const token = sessionStorage.getItem("admin_token");
+      const token = localStorage.getItem("admin_token");
       if (!token) return { status: "error", message: "Sesi admin tidak ditemukan." };
 
       const response = await fetch(`${API_BASE_URL}/admin/me`, {
@@ -107,7 +110,7 @@ export const authApi = {
       }
 
       localStorage.removeItem("user_session");
-      sessionStorage.removeItem("admin_token");
+      localStorage.removeItem("admin_token");
       return result;
     } catch (error: unknown) {
       return { status: "error", message: getErrorMessage(error, "Gagal memeriksa sesi admin.") };
@@ -116,7 +119,7 @@ export const authApi = {
 
   async adminLogout(): Promise<void> {
     try {
-      const token = sessionStorage.getItem("admin_token");
+      const token = localStorage.getItem("admin_token");
       if (token) {
         await fetch(`${API_BASE_URL}/admin/logout`, {
           method: "POST",
@@ -135,7 +138,7 @@ export const authApi = {
     password_confirmation: string;
   }): Promise<AuthResponse> {
     try {
-      const token = sessionStorage.getItem("admin_token");
+      const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
       const response = await fetch(`${API_BASE_URL}/admin/password`, {
         method: "PUT",
         headers: {
@@ -151,10 +154,39 @@ export const authApi = {
     }
   },
 
+  async updateAdminProfile(data: { nama: string }): Promise<AuthResponse> {
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
+      const response = await fetch(`${API_BASE_URL}/admin/profile`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(data),
+      });
+      return await response.json();
+    } catch (error: unknown) {
+      return { status: "error", message: getErrorMessage(error, "Gagal memperbarui profil admin.") };
+    }
+  },
+
+  async requestAdminEmailChange(new_email: string): Promise<AuthResponse> {
+    const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
+    return this.authenticatedRequest("/admin/email-change/request", { new_email }, token, "Gagal meminta kode verifikasi email admin.");
+  },
+
+  async confirmAdminEmailChange(code: string): Promise<AuthResponse> {
+    const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
+    return this.authenticatedRequest("/admin/email-change/confirm", { code }, token, "Gagal memverifikasi email admin.");
+  },
+
   async register(data: {
     tipe_user: "mahasiswa" | "karyawan";
     nomor_identitas: string;
     nama: string;
+    email: string;
     no_handphone: string;
     password: string;
     password_confirmation: string;
@@ -210,6 +242,43 @@ export const authApi = {
     }
   },
 
+  async requestUserPasswordReset(email: string): Promise<AuthResponse> {
+    return this.postAuth("/password/forgot", { email }, "Gagal meminta kode reset.");
+  },
+
+  async resetUserPassword(data: {
+    email: string;
+    code: string;
+    password: string;
+    password_confirmation: string;
+  }): Promise<AuthResponse> {
+    return this.postAuth("/password/reset", data, "Gagal mereset kata sandi.");
+  },
+
+  async requestAdminPasswordReset(data: { username: string; jabatan: string }): Promise<AuthResponse> {
+    return this.postAuth("/admin/password/forgot", data, "Gagal meminta kode reset admin.");
+  },
+
+  async resetAdminPassword(data: {
+    username: string;
+    jabatan: string;
+    code: string;
+    password: string;
+    password_confirmation: string;
+  }): Promise<AuthResponse> {
+    return this.postAuth("/admin/password/reset", data, "Gagal mereset kata sandi admin.");
+  },
+
+  async requestUserEmailChange(new_email: string): Promise<AuthResponse> {
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    return this.authenticatedRequest("/profile/email-change/request", { new_email }, token, "Gagal meminta kode verifikasi email.");
+  },
+
+  async confirmUserEmailChange(code: string): Promise<AuthResponse> {
+    const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+    return this.authenticatedRequest("/profile/email-change/confirm", { code }, token, "Gagal memverifikasi email.");
+  },
+
   async logout(): Promise<void> {
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
@@ -237,12 +306,49 @@ export const authApi = {
       return null;
     }
   },
+
+  async postAuth(path: string, data: Record<string, string>, fallback: string): Promise<AuthResponse> {
+    try {
+      const response = await fetch(`${API_BASE_URL}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(data),
+      });
+      return await response.json();
+    } catch (error: unknown) {
+      return { status: "error", message: getErrorMessage(error, fallback) };
+    }
+  },
+
+  async authenticatedRequest(
+    path: string,
+    data: Record<string, string>,
+    token: string | null,
+    fallback: string,
+  ): Promise<AuthResponse> {
+    try {
+      const response = await fetch(`${API_BASE_URL}${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(data),
+      });
+      return await response.json();
+    } catch (error: unknown) {
+      return { status: "error", message: getErrorMessage(error, fallback) };
+    }
+  },
 };
 
 // ─── Laporan API ─────────────────────────────────────────────────────────────
 
-function getAuthHeaders() {
-  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+function getAuthHeaders(isAdmin = false) {
+  const token = typeof window !== "undefined"
+    ? localStorage.getItem(isAdmin ? "admin_token" : "auth_token")
+    : null;
   return {
     "Content-Type": "application/json",
     Accept: "application/json",
@@ -253,14 +359,44 @@ function getAuthHeaders() {
 export const laporanApi = {
   /** Ambil semua laporan milik user berdasarkan NIM */
   async getAll(nim: string): Promise<LaporanResponse> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/laporan?nim=${encodeURIComponent(nim)}`, {
+  try {
+    const res = await fetch(
+      `${API_BASE_URL}/laporan?nim=${encodeURIComponent(nim)}`,
+      {
+        method: "GET",
         headers: getAuthHeaders(),
-      });
-      return await res.json();
-    } catch (error: unknown) {
-      return { status: "error", message: getErrorMessage(error, "Gagal mengambil data laporan.") };
+        cache: "no-store",
+      }
+    );
+
+    const result = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      return {
+        status: "error",
+        message:
+          result?.message ||
+          `Gagal mengambil laporan. HTTP ${res.status}`,
+      };
     }
+
+    if (!result) {
+      return {
+        status: "error",
+        message: "Respons server tidak valid.",
+      };
+    }
+
+    return result;
+  } catch (error: unknown) {
+    return {
+      status: "error",
+      message: getErrorMessage(
+        error,
+        "Gagal mengambil data laporan."
+      ),
+    };
+  }
   },
 
   /** Ambil detail satu laporan */
@@ -340,7 +476,7 @@ export const adminLaporanApi = {
   async getAll() {
     const response = await fetch(`${API_BASE_URL}/admin/laporan`, {
       method: "GET",
-      headers: getAuthHeaders(),
+      headers: getAuthHeaders(true),
       cache: "no-store",
     });
 
@@ -368,7 +504,7 @@ export const adminLaporanApi = {
       `${API_BASE_URL}/admin/laporan/${id}/status`,
       {
         method: "PATCH",
-        headers: getAuthHeaders(),
+        headers: getAuthHeaders(true),
         body: JSON.stringify({
           status_laporan: status,
           pesan_tanggapan: pesan_tanggapan ?? "",
@@ -386,5 +522,27 @@ export const adminLaporanApi = {
     }
 
     return result;
+  },
+
+  /** Mengambil data rekap & analitik laporan untuk admin */
+  async getRekap(params?: { bulan?: string; tahun?: string }) {
+    const searchParams = new URLSearchParams();
+    if (params?.bulan) searchParams.set("bulan", params.bulan);
+    else if (params?.tahun) searchParams.set("tahun", params.tahun);
+
+    const url = `${API_BASE_URL}/admin/rekap${searchParams.toString() ? "?" + searchParams.toString() : ""}`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: getAuthHeaders(true),
+      cache: "no-store",
+    });
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(result?.message || `Gagal mengambil rekap. HTTP ${response.status}`);
+    }
+
+    return result?.data ?? null;
   },
 };

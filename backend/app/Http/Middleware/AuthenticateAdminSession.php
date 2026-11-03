@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Admin;
 use App\Models\AdminSession;
 use Closure;
 use Illuminate\Http\Request;
@@ -22,10 +23,13 @@ class AuthenticateAdminSession
             ->where('expires_at', '>', now())
             ->first();
 
+        $admin = $session?->admin;
+
         if (
-            ! $session
-            || ! in_array($session->admin->role, ['BLU', 'BPS'], true)
-            || ! in_array($session->admin->campus, ['Kampus I', 'Kampus II', 'Kampus III', 'Kampus IV', 'Kampus V'], true)
+            ! $admin
+            || ! in_array($admin->role, ['BLU', 'BPS', 'BOTH'], true)
+            || ! array_key_exists($admin->jabatan, Admin::POSITIONS)
+            || Admin::POSITIONS[$admin->jabatan]['role'] !== $admin->role
         ) {
             return response()->json(['message' => 'Sesi admin tidak valid atau sudah berakhir.'], 401);
         }

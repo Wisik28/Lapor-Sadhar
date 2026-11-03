@@ -39,6 +39,8 @@ DB_PASSWORD=password_supabase_anda
 DB_SSLMODE=require
 ```
 
+Jika memakai Supabase Transaction Pooler (port `6543`), backend menggunakan PDO emulated prepares agar prepared statement tidak bergantung pada koneksi PostgreSQL fisik yang dapat berganti di pooler.
+
 Jalankan database migration:
 
 ```bash
@@ -85,7 +87,7 @@ JIKA INGIN MULAI MENGERJAKAN MAKA JALANKAN INI AGAR SINKRON DENGAN UPDATE PENGER
    git pull origin main
    ```
 
-2. JIKA INIGN PUSH KE GITHUB MAKA: Buat dan berpindah ke branch baru
+2. JIKA INGIN PUSH KE GITHUB MAKA: Buat dan berpindah ke branch baru
    ```bash
    git checkout -b fitur/nama-fitur
    ```

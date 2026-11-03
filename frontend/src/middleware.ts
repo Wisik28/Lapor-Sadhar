@@ -1,23 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Halaman yang bisa diakses tanpa autentikasi (public routes)
-const PUBLIC_ROUTES = ['/login', '/register', '/admin/login'];
+const PUBLIC_ROUTES = ['/login', '/register', '/admin/login', '/admin/forgot-password', '/forgot-password'];
 
 // Halaman yang memerlukan autentikasi (private routes)
 const PROTECTED_ROUTES = [
   '/buat-laporan',
-  '/status-laporan',
-  '/riwayat-laporan',
-  '/ubah-pengajuan',
+  '/(laporan)',
+  '/profile',
+  '/lihat-status',
   '/admin/dashboard',
   '/admin/account',
   '/admin/ubah-status',
+  '/admin/rekap',
 ];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Cek kehadiran token autentikasi di cookie atau session storage
+  // Cek kehadiran token autentikasi di cookie (HTTP-only, set oleh backend)
   const authToken = request.cookies.get('auth_token')?.value;
   const adminToken = request.cookies.get('admin_token')?.value;
   const userSession = request.cookies.get('user_session')?.value;
@@ -41,20 +42,8 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // Jika akses halaman public dan sudah login, redirect ke dashboard sesuai role
+  // Public pages must remain reachable even if browser cookies are stale
   if (PUBLIC_ROUTES.includes(pathname)) {
-    if (isAuthenticated) {
-      try {
-        const user = userSession ? JSON.parse(userSession) : null;
-        if (user?.role === 'Admin') {
-          return NextResponse.redirect(new URL('/admin/dashboard', request.url));
-        }
-        return NextResponse.redirect(new URL('/buat-laporan', request.url));
-      } catch {
-        // Jika error parsing, biarkan lanjut ke login page
-      }
-    }
-    // Jika belum login, boleh akses halaman login/register
     return NextResponse.next();
   }
 

@@ -1,18 +1,47 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { KeyRound, ShieldCheck } from "lucide-react";
+import { KeyRound, ShieldCheck, UserRound } from "lucide-react";
 import AdminNavbar from "@/components/AdminNavbar";
 import { authApi } from "@/lib/api";
+import { setAuthSession } from "@/lib/auth";
 
 export default function AdminAccountPage() {
+  const [user, setUser] = useState(authApi.getCurrentUser());
+  const [name, setName] = useState(user?.nama || "");
+  const [profileMessage, setProfileMessage] = useState("");
+  const [profileError, setProfileError] = useState("");
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [emailStep, setEmailStep] = useState<"request" | "confirm">("request");
+  const [emailMessage, setEmailMessage] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [emailLoading, setEmailLoading] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const user = authApi.getCurrentUser();
+
+  const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setProfileError("");
+    setProfileMessage("");
+    setProfileLoading(true);
+    const result = await authApi.updateAdminProfile({ nama: name.trim() });
+    if (result.status === "success" && result.user) {
+      setUser(result.user);
+      setName(result.user.nama);
+      const token = localStorage.getItem("admin_token");
+      if (token) await setAuthSession(result.user, token, true);
+      setProfileMessage(result.message);
+    } else {
+      setProfileError(result.message || "Profil admin tidak dapat diperbarui.");
+    }
+    setProfileLoading(false);
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -41,9 +70,45 @@ export default function AdminAccountPage() {
     setIsLoading(false);
   };
 
+  const requestEmailCode = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setEmailError("");
+    setEmailMessage("");
+    setEmailLoading(true);
+    const result = await authApi.requestAdminEmailChange(newEmail.trim().toLowerCase());
+    if (result.status === "success") {
+      setEmailStep("confirm");
+      setEmailMessage(result.message);
+    } else {
+      setEmailError(result.message || "Kode verifikasi tidak dapat dikirim.");
+    }
+    setEmailLoading(false);
+  };
+
+  const confirmEmailChange = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setEmailError("");
+    setEmailMessage("");
+    setEmailLoading(true);
+    const result = await authApi.confirmAdminEmailChange(emailCode);
+    if (result.status === "success" && result.email && user) {
+      const updatedUser = { ...user, email: result.email };
+      setUser(updatedUser);
+      const token = localStorage.getItem("admin_token");
+      if (token) await setAuthSession(updatedUser, token, true);
+      setNewEmail("");
+      setEmailCode("");
+      setEmailStep("request");
+      setEmailMessage(result.message);
+    } else {
+      setEmailError(result.message || "Email admin tidak dapat diperbarui.");
+    }
+    setEmailLoading(false);
+  };
+
   return (
     <div className="min-h-screen bg-[#f7f7f5] text-slate-900">
-      <AdminNavbar adminName={user?.nama} adminRole={`${user?.role_detail || "Admin"} · ${user?.campus || ""}`} />
+      <AdminNavbar adminName={user?.nama} adminRole={user?.jabatan_label || user?.role_detail || "Admin"} />
       <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-7">
           <p className="text-xs font-semibold uppercase tracking-wider text-[#7a171b]">Pengaturan akun</p>
@@ -52,6 +117,73 @@ export default function AdminAccountPage() {
         </div>
 
         <section className="max-w-2xl border-y border-slate-200 bg-white px-5 py-6 sm:px-7">
+          <div className="mb-6 border-b border-slate-100 pb-6">
+            <div className="mb-5 flex items-start gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#7a171b]/10 text-[#7a171b]">
+                <UserRound className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="font-semibold">Profil admin</h2>
+                <p className="mt-1 text-sm text-slate-500">Nama dan email dapat diperbarui. Jabatan dan hak akses tetap ditentukan oleh akun admin.</p>
+              </div>
+            </div>
+
+            {profileError && <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-800">{profileError}</p>}
+            {profileMessage && <p role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">{profileMessage}</p>}
+
+            <form onSubmit={handleProfileSubmit} className="space-y-4">
+              <div>
+                <label htmlFor="admin-name" className="mb-1.5 block text-sm font-medium text-slate-700">Nama tampilan</label>
+                <input id="admin-name" required maxLength={255} value={name} onChange={(event) => setName(event.target.value)} className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15" />
+              </div>
+              <div className="text-sm text-slate-600">
+                Jabatan: <span className="font-medium text-slate-900">{user?.jabatan_label || user?.role_detail || "—"}</span>
+                <span className="ml-3">Email: <span className="font-medium text-slate-900">{user?.email || "Belum diisi"}</span></span>
+              </div>
+              <button disabled={profileLoading} className="h-10 rounded-lg bg-[#7a171b] px-4 text-sm font-semibold text-white hover:bg-[#641216] disabled:opacity-60">
+                {profileLoading ? "Menyimpan..." : "Simpan nama"}
+              </button>
+            </form>
+          </div>
+
+          <div className="mb-6 border-b border-slate-100 pb-6">
+            <div className="mb-5">
+              <h2 className="font-semibold">Ganti email admin</h2>
+              <p className="mt-1 text-sm text-slate-500">Verifikasi kode yang dikirim ke email lama sebelum menyimpan email baru.</p>
+            </div>
+
+            {emailError && <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-800">{emailError}</p>}
+            {emailMessage && <p role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">{emailMessage}</p>}
+
+            {emailStep === "request" ? (
+              <form onSubmit={requestEmailCode} className="space-y-4">
+                <label htmlFor="admin-new-email" className="block text-sm font-medium text-slate-700">
+                  Email baru
+                  <input id="admin-new-email" type="email" autoComplete="email" required value={newEmail} onChange={(event) => setNewEmail(event.target.value)} className="mt-1.5 h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15" />
+                </label>
+                <p className="text-xs text-slate-500">
+                  {user?.email
+                    ? `Kode verifikasi akan dikirim ke email lama: ${user.email}`
+                    : "Akun ini belum memiliki email. Kode verifikasi awal akan dikirim ke email baru."}
+                </p>
+                <button disabled={emailLoading} className="h-10 rounded-lg bg-[#7a171b] px-4 text-sm font-semibold text-white hover:bg-[#641216] disabled:opacity-60">
+                  {emailLoading ? "Mengirim kode..." : "Kirim kode verifikasi"}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={confirmEmailChange} className="space-y-4">
+                <label htmlFor="admin-email-code" className="block text-sm font-medium text-slate-700">
+                  Kode verifikasi 6 digit
+                  <input id="admin-email-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={emailCode} onChange={(event) => setEmailCode(event.target.value)} className="mt-1.5 h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15" />
+                </label>
+                <p className="text-xs text-slate-500">Kode berlaku selama 10 menit.</p>
+                <button disabled={emailLoading} className="h-10 rounded-lg bg-[#7a171b] px-4 text-sm font-semibold text-white hover:bg-[#641216] disabled:opacity-60">
+                  {emailLoading ? "Memverifikasi..." : "Verifikasi dan simpan email"}
+                </button>
+              </form>
+            )}
+          </div>
+
           <div className="mb-6 flex items-start gap-3">
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#7a171b]/10 text-[#7a171b]">
               <ShieldCheck className="h-5 w-5" />

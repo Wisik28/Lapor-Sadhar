@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminNavbar from "@/components/AdminNavbar";
 import { adminLaporanApi } from "@/lib/api";
+import { getCurrentAuthUser } from "@/lib/auth";
 
 type StatusValue =
   | "Terkirim"
@@ -220,6 +221,22 @@ export default function UbahStatusLaporanPage() {
   const [laporanTerpilih, setLaporanTerpilih] =
     useState<Laporan | null>(null);
 
+  const [adminName, setAdminName] = useState("Admin");
+  const [adminRole, setAdminRole] = useState("Administrator");
+  useEffect(() => {
+  const currentUser = getCurrentAuthUser();
+
+  if (currentUser) {
+    setAdminName(currentUser.nama || currentUser.username || "Admin");
+
+    setAdminRole(
+      currentUser.jabatan_label ||
+      currentUser.jabatan ||
+      "Administrator"
+    );
+  }
+  }, []);
+
   const [pencarian, setPencarian] = useState("");
   const [filterStatus, setFilterStatus] = useState("Semua");
 
@@ -428,7 +445,7 @@ export default function UbahStatusLaporanPage() {
     return {
       total: laporan.length,
       terkirim: jumlahStatus("Terkirim"),
-      verifikasi: jumlahStatus("Sedang Diverifikasi"),
+      verifikasi: jumlahStatus("Terverifikasi"),
       proses: jumlahStatus("Proses"),
       selesai: jumlahStatus("Selesai"),
       ditolak: jumlahStatus("Ditolak"),
@@ -512,7 +529,10 @@ export default function UbahStatusLaporanPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <AdminNavbar />
+      <AdminNavbar
+        adminName={adminName}
+        adminRole={adminRole}
+      />
 
       <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
@@ -557,7 +577,7 @@ export default function UbahStatusLaporanPage() {
           </div>
         )}
 
-        <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[
             { label: "Total Laporan", value: statistik.total, color: "text-slate-900" },
             { label: "Terkirim", value: statistik.terkirim, color: "text-blue-700" },
@@ -566,19 +586,20 @@ export default function UbahStatusLaporanPage() {
             { label: "Selesai", value: statistik.selesai, color: "text-green-700" },
             { label: "Ditolak", value: statistik.ditolak, color: "text-red-700" },
           ].map((item) => (
-            <div
-              key={item.label}
-              className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-            >
-              <p className="text-xs font-medium text-slate-500 sm:text-sm">
-                {item.label}
-              </p>
-              <p className={`mt-2 text-2xl font-bold ${item.color}`}>
-                {item.value}
-              </p>
-            </div>
+          <div
+            key={item.label}
+            className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-sm"
+          >
+          <p className="text-sm font-medium text-slate-500">
+            {item.label}
+          </p>
+
+          <p className={`mt-2 text-3xl font-bold ${item.color}`}>
+            {item.value}
+          </p>
+          </div>
           ))}
-        </section>
+          </section>
 
         <section className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
           <div className="space-y-4 lg:col-span-5">

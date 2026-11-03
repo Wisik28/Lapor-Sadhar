@@ -214,7 +214,7 @@ export default function AdminDashboardPage() {
     if (!authLoading && authUser) {
       setAdminUser({
         nama: authUser.nama,
-        role: (authUser as any).role_detail || "Admin Pengelola Sarpras",
+        role: authUser.jabatan_label || authUser.role_detail || "Admin Pengelola Sarpras",
       });
     }
   }, [authLoading, authUser]);
