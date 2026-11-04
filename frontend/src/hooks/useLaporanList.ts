@@ -3,7 +3,7 @@
  * Mengelola state dan logic untuk menampilkan list laporan dengan filter
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { laporanApi, LaporanItem } from '@/lib/api';
 
 export interface LaporanListState {
@@ -11,6 +11,18 @@ export interface LaporanListState {
   loading: boolean;
   error: string;
   expandedId: number | null;
+}
+
+function getFetchErrorMessage(err: unknown): string {
+  if (err instanceof TypeError && err.message.toLowerCase().includes('fetch')) {
+    return 'Gagal terhubung ke server. Silakan cek koneksi internet atau status backend.';
+  }
+
+  if (err instanceof Error) {
+    return err.message;
+  }
+
+  return 'Terjadi kesalahan saat mengambil data laporan.';
 }
 
 export function useLaporanList() {
@@ -45,7 +57,7 @@ export function useLaporanList() {
     } catch (err) {
       setState((prev) => ({
         ...prev,
-        error: err instanceof Error ? err.message : 'Terjadi kesalahan.',
+        error: getFetchErrorMessage(err),
         loading: false,
       }));
     }

@@ -17,7 +17,7 @@ export default function UbahPengajuanPage() {
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   // Laporan and edit hooks
-  const laporanList = useLaporanList();
+  const { state: laporanState, fetch: fetchLaporan, getEditableLaporan } = useLaporanList();
   const ubahPengajuan = useUbahPengajuan();
 
   useEffect(() => {
@@ -31,10 +31,9 @@ export default function UbahPengajuanPage() {
   }, [authLoading, authUser]);
 
   useEffect(() => {
-    if (currentUser.nim) {
-      laporanList.fetch(currentUser.nim);
-    }
-  }, [currentUser.nim, laporanList]);
+    if (!currentUser.nim) return;
+    fetchLaporan(currentUser.nim);
+  }, [currentUser.nim, fetchLaporan]);
 
   if (authLoading) {
     return (
@@ -47,7 +46,7 @@ export default function UbahPengajuanPage() {
     );
   }
 
-  const editableLaporan = laporanList.getEditableLaporan();
+  const editableLaporan = getEditableLaporan();
 
   const handleSelectEdit = (lap: any) => {
     ubahPengajuan.selectForEdit(lap, today);
@@ -55,13 +54,13 @@ export default function UbahPengajuanPage() {
 
   const handleSave = async () => {
     await ubahPengajuan.save(currentUser.nim, () => {
-      laporanList.fetch(currentUser.nim);
+      fetchLaporan(currentUser.nim);
     });
   };
 
   const handleDelete = async (id: number) => {
     await ubahPengajuan.delete(id, () => {
-      laporanList.fetch(currentUser.nim);
+      fetchLaporan(currentUser.nim);
     });
   };
 
@@ -91,11 +90,11 @@ export default function UbahPengajuanPage() {
                 </div>
               </div>
               <button
-                onClick={() => laporanList.fetch(currentUser.nim)}
-                disabled={laporanList.state.loading}
+                onClick={() => fetchLaporan(currentUser.nim)}
+                disabled={laporanState.loading}
                 className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium transition-all disabled:opacity-50"
               >
-                <RefreshCw className={`w-4 h-4 ${laporanList.state.loading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 ${laporanState.loading ? 'animate-spin' : ''}`} />
               </button>
             </div>
 
@@ -122,7 +121,7 @@ export default function UbahPengajuanPage() {
             )}
 
             {/* List Laporan Editable */}
-            {laporanList.state.loading ? (
+            {laporanState.loading ? (
               <div className="flex h-64 items-center justify-center bg-white rounded-2xl">
                 <Loader2 className="w-8 h-8 animate-spin text-[#7A0C0C]" />
               </div>

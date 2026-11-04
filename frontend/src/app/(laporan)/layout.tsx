@@ -1,10 +1,10 @@
-/**
- * Layout untuk route group (laporan)
- * Shared layout untuk semua fitur laporan
- */
-
 import type { ReactNode } from 'react';
+import { ProtectedLayout } from '@/components/ProtectedLayout';
 
 export default function LaporanLayout({ children }: { children: ReactNode }) {
-  return <>{children}</>;
+  return (
+    <ProtectedLayout allowedRoles={['Mahasiswa', 'Karyawan']}>
+      {children}
+    </ProtectedLayout>
+  );
 }

@@ -1,36 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Halaman yang bisa diakses tanpa autentikasi (public routes)
 const PUBLIC_ROUTES = ['/login', '/register', '/admin/login', '/admin/forgot-password', '/forgot-password'];
 
-// Halaman yang memerlukan autentikasi (private routes)
 const PROTECTED_ROUTES = [
   '/buat-laporan',
-  '/(laporan)',
-  '/profile',
+  '/riwayat-laporan',
+  '/status-laporan',
+  '/ubah-pengajuan',
   '/lihat-status',
-  '/admin/dashboard',
-  '/admin/account',
-  '/admin/ubah-status',
-  '/admin/rekap',
+  '/profile',
+  '/admin',
 ];
+
+function isProtectedRoute(pathname: string) {
+  return PROTECTED_ROUTES.some((route) => {
+    if (route === '/admin') {
+      return pathname === '/admin' || pathname.startsWith('/admin/');
+    }
+
+    return pathname === route || pathname.startsWith(`${route}/`);
+  });
+}
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Cek kehadiran token autentikasi di cookie (HTTP-only, set oleh backend)
+  if (pathname.startsWith('/_next') || pathname.startsWith('/api') || pathname.includes('.')) {
+    return NextResponse.next();
+  }
+
   const authToken = request.cookies.get('auth_token')?.value;
   const adminToken = request.cookies.get('admin_token')?.value;
   const userSession = request.cookies.get('user_session')?.value;
-
   const isAuthenticated = !!(authToken || adminToken) && !!userSession;
 
-  // Handle root path "/" - selalu redirect ke login jika belum auth
+  if (PUBLIC_ROUTES.includes(pathname)) {
+    return NextResponse.next();
+  }
+
   if (pathname === '/') {
     if (!isAuthenticated) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
-    // Jika sudah login, cek role dari user_session
+
     try {
       const user = userSession ? JSON.parse(userSession) : null;
       if (user?.role === 'Admin') {
@@ -42,23 +54,15 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // Public pages must remain reachable even if browser cookies are stale
-  if (PUBLIC_ROUTES.includes(pathname)) {
-    return NextResponse.next();
-  }
-
-  // Jika akses halaman protected dan belum login
-  if (PROTECTED_ROUTES.some(route => pathname.startsWith(route))) {
+  if (isProtectedRoute(pathname)) {
     if (!isAuthenticated) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
-    // Cek role untuk admin routes
     if (pathname.startsWith('/admin')) {
       try {
         const user = userSession ? JSON.parse(userSession) : null;
         if (user?.role !== 'Admin') {
-          // User bukan admin, redirect ke halaman civitas akademika
           return NextResponse.redirect(new URL('/buat-laporan', request.url));
         }
       } catch {
@@ -73,13 +77,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    // Match all request paths except for the ones starting with:
-    // - api (API routes)
-    // - _next/static (static files)
-    // - _next/image (image optimization files)
-    // - favicon.ico (favicon file)
-    // - public folder
-    '/((?!api|_next/static|_next/image|favicon.ico|public).*)',
-  ],
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|public).*)'],
 };

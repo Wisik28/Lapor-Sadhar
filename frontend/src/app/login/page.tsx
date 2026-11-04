@@ -47,18 +47,19 @@ export default function LoginPage() {
       });
 
       if (res.status === "success" && res.user && res.token) {
-        // Ensure session is set via cookies
         await setAuthSession(res.user, res.token, false);
         setSuccessMessage(res.message || "Login berhasil! Sedang mengalihkan...");
+
+        const targetRoute =
+          res.redirect_to && res.redirect_to.startsWith('/') && res.redirect_to !== '/login'
+            ? res.redirect_to
+            : res.user?.role === 'Admin'
+              ? '/admin/dashboard'
+              : '/buat-laporan';
+
         setTimeout(() => {
-          if (res.redirect_to) {
-            router.push(res.redirect_to);
-          } else if (res.user?.role === "Admin") {
-            router.push("/admin/dashboard");
-          } else {
-            router.push("/buat-laporan");
-          }
-        }, 1000);
+          router.replace(targetRoute);
+        }, 600);
       } else {
         setErrorMessage(res.message || "Gagal masuk. Periksa kembali data login Anda.");
       }

@@ -99,9 +99,14 @@ class AuthController extends Controller
                 ]);
             });
 
+            // Pastikan user berhasil dibuat
+            if (!$user) {
+                throw new \Exception('Gagal membuat akun pengguna.');
+            }
+
             $token = Str::random(60);
             $userIdentifier = $tipeUser === 'karyawan' ? $user->nomor_identitas : $user->nim;
-            $this->createUserSession($tipeUser, $user->id, $token);
+            $this->createUserSession($tipeUser, $userIdentifier, $token);
 
             return response()->json([
                 'status' => 'success',
@@ -182,7 +187,7 @@ class AuthController extends Controller
                 $roleLabel = $tipe === 'karyawan' ? 'Karyawan' : 'Mahasiswa';
                 $token = Str::random(60);
                 $userIdentifier = $tipe === 'karyawan' ? $user->nomor_identitas : $user->nim;
-                $this->createUserSession($tipe, $user->id, $token);
+                $this->createUserSession($tipe, $userIdentifier, $token);
 
                 return response()->json([
                     'status' => 'success',
