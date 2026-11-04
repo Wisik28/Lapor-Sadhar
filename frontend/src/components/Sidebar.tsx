@@ -72,30 +72,26 @@ export default function Sidebar({
     if (propSetActiveMenu) {
       propSetActiveMenu(id);
     }
-    router.push(route);
     if (onCloseMobile) {
       onCloseMobile();
     }
+    
+    // Navigasi ke rute terpisah
+    router.push(route);
   };
 
   const sidebarContent = (
     <div className="relative w-72 sm:w-64 h-full text-white flex flex-col justify-between shrink-0 shadow-2xl overflow-hidden bg-[#7A0C0C]">
-      {/* ------------------------------------------------------------- */}
       {/* BACKGROUND IMAGE: sidebar.png */}
-      {/* ------------------------------------------------------------- */}
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none transform scale-105"
         style={{ backgroundImage: "url('/assets/sidebar.png')" }}
       />
 
-      {/* ------------------------------------------------------------- */}
-      {/* OVERLAY MERAH MARUN (Maroon Overlay) */}
-      {/* ------------------------------------------------------------- */}
+      {/* OVERLAY MERAH MARUN */}
       <div className="absolute inset-0 bg-gradient-to-b from-[#7A0C0C]/90 via-[#7A0C0C]/85 to-[#520808]/95 backdrop-brightness-90 pointer-events-none" />
 
-      {/* ------------------------------------------------------------- */}
-      {/* KONTEN SIDEBAR (Z-10 di atas overlay) */}
-      {/* ------------------------------------------------------------- */}
+      {/* KONTEN SIDEBAR */}
       <div className="relative z-10 flex flex-col justify-between h-full">
         <div>
           {/* Header Sidebar / Brand USD */}
@@ -131,7 +127,7 @@ export default function Sidebar({
             )}
           </div>
 
-          {/* Navigasi Menu dengan Animasi Active Indicator */}
+          {/* Navigasi Menu */}
           <nav className="p-3 sm:p-4 space-y-2 mt-2">
             {MENU_ITEMS.map((item) => {
               const Icon = item.icon;
@@ -183,7 +179,7 @@ export default function Sidebar({
         <div className="p-4 border-t border-white/15 bg-black/20">
           <button
             onClick={handleLogout}
-            className="w-full min-h-[44px] flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-red-100 hover:text-white text-sm font-medium transition-all duration-200 border border-white/10 active:scale-98 shadow-xs"
+            className="w-full min-h-[44px] flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-red-100 hover:text-white text-sm font-medium transition-all duration-200 border border-white/10 active:scale-98 shadow-xs cursor-pointer"
           >
             <LogOut className="w-4 h-4 text-red-200" />
             <span>Keluar</span>
@@ -195,12 +191,12 @@ export default function Sidebar({
 
   return (
     <>
-      {/* DESKTOP SIDEBAR (Static/Persistent on md and up) */}
+      {/* DESKTOP SIDEBAR */}
       <aside className="hidden md:flex relative w-64 text-white flex-col justify-between shrink-0 shadow-2xl z-20 overflow-hidden bg-[#7A0C0C]">
         {sidebarContent}
       </aside>
 
-      {/* MOBILE DRAWER (Slide-over on screens < md) */}
+      {/* MOBILE DRAWER */}
       <AnimatePresence>
         {isOpenMobile && (
           <div className="fixed inset-0 z-50 md:hidden flex">
