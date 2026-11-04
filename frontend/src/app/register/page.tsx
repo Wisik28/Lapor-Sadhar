@@ -81,9 +81,15 @@ export default function RegisterPage() {
         setSuccessMessage(
           res.message || "Pendaftaran akun berhasil! Mengalihkan ke halaman formulir laporan..."
         );
+
+        const targetRoute =
+          res.redirect_to && res.redirect_to.startsWith('/') && res.redirect_to !== '/login'
+            ? res.redirect_to
+            : '/buat-laporan';
+
         setTimeout(() => {
-          router.push(res.redirect_to || "/buat-laporan");
-        }, 1200);
+          router.replace(targetRoute);
+        }, 600);
       } else {
         setErrorMessage(res.message || "Gagal melakukan pendaftaran. Silakan periksa kembali data Anda.");
       }
