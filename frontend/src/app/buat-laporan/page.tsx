@@ -4,7 +4,7 @@ import React, { useState, useCallback } from "react";
 import Link from "next/link";
 import Sidebar from "../../components/Sidebar";
 import Navbar from "../../components/Navbar";
-import { authApi, laporanApi, type LaporanItem } from "@/lib/api";
+import { laporanApi, type LaporanItem } from "@/lib/api";
 import { useAuthProtection } from "@/lib/useAuth";
 import { useRouter } from "next/navigation";
 import {
@@ -33,9 +33,9 @@ import {
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; dot: string }> = {
   Terkirim:     { label: "Terkirim",     color: "text-blue-700",    bg: "bg-blue-50 border-blue-200",     dot: "bg-blue-500"    },
   Diverifikasi: { label: "Diverifikasi", color: "text-indigo-700",  bg: "bg-indigo-50 border-indigo-200", dot: "bg-indigo-500"  },
-  Diproses:     { label: "Diproses",     color: "text-amber-700",   bg: "bg-amber-50 border-amber-200",   dot: "bg-amber-500"   },
+  Diproses:     { label: "Diproses",     color: "text-amber-700",   bg: "bg-amber-50 border-amber-200",    dot: "bg-amber-500"   },
   Selesai:      { label: "Selesai",      color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200",dot: "bg-emerald-500" },
-  Ditolak:      { label: "Ditolak",      color: "text-red-700",     bg: "bg-red-50 border-red-200",       dot: "bg-red-500"     },
+  Ditolak:      { label: "Ditolak",      color: "text-red-700",      bg: "bg-red-50 border-red-200",        dot: "bg-red-500"     },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -57,7 +57,7 @@ function formatTanggal(dateStr: string | null | undefined): string {
   } catch { return dateStr; }
 }
 
-interface Attachment { id: string; url: string; name: string; }
+interface Attachment { id: string; url: string; name: string; file?: File; }
 
 // ─── Komponen Laporan Card ────────────────────────────────────────────────────
 
@@ -82,7 +82,7 @@ function LaporanCard({ lap, expandedId, setExpandedId }: {
         </div>
         <button
           onClick={() => setExpandedId(isExpanded ? null : lap.id_laporan)}
-          className="min-h-[36px] w-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-all shrink-0"
+          className="min-h-[36px] w-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-all shrink-0 cursor-pointer"
         >
           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
@@ -136,7 +136,7 @@ export default function BuatLaporanPage() {
     nim: authUser?.nim || authUser?.nomor_identitas || "",
   };
 
-  // ── Shared laporan state (untuk semua menu yang membutuhkan list laporan) ──
+  // ── Shared laporan state ──
   const [allLaporan, setAllLaporan] = useState<LaporanItem[]>([]);
   const [listLoading, setListLoading] = useState(false);
 
@@ -152,10 +152,9 @@ export default function BuatLaporanPage() {
 
   const handleMenuChange = useCallback((menu: string) => {
     if (menu === "lihat-status") {
-    router.push("/lihat-status");
-    return;
-  }
-
+      router.push("/lihat-status");
+      return;
+    }
 
     setActiveMenu(menu);
     if (
@@ -165,7 +164,7 @@ export default function BuatLaporanPage() {
     ) {
       fetchAllLaporan(currentUser.nim);
     }
-  }, [activeMenu, currentUser.nim, fetchAllLaporan]);
+  }, [activeMenu, currentUser.nim, fetchAllLaporan, router]);
 
   // ─── Buat Laporan State ────────────────────────────────────────────────────
 
@@ -189,6 +188,7 @@ export default function BuatLaporanPage() {
         id: Date.now().toString(),
         name: file.name,
         url: URL.createObjectURL(file),
+        file,
       }]);
     }
   };
@@ -196,6 +196,16 @@ export default function BuatLaporanPage() {
   const handleBatal = () => {
     setKategori(""); setTanggal(today); setLokasi(""); setDeskripsi("");
     setAttachments([]); setBuatError(""); setBuatSuccess("");
+  };
+
+  // Helper konversi file gambar ke Base64 agar dapat disimpan utuh
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -207,18 +217,24 @@ export default function BuatLaporanPage() {
 
     setBuatLoading(true);
     try {
+      let fotoBase64: string | undefined = undefined;
+      if (attachments.length > 0 && attachments[0].file) {
+        fotoBase64 = await fileToBase64(attachments[0].file);
+      }
+
+      // Menggunakan laporanApi.create Sesuai Metode API GitHub
       const res = await laporanApi.create({
         nim: currentUser.nim,
         kategori_laporan: kategori,
         deskripsi,
         tanggal_kejadian: tanggal,
         lokasi,
-        foto: attachments[0]?.url ?? undefined,
+        foto: fotoBase64,
       });
+
       if (res.status === "success") {
         setBuatSuccess("Laporan berhasil dikirim ke pihak pengelola USD!");
         handleBatal();
-        // Refresh list laporan di background
         fetchAllLaporan(currentUser.nim);
       } else {
         setBuatError(res.message || "Gagal mengirim laporan.");
@@ -243,13 +259,10 @@ export default function BuatLaporanPage() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState<number | null>(null);
 
-  // Filter laporan yang bisa diubah (status Terkirim)
   const laporanEditable = allLaporan.filter((l) => l.status_terkini === "Terkirim");
-  // Filter laporan yang sudah selesai atau ditolak (untuk riwayat)
   const laporanRiwayat = allLaporan.filter((l) =>
     l.status_terkini === "Selesai" || l.status_terkini === "Ditolak"
   );
-  // Filter laporan aktif (Terkirim, Diverifikasi, Diproses) untuk lihat-status
   const laporanAktif = allLaporan.filter((l) =>
     ["Terkirim", "Diverifikasi", "Diproses"].includes(l.status_terkini)
   );
@@ -303,7 +316,6 @@ export default function BuatLaporanPage() {
     setDeleteLoading(null);
   };
 
-  // ─── Page Title ────────────────────────────────────────────────────────────
   const getPageTitle = (menu: string) => {
     switch (menu) {
       case "buat-laporan":    return "Buat Laporan";
@@ -314,7 +326,6 @@ export default function BuatLaporanPage() {
     }
   };
 
-  // ─── Render ────────────────────────────────────────────────────────────────
   if (authLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-[#F3F4F6]">
@@ -360,30 +371,27 @@ export default function BuatLaporanPage() {
         <main className="flex-1 overflow-y-auto px-4 py-5 sm:p-6 md:p-8 bg-[#F3F4F6]">
           <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
 
-            {/* ════════════════════════════════════════════════════════
-                MENU: BUAT LAPORAN
-            ════════════════════════════════════════════════════════ */}
+            {/* MENU: BUAT LAPORAN */}
             {activeMenu === "buat-laporan" && (
               <>
                 {buatError && (
                   <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
                     <AlertCircle className="w-4 h-4 shrink-0" />
                     <span>{buatError}</span>
-                    <button onClick={() => setBuatError("")} className="ml-auto shrink-0"><X className="w-4 h-4" /></button>
+                    <button onClick={() => setBuatError("")} className="ml-auto shrink-0 cursor-pointer"><X className="w-4 h-4" /></button>
                   </div>
                 )}
                 {buatSuccess && (
                   <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm">
                     <CheckCircle2 className="w-4 h-4 shrink-0" />
                     <span>{buatSuccess}</span>
-                    <button onClick={() => setBuatSuccess("")} className="ml-auto shrink-0"><X className="w-4 h-4" /></button>
+                    <button onClick={() => setBuatSuccess("")} className="ml-auto shrink-0 cursor-pointer"><X className="w-4 h-4" /></button>
                   </div>
                 )}
 
                 <div className="bg-white rounded-2xl shadow-xs border border-slate-200/80 p-4 sm:p-6 md:p-8">
                   <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                      {/* Kategori */}
                       <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                           Kategori Laporan <span className="text-red-500">*</span>
@@ -396,7 +404,6 @@ export default function BuatLaporanPage() {
                         </select>
                       </div>
 
-                      {/* Tanggal */}
                       <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                           Tanggal Kejadian <span className="text-red-500">*</span>
@@ -407,7 +414,6 @@ export default function BuatLaporanPage() {
                           className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-slate-50/50 text-sm text-slate-800 transition-all outline-none" />
                       </div>
 
-                      {/* Lokasi */}
                       <div className="md:col-span-2">
                         <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                           Lokasi Kejadian <span className="text-red-500">*</span>
@@ -421,7 +427,6 @@ export default function BuatLaporanPage() {
                       </div>
                     </div>
 
-                    {/* Deskripsi */}
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                         Deskripsi Masalah <span className="text-red-500">*</span>
@@ -431,7 +436,6 @@ export default function BuatLaporanPage() {
                         className="w-full px-3.5 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-slate-50/50 text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none resize-y min-h-[100px]" />
                     </div>
 
-                    {/* Upload */}
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-1">Foto / Lampiran</label>
                       <p className="text-xs text-slate-500 mb-3">Unggah bukti foto kerusakan (Maksimal 5 foto, format JPG/PNG).</p>
@@ -441,7 +445,7 @@ export default function BuatLaporanPage() {
                             <img src={item.url} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                             <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity" />
                             <button type="button" onClick={() => handleRemoveAttachment(item.id)}
-                              className="absolute top-1.5 right-1.5 w-8 h-8 rounded-full bg-red-600/90 hover:bg-red-700 text-white flex items-center justify-center shadow-md transition-transform hover:scale-110 active:scale-95">
+                              className="absolute top-1.5 right-1.5 w-8 h-8 rounded-full bg-red-600/90 hover:bg-red-700 text-white flex items-center justify-center shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer">
                               <X className="w-4 h-4" />
                             </button>
                             <div className="absolute bottom-0 inset-x-0 p-1 bg-gradient-to-t from-black/70 to-transparent">
@@ -461,14 +465,13 @@ export default function BuatLaporanPage() {
                       </div>
                     </div>
 
-                    {/* Tombol */}
                     <div className="pt-4 border-t border-slate-100 flex flex-col-reverse sm:flex-row items-stretch sm:items-center sm:justify-end gap-2.5 sm:gap-3">
                       <button type="button" onClick={handleBatal}
-                        className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 rounded-xl bg-[#8B5A2B] hover:bg-[#744A22] text-white text-sm font-semibold shadow-xs transition-all duration-200 active:scale-98 flex items-center justify-center">
+                        className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 rounded-xl bg-[#8B5A2B] hover:bg-[#744A22] text-white text-sm font-semibold shadow-xs transition-all duration-200 active:scale-98 flex items-center justify-center cursor-pointer">
                         Batal
                       </button>
                       <button type="submit" disabled={buatLoading}
-                        className="w-full sm:w-auto min-h-[44px] flex items-center justify-center gap-2 px-7 py-2.5 rounded-xl bg-[#7A0C0C] hover:bg-[#9E1B1B] text-white text-sm font-semibold shadow-md shadow-[#7A0C0C]/20 transition-all duration-200 active:scale-98 disabled:opacity-70">
+                        className="w-full sm:w-auto min-h-[44px] flex items-center justify-center gap-2 px-7 py-2.5 rounded-xl bg-[#7A0C0C] hover:bg-[#9E1B1B] text-white text-sm font-semibold shadow-md shadow-[#7A0C0C]/20 transition-all duration-200 active:scale-98 disabled:opacity-70 cursor-pointer">
                         {buatLoading ? (<><Loader2 className="w-4 h-4 animate-spin" /><span>Mengirim...</span></>) : (<><span>Kirim Laporan</span><Send className="w-4 h-4" /></>)}
                       </button>
                     </div>
@@ -477,12 +480,9 @@ export default function BuatLaporanPage() {
               </>
             )}
 
-            {/* ════════════════════════════════════════════════════════
-                MENU: LIHAT STATUS LAPORAN
-            ════════════════════════════════════════════════════════ */}
+            {/* MENU: LIHAT STATUS LAPORAN */}
             {activeMenu === "lihat-status" && (
               <div className="space-y-5">
-                {/* Header info alur */}
                 <div className="bg-white rounded-2xl shadow-xs border border-slate-200/80 p-5 sm:p-6 space-y-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center shrink-0">
@@ -493,7 +493,6 @@ export default function BuatLaporanPage() {
                       <p className="text-xs text-slate-500">Pantau laporan yang sedang dalam proses penanganan.</p>
                     </div>
                   </div>
-                  {/* Alur Status */}
                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 text-center">
                     {["Terkirim","Diverifikasi","Diproses","Selesai"].map((s, i) => {
                       const cfg = STATUS_CONFIG[s];
@@ -517,12 +516,11 @@ export default function BuatLaporanPage() {
                   </div>
                 </div>
 
-                {/* Laporan Aktif Milik User */}
                 <div className="bg-white rounded-2xl shadow-xs border border-slate-200/80 p-5 sm:p-6 space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-bold text-slate-700">Laporan Anda yang Sedang Diproses</h3>
                     <button onClick={() => fetchAllLaporan(currentUser.nim)} disabled={listLoading}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium transition-all">
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium transition-all cursor-pointer">
                       <RefreshCw className={`w-3.5 h-3.5 ${listLoading ? "animate-spin" : ""}`} />
                       Refresh
                     </button>
@@ -549,9 +547,7 @@ export default function BuatLaporanPage() {
               </div>
             )}
 
-            {/* ════════════════════════════════════════════════════════
-                MENU: RIWAYAT LAPORAN
-            ════════════════════════════════════════════════════════ */}
+            {/* MENU: RIWAYAT LAPORAN */}
             {activeMenu === "riwayat-laporan" && (
               <div className="space-y-5">
                 <div className="bg-white rounded-2xl shadow-xs border border-slate-200/80 p-5 sm:p-6 flex items-center justify-between gap-4">
@@ -565,7 +561,7 @@ export default function BuatLaporanPage() {
                     </div>
                   </div>
                   <button onClick={() => fetchAllLaporan(currentUser.nim)} disabled={listLoading}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium transition-all shrink-0">
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium transition-all shrink-0 cursor-pointer">
                     <RefreshCw className={`w-3.5 h-3.5 ${listLoading ? "animate-spin" : ""}`} />
                     Refresh
                   </button>
@@ -591,12 +587,9 @@ export default function BuatLaporanPage() {
               </div>
             )}
 
-            {/* ════════════════════════════════════════════════════════
-                MENU: RUBAH PENGAJUAN
-            ════════════════════════════════════════════════════════ */}
+            {/* MENU: RUBAH PENGAJUAN */}
             {activeMenu === "rubah-pengajuan" && (
               <div className="space-y-5">
-                {/* Header */}
                 <div className="bg-white rounded-2xl shadow-xs border border-slate-200/80 p-5 sm:p-6 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center shrink-0">
@@ -608,25 +601,24 @@ export default function BuatLaporanPage() {
                     </div>
                   </div>
                   <button onClick={() => fetchAllLaporan(currentUser.nim)} disabled={listLoading}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium transition-all shrink-0">
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-medium transition-all shrink-0 cursor-pointer">
                     <RefreshCw className={`w-3.5 h-3.5 ${listLoading ? "animate-spin" : ""}`} />
                     Refresh
                   </button>
                 </div>
 
-                {/* Alerts */}
                 {rubahError && (
                   <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
                     <AlertCircle className="w-4 h-4 shrink-0" />
                     <span>{rubahError}</span>
-                    <button onClick={() => setRubahError("")} className="ml-auto shrink-0"><X className="w-4 h-4" /></button>
+                    <button onClick={() => setRubahError("")} className="ml-auto shrink-0 cursor-pointer"><X className="w-4 h-4" /></button>
                   </div>
                 )}
                 {rubahSuccess && (
                   <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm">
                     <CheckCircle2 className="w-4 h-4 shrink-0" />
                     <span>{rubahSuccess}</span>
-                    <button onClick={() => setRubahSuccess("")} className="ml-auto shrink-0"><X className="w-4 h-4" /></button>
+                    <button onClick={() => setRubahSuccess("")} className="ml-auto shrink-0 cursor-pointer"><X className="w-4 h-4" /></button>
                   </div>
                 )}
 
@@ -646,7 +638,6 @@ export default function BuatLaporanPage() {
                   </div>
                 )}
 
-                {/* Laporan List */}
                 {!listLoading && laporanEditable.map((lap) => {
                   const isExpanded = expandedId === lap.id_laporan;
                   const isEditing = selectedLaporan?.id_laporan === lap.id_laporan;
@@ -654,7 +645,6 @@ export default function BuatLaporanPage() {
                     <div key={lap.id_laporan}
                       className={`bg-white rounded-2xl border shadow-xs transition-all duration-200 overflow-hidden ${isEditing ? "border-[#7A0C0C]/30 ring-2 ring-[#7A0C0C]/10" : "border-slate-200/80"}`}>
 
-                      {/* Card Header */}
                       <div className="p-4 sm:p-5 flex items-center justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -670,26 +660,25 @@ export default function BuatLaporanPage() {
                         <div className="flex items-center gap-2 shrink-0">
                           <button
                             onClick={() => { isEditing ? setSelectedLaporan(null) : handleSelectEdit(lap); setRubahError(""); setRubahSuccess(""); }}
-                            className={`min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${isEditing ? "bg-slate-100 text-slate-600 hover:bg-slate-200" : "bg-[#7A0C0C] text-white hover:bg-[#9E1B1B]"}`}>
+                            className={`min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${isEditing ? "bg-slate-100 text-slate-600 hover:bg-slate-200" : "bg-[#7A0C0C] text-white hover:bg-[#9E1B1B]"}`}>
                             <Edit3 className="w-3.5 h-3.5" />
                             {isEditing ? "Batal Edit" : "Edit"}
                           </button>
                           <button
                             onClick={() => handleDelete(lap.id_laporan)}
                             disabled={deleteLoading === lap.id_laporan}
-                            className="min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-all flex items-center gap-1.5 disabled:opacity-60">
+                            className="min-h-[36px] px-3 py-1.5 rounded-xl text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 transition-all flex items-center gap-1.5 disabled:opacity-60 cursor-pointer">
                             {deleteLoading === lap.id_laporan ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                             Hapus
                           </button>
                           <button
                             onClick={() => setExpandedId(isExpanded ? null : lap.id_laporan)}
-                            className="min-h-[36px] w-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-all">
+                            className="min-h-[36px] w-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-all cursor-pointer">
                             {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                           </button>
                         </div>
                       </div>
 
-                      {/* Expanded Detail */}
                       {isExpanded && !isEditing && (
                         <div className="px-4 sm:px-5 pb-4 border-t border-slate-100 pt-3 space-y-2">
                           <p className="text-xs text-slate-500 font-semibold uppercase tracking-wide">Deskripsi</p>
@@ -702,7 +691,6 @@ export default function BuatLaporanPage() {
                         </div>
                       )}
 
-                      {/* Edit Form */}
                       {isEditing && (
                         <div className="px-4 sm:px-5 pb-5 border-t border-[#7A0C0C]/10 pt-4 space-y-4 bg-red-50/20">
                           <div className="flex items-center gap-2">
@@ -740,11 +728,11 @@ export default function BuatLaporanPage() {
                           </div>
                           <div className="flex justify-end gap-3 pt-1">
                             <button onClick={() => setSelectedLaporan(null)}
-                              className="px-4 py-2 rounded-xl text-sm font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all">
+                              className="px-4 py-2 rounded-xl text-sm font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all cursor-pointer">
                               Batal
                             </button>
                             <button onClick={handleSaveRubah} disabled={saveLoading}
-                              className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold bg-[#7A0C0C] text-white hover:bg-[#9E1B1B] shadow-md shadow-[#7A0C0C]/20 transition-all disabled:opacity-70">
+                              className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold bg-[#7A0C0C] text-white hover:bg-[#9E1B1B] shadow-md shadow-[#7A0C0C]/20 transition-all disabled:opacity-70 cursor-pointer">
                               {saveLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                               Simpan Perubahan
                             </button>
@@ -755,7 +743,6 @@ export default function BuatLaporanPage() {
                   );
                 })}
 
-                {/* Info laporan tidak bisa diubah */}
                 {!listLoading && allLaporan.filter(l => l.status_terkini !== "Terkirim").length > 0 && (
                   <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
                     <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
@@ -767,8 +754,6 @@ export default function BuatLaporanPage() {
                 )}
               </div>
             )}
-
-
 
             {/* Footer */}
             <footer className="pt-4 border-t border-slate-200/60 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-3 text-center sm:text-left">
