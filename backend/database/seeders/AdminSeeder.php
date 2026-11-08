@@ -12,12 +12,16 @@ class AdminSeeder extends Seeder
     public function run(): void
     {
         foreach (Admin::POSITIONS as $position => $definition) {
-            $username = 'admin.'.$position;
-            $admin = Admin::where('username', $username)->first();
+            $username = Admin::USERNAMES[$position];
+            $admin = Admin::where('jabatan', $position)->first();
 
             if (! $admin) {
-                $legacyUsername = $this->legacyUsername($position);
+                $legacyUsername = Admin::LEGACY_USERNAMES[$position] ?? null;
                 $admin = $legacyUsername ? Admin::where('username', $legacyUsername)->first() : null;
+            }
+
+            if (! $admin) {
+                $admin = Admin::where('username', 'admin.'.$position)->first();
             }
 
             $email = config("admin.emails.{$position}");
@@ -32,10 +36,10 @@ class AdminSeeder extends Seeder
                 }
 
                 $attributes = [
+                    'username' => $username,
                     'nama_admin' => str_starts_with($admin->nama_admin, 'Admin ')
                         ? $definition['label']
                         : $admin->nama_admin,
-                    'username' => $username,
                     'role' => $definition['role'],
                     'campus' => null,
                     'jabatan' => $position,
@@ -63,24 +67,5 @@ class AdminSeeder extends Seeder
 
             $this->command?->info("{$definition['label']}: {$username} / {$initialPassword}");
         }
-    }
-
-    private function legacyUsername(string $position): ?string
-    {
-        if ($position === 'kepala_blu') {
-            return 'blu.kampus1';
-        }
-
-        if ($position === 'kepala_bps') {
-            return 'bps.kampus1';
-        }
-
-        if (preg_match('/^kepala_bagian_(blu|bps)_([1-4])$/', $position, $matches)) {
-            $campusNumber = (int) $matches[2] + 1;
-
-            return "{$matches[1]}.kampus{$campusNumber}";
-        }
-
-        return null;
     }
 }

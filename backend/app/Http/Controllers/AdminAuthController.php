@@ -28,7 +28,8 @@ class AdminAuthController extends Controller
             ], 422);
         }
 
-        $admin = Admin::where('username', trim($request->username))
+        $username = trim($request->username);
+        $admin = Admin::where('username', $username)
             ->where('jabatan', $request->jabatan)
             ->first();
 

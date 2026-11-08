@@ -16,7 +16,15 @@ php artisan migrate
 php artisan db:seed --class=AdminSeeder
 ```
 
-Seeder mempertahankan kata sandi akun lama, membuat username berdasarkan jabatan untuk akun baru, dan mencetak kata sandi awal akun yang baru dibuat. Ubah kata sandi setelah login.
+Seeder memetakan 11 jabatan admin ke username yang ditetapkan di `Admin::USERNAMES`. Seeder tidak mereset kata sandi akun yang sudah ada.
+
+Untuk mengganti username sekaligus membuat password acak baru bagi seluruh 11 akun admin, jalankan perintah berikut dari folder `backend`:
+
+```powershell
+php artisan admin:rotate-credentials
+```
+
+Perintah meminta konfirmasi, memastikan semua akun ada, lalu mengganti username, password, dan mengakhiri semua sesi admin lama dalam satu transaksi. Setiap password baru hanya ditampilkan sekali di terminal; salin dan bagikan melalui jalur pribadi yang aman. Jangan kirim password ke chat atau commit.
 
 Untuk mengirim kode reset password dan verifikasi perubahan email melalui Gmail, konfigurasi SMTP Gmail di `backend/.env` menggunakan alamat Gmail pengirim pada `MAIL_USERNAME` dan Gmail App Password pada `MAIL_PASSWORD`. Pengaturan SMTP lainnya (`MAIL_MAILER=smtp`, `MAIL_SCHEME=smtp`, `MAIL_HOST=smtp.gmail.com`, dan `MAIL_PORT=587`) sudah tersedia di `.env.example`. Pastikan `MAIL_FROM_ADDRESS` sama dengan alamat pengirim. Jangan gunakan atau kirim kata sandi login Gmail, dan jangan commit kredensial. Jika konfigurasi Laravel pernah di-cache, jalankan `php artisan config:clear` lalu mulai ulang server backend.
 
@@ -24,7 +32,7 @@ Email tujuan dua akun admin awal diatur melalui `ADMIN_EMAIL_KEPALA_BLU` dan `AD
 
 Admin dapat mengganti email di Pengaturan Akun. Kode verifikasi dikirim ke email lama sebelum alamat baru disimpan; untuk akun admin tanpa email, kode awal dikirim ke alamat baru. Kode verifikasi berlaku 10 menit dan maksimal dapat dicoba lima kali.
 
-Jika password 10 akun admin lama perlu diganti, jalankan `php artisan admin:reset-legacy-passwords` dari folder `backend`. Perintah ini meminta konfirmasi, membuat password acak unik, mengakhiri sesi aktif akun tersebut, dan menampilkan password baru sekali di terminal. WR II tidak diubah. Bagikan password melalui jalur pribadi yang aman dan jangan kirimkan hasil terminal di chat atau commit.
+Perintah `php artisan admin:reset-legacy-passwords` hanya untuk mengganti password sepuluh akun admin lama tanpa mengubah WR II. Untuk rotasi semua username dan password, gunakan `php artisan admin:rotate-credentials`.
 
 ## About Laravel
 

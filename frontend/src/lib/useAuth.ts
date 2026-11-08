@@ -46,7 +46,7 @@ export function useAdminProtection() {
 
       if (!currentUser) {
         setIsLoading(false);
-        router.replace('/login');
+        router.replace('/admin/login');
         return;
       }
 
@@ -81,4 +81,3 @@ export function useCurrentUser() {
 
   return { user, isLoading };
 }
-

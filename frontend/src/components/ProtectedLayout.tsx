@@ -18,6 +18,7 @@ export function ProtectedLayout({
   const router = useRouter();
   const pathname = usePathname();
   const { user, isLoading, isAuthenticated } = useAuth();
+  const loginPath = pathname.startsWith('/admin') ? '/admin/login' : '/login';
 
   const isPublicRoute =
     publicRoutes.includes(pathname) ||
@@ -29,14 +30,14 @@ export function ProtectedLayout({
     }
 
     if (!isAuthenticated || !user) {
-      router.replace('/login');
+      router.replace(loginPath);
       return;
     }
 
     if (allowedRoles && !allowedRoles.includes(user.role)) {
       router.replace(user.role === 'Admin' ? '/admin/dashboard' : '/buat-laporan');
     }
-  }, [allowedRoles, isAuthenticated, isLoading, isPublicRoute, pathname, router, user]);
+  }, [allowedRoles, isAuthenticated, isLoading, isPublicRoute, loginPath, pathname, router, user]);
 
   if (isLoading) {
     return (
