@@ -56,7 +56,8 @@ export function middleware(request: NextRequest) {
 
   if (isProtectedRoute(pathname)) {
     if (!isAuthenticated) {
-      return NextResponse.redirect(new URL('/login', request.url));
+      const loginPath = pathname.startsWith('/admin') ? '/admin/login' : '/login';
+      return NextResponse.redirect(new URL(loginPath, request.url));
     }
 
     if (pathname.startsWith('/admin')) {
@@ -66,7 +67,7 @@ export function middleware(request: NextRequest) {
           return NextResponse.redirect(new URL('/buat-laporan', request.url));
         }
       } catch {
-        return NextResponse.redirect(new URL('/login', request.url));
+        return NextResponse.redirect(new URL('/admin/login', request.url));
       }
     }
 

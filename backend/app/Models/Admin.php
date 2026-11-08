@@ -24,6 +24,34 @@ class Admin extends Authenticatable
         'kepala_bagian_bps_4' => ['label' => 'Kepala Bagian BPS 4', 'role' => 'BPS'],
     ];
 
+    public const USERNAMES = [
+        'wakil_rektor_ii' => 'admin.wr2',
+        'kepala_blu' => 'kepala.blu',
+        'kepala_bps' => 'kepala.bps',
+        'kepala_bagian_blu_1' => 'blu.kampus1',
+        'kepala_bagian_blu_2' => 'blu.kampus2',
+        'kepala_bagian_blu_3' => 'blu.kampus3',
+        'kepala_bagian_blu_4' => 'blu.kampus4',
+        'kepala_bagian_bps_1' => 'bps.kampus1',
+        'kepala_bagian_bps_2' => 'bps.kampus2',
+        'kepala_bagian_bps_3' => 'bps.kampus3',
+        'kepala_bagian_bps_4' => 'bps.kampus4',
+    ];
+
+    public const LEGACY_USERNAMES = [
+        'wakil_rektor_ii' => 'admin.wakil_rektor_ii',
+        'kepala_blu' => 'blu.kampus1',
+        'kepala_bps' => 'bps.kampus1',
+        'kepala_bagian_blu_1' => 'blu.kampus2',
+        'kepala_bagian_blu_2' => 'blu.kampus3',
+        'kepala_bagian_blu_3' => 'blu.kampus4',
+        'kepala_bagian_blu_4' => 'blu.kampus5',
+        'kepala_bagian_bps_1' => 'bps.kampus2',
+        'kepala_bagian_bps_2' => 'bps.kampus3',
+        'kepala_bagian_bps_3' => 'bps.kampus4',
+        'kepala_bagian_bps_4' => 'bps.kampus5',
+    ];
+
     protected $table = 'admin';
 
     protected $primaryKey = 'admin_id';

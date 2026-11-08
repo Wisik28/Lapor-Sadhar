@@ -47,7 +47,10 @@ class AdminAuthTest extends TestCase
         $this->assertDatabaseCount('admin_sessions', 0);
 
         foreach (array_keys(Admin::POSITIONS) as $position) {
-            $this->assertDatabaseHas('admin', ['jabatan' => $position]);
+            $this->assertDatabaseHas('admin', [
+                'jabatan' => $position,
+                'username' => Admin::USERNAMES[$position],
+            ]);
         }
         $this->assertDatabaseHas('admin', ['jabatan' => 'kepala_blu', 'email' => 'laporsadhar01@gmail.com']);
         $this->assertDatabaseHas('admin', ['jabatan' => 'kepala_bps', 'email' => 'laporsadhar02@gmail.com']);
@@ -201,7 +204,7 @@ class AdminAuthTest extends TestCase
         $this->assertDatabaseCount('email_verification_codes', 0);
     }
 
-    public function test_seeder_remaps_legacy_admin_accounts_without_changing_their_passwords(): void
+    public function test_seeder_maps_legacy_admin_accounts_to_requested_usernames_without_changing_passwords(): void
     {
         foreach (['BLU', 'BPS'] as $role) {
             foreach (range(1, 5) as $number) {
@@ -218,10 +221,79 @@ class AdminAuthTest extends TestCase
         $this->app->make(AdminSeeder::class)->run();
 
         $this->assertDatabaseCount('admin', 11);
-        $admin = Admin::where('username', 'admin.kepala_bagian_blu_1')->firstOrFail();
+        $admin = Admin::where('username', 'blu.kampus1')->firstOrFail();
         $this->assertSame('kepala_bagian_blu_1', $admin->jabatan);
         $this->assertNull($admin->campus);
         $this->assertTrue(Hash::check('Legacy-pass-123', $admin->password));
+    }
+
+    public function test_legacy_admin_username_does_not_work_after_username_migration(): void
+    {
+        Admin::create([
+            'nama_admin' => 'Admin BLU Kampus I',
+            'username' => 'admin.kepala_blu',
+            'password' => Hash::make('Initial-pass-123'),
+            'role' => 'BLU',
+            'campus' => null,
+            'jabatan' => 'kepala_blu',
+        ]);
+
+        $this->postJson('/api/admin/login', [
+            'username' => 'blu.kampus1',
+            'password' => 'Initial-pass-123',
+            'jabatan' => 'kepala_blu',
+        ])->assertUnauthorized();
+    }
+
+    public function test_admin_login_requires_the_username_stored_for_the_selected_position(): void
+    {
+        Admin::create([
+            'nama_admin' => 'Admin BLU Kampus I',
+            'username' => 'blu.kampus1',
+            'password' => Hash::make('Initial-pass-123'),
+            'role' => 'BLU',
+            'campus' => null,
+            'jabatan' => 'kepala_blu',
+        ]);
+
+        $this->postJson('/api/admin/login', [
+            'username' => 'kepala.blu',
+            'password' => 'Initial-pass-123',
+            'jabatan' => 'kepala_blu',
+        ])->assertUnauthorized();
+    }
+
+    public function test_rotate_credentials_updates_all_eleven_accounts_and_revokes_sessions(): void
+    {
+        foreach (Admin::POSITIONS as $position => $definition) {
+            $admin = Admin::create([
+                'nama_admin' => $definition['label'],
+                'username' => 'old.'.$position,
+                'password' => Hash::make('Legacy-pass-123'),
+                'role' => $definition['role'],
+                'campus' => null,
+                'jabatan' => $position,
+            ]);
+
+            AdminSession::create([
+                'admin_id' => $admin->admin_id,
+                'token_hash' => hash('sha256', 'session-'.$position),
+                'expires_at' => now()->addHour(),
+            ]);
+        }
+
+        $this->artisan('admin:rotate-credentials', ['--yes' => true])
+            ->expectsOutputToContain('admin.wr2')
+            ->expectsOutputToContain('kepala.blu')
+            ->assertExitCode(0);
+
+        foreach (Admin::POSITIONS as $position => $definition) {
+            $admin = Admin::where('jabatan', $position)->firstOrFail();
+
+            $this->assertSame(Admin::USERNAMES[$position], $admin->username);
+            $this->assertFalse(Hash::check('Legacy-pass-123', $admin->password));
+            $this->assertSame(0, $admin->sessions()->count());
+        }
     }
 
     public function test_admin_password_can_be_changed_and_old_password_stops_working(): void

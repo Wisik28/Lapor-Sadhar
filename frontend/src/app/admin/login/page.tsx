@@ -6,11 +6,12 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, LockKeyhole, UserRound, ShieldCheck } from "lucide-react";
 import { authApi } from "@/lib/api";
-import { setAuthSession } from "@/lib/auth";
 import { adminPositions, AdminPosition } from "@/lib/admin-positions";
+import { useAuth } from "@/context/AuthContext";
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  const { refresh } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [jabatan, setJabatan] = useState<AdminPosition>("kepala_blu");
@@ -25,8 +26,7 @@ export default function AdminLoginPage() {
 
     const result = await authApi.adminLogin({ username: username.trim(), password, jabatan });
     if (result.status === "success" && result.user && result.token) {
-      // Ensure session is set via cookies
-      await setAuthSession(result.user, result.token, true);
+      refresh();
       router.replace("/admin/dashboard");
     } else {
       setError(result.message || "Username atau kata sandi tidak sesuai.");

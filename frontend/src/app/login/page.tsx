@@ -15,10 +15,11 @@ import {
   IdCard,
 } from "lucide-react";
 import { authApi } from "@/lib/api";
-import { setAuthSession } from "@/lib/auth";
+import { useAuth } from "@/context/AuthContext";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { refresh } = useAuth();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -47,7 +48,7 @@ export default function LoginPage() {
       });
 
       if (res.status === "success" && res.user && res.token) {
-        await setAuthSession(res.user, res.token, false);
+        refresh();
         setSuccessMessage(res.message || "Login berhasil! Sedang mengalihkan...");
 
         const targetRoute =
