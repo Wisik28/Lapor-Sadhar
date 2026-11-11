@@ -60,6 +60,10 @@ export default function AdminNavbar({
       href: "/admin/dashboard"
     },
     {
+      label: "Prioritas",
+      href: "/admin/prioritas"
+    },
+    {
       label: "Akun",
       href: "/admin/account"
     },
