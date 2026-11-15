@@ -29,8 +29,13 @@ class AdminAuthController extends Controller
         }
 
         $username = trim($request->username);
-        $admin = Admin::where('username', $username)
-            ->where('jabatan', $request->jabatan)
+
+        $admin = Admin::where('jabatan', $request->jabatan)
+            ->where(function ($query) use ($username) {
+                $query->where('username', $username)
+                    ->orWhereRaw('LOWER(username) = ?', [strtolower($username)])
+                    ->orWhereRaw('LOWER(email) = ?', [strtolower($username)]);
+            })
             ->first();
 
         if (

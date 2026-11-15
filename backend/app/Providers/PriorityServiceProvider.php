@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use App\Models\Laporan;
 use App\Observers\PriorityLaporanObserver;
+use App\Services\Priority\LocationCategorizer;
+use App\Services\Priority\LocationSeverityAssessor;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -17,6 +19,12 @@ class PriorityServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(
             base_path('config/priority.php'),
             'priority'
+        );
+
+        $this->app->singleton(LocationCategorizer::class, fn () => new LocationCategorizer());
+        $this->app->singleton(
+            LocationSeverityAssessor::class,
+            fn ($app) => new LocationSeverityAssessor($app->make(LocationCategorizer::class))
         );
     }
 

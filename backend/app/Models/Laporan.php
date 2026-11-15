@@ -21,7 +21,14 @@ class Laporan extends Model
         'foto',
         'tanggal_kejadian',
         'lokasi',
+        'kategori_lokasi',
+        'tingkat_keparahan',
+        'skala_keparahan',
         'tanggal_rubah',
+    ];
+
+    protected $casts = [
+        'skala_keparahan' => 'integer',
     ];
 
     public function pelapor()

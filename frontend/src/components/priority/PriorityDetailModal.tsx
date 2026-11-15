@@ -257,87 +257,99 @@ export function PriorityDetailModal({
             </div>
           )}
 
-          {/* Form Penetapan / Override oleh Admin */}
-          <div className="p-5 bg-white rounded-2xl border-2 border-[#8C1515]/20 shadow-xs space-y-4">
-            <div>
-              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                <span>Penetapan Tingkat Kerusakan oleh Admin</span>
-                <span className="text-[11px] font-medium text-gray-500">
-                  (Menggantikan usulan AI secara otomatis)
-                </span>
-              </h3>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Pilih tingkat kerusakan yang sesuai berdasarkan hasil verifikasi lapangan atau foto:
-              </p>
-            </div>
+          {/* Form Penetapan / Override oleh Admin (Hanya untuk Admin) */}
+          {typeof window !== "undefined" && localStorage.getItem("admin_token") ? (
+            <div className="p-5 bg-white rounded-2xl border-2 border-[#8C1515]/20 shadow-xs space-y-4">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <span>Penetapan Tingkat Kerusakan oleh Admin</span>
+                  <span className="text-[11px] font-medium text-gray-500">
+                    (Menggantikan usulan AI secara otomatis)
+                  </span>
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Pilih tingkat kerusakan yang sesuai berdasarkan hasil verifikasi lapangan atau foto:
+                </p>
+              </div>
 
-            {/* Opsi Radio Tingkat Kerusakan */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {[
-                {
-                  id: "berat",
-                  label: "Berat (100 Poin)",
-                  sub: "Bahaya keselamatan / henti operasional",
-                  border: "border-red-300",
-                  activeBg: "bg-red-50 border-red-500 ring-2 ring-red-500/20 text-red-900",
-                },
-                {
-                  id: "sedang",
-                  label: "Sedang (50 Poin)",
-                  sub: "Gangguan fungsi sebagian / kenyamanan",
-                  border: "border-amber-300",
-                  activeBg: "bg-amber-50 border-amber-500 ring-2 ring-amber-500/20 text-amber-900",
-                },
-                {
-                  id: "ringan",
-                  label: "Ringan (20 Poin)",
-                  sub: "Minor, tidak mengganggu fungsi utama",
-                  border: "border-blue-300",
-                  activeBg: "bg-blue-50 border-blue-500 ring-2 ring-blue-500/20 text-blue-900",
-                },
-              ].map((opt) => {
-                const isSelected = selectedSeverity === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setSelectedSeverity(opt.id as SeverityLevel)}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                      isSelected
-                        ? opt.activeBg
-                        : `bg-white hover:bg-gray-50 text-gray-700 border-gray-200`
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold">{opt.label}</span>
-                      <div
-                        className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                          isSelected ? "border-current" : "border-gray-300"
-                        }`}
-                      >
-                        {isSelected && <div className="w-2 h-2 rounded-full bg-current" />}
+              {/* Opsi Radio Tingkat Kerusakan */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  {
+                    id: "berat",
+                    label: "Berat (100 Poin)",
+                    sub: "Bahaya keselamatan / henti operasional",
+                    border: "border-red-300",
+                    activeBg: "bg-red-50 border-red-500 ring-2 ring-red-500/20 text-red-900",
+                  },
+                  {
+                    id: "sedang",
+                    label: "Sedang (50 Poin)",
+                    sub: "Gangguan fungsi sebagian / kenyamanan",
+                    border: "border-amber-300",
+                    activeBg: "bg-amber-50 border-amber-500 ring-2 ring-amber-500/20 text-amber-900",
+                  },
+                  {
+                    id: "ringan",
+                    label: "Ringan (20 Poin)",
+                    sub: "Minor, tidak mengganggu fungsi utama",
+                    border: "border-blue-300",
+                    activeBg: "bg-blue-50 border-blue-500 ring-2 ring-blue-500/20 text-blue-900",
+                  },
+                ].map((opt) => {
+                  const isSelected = selectedSeverity === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setSelectedSeverity(opt.id as SeverityLevel)}
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                        isSelected
+                          ? opt.activeBg
+                          : `bg-white hover:bg-gray-50 text-gray-700 border-gray-200`
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold">{opt.label}</span>
+                        <div
+                          className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                            isSelected ? "border-current" : "border-gray-300"
+                          }`}
+                        >
+                          {isSelected && <div className="w-2 h-2 rounded-full bg-current" />}
+                        </div>
                       </div>
-                    </div>
-                    <p className="text-[11px] text-gray-500 mt-1 leading-snug">{opt.sub}</p>
-                  </button>
-                );
-              })}
-            </div>
+                      <p className="text-[11px] text-gray-500 mt-1 leading-snug">{opt.sub}</p>
+                    </button>
+                  );
+                })}
+              </div>
 
-            {/* Catatan Admin */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-700">
-                Catatan Verifikasi / Alasan Penetapan Admin (Opsional):
-              </label>
-              <textarea
-                value={adminNotes}
-                onChange={(e) => setAdminNotes(e.target.value)}
-                placeholder="Contoh: Sudah dicek petugas lapangan, plafon memang rawan runtuh sehingga diprioritaskan darurat..."
-                rows={2}
-                className="w-full text-xs p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#8C1515] focus:border-[#8C1515] transition-all bg-gray-50 focus:bg-white"
-              />
+              {/* Catatan Admin */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-700">
+                  Catatan Verifikasi / Alasan Penetapan Admin (Opsional):
+                </label>
+                <textarea
+                  value={adminNotes}
+                  onChange={(e) => setAdminNotes(e.target.value)}
+                  placeholder="Contoh: Sudah dicek petugas lapangan, plafon memang rawan runtuh sehingga diprioritaskan darurat..."
+                  rows={2}
+                  className="w-full text-xs p-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#8C1515] focus:border-[#8C1515] transition-all bg-gray-50 focus:bg-white"
+                />
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200/80 flex items-start gap-3 text-xs text-amber-800">
+              <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-amber-900">Informasi Penanganan Laporan</p>
+                <p className="mt-0.5 text-amber-700 leading-relaxed">
+                  Skor dan tingkat prioritas dihitung secara otomatis untuk memandu antrean penanganan oleh pengelola sarana dan prasarana (BLU / BPS). Penetapan prioritas final dan perubahan status dikelola langsung oleh tim admin.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Riwayat Koreksi Sebelumnya */}
           {detailData?.feedback && detailData.feedback.length > 0 && (
@@ -381,24 +393,26 @@ export function PriorityDetailModal({
           >
             Tutup
           </button>
-          <button
-            type="button"
-            onClick={handleSaveSeverity}
-            disabled={isSaving}
-            className="px-5 py-2.5 rounded-xl bg-[#8C1515] hover:bg-[#701010] text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
-          >
-            {isSaving ? (
-              <>
-                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>Menyimpan...</span>
-              </>
-            ) : (
-              <>
-                <Send className="w-3.5 h-3.5" />
-                <span>Simpan Penetapan Prioritas</span>
-              </>
-            )}
-          </button>
+          {typeof window !== "undefined" && localStorage.getItem("admin_token") && (
+            <button
+              type="button"
+              onClick={handleSaveSeverity}
+              disabled={isSaving}
+              className="px-5 py-2.5 rounded-xl bg-[#8C1515] hover:bg-[#701010] text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              {isSaving ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Simpan Penetapan Prioritas</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>

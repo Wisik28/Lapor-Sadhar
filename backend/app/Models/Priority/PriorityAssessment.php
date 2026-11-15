@@ -18,6 +18,9 @@ class PriorityAssessment extends Model
     protected $fillable = [
         'id_laporan',
         'kategori',
+        'kategori_lokasi',
+        'tingkat_keparahan_lokasi',
+        'skala_keparahan_lokasi',
         'severity_level',
         'severity_source',
         'ai_suggested_severity',
@@ -35,13 +38,14 @@ class PriorityAssessment extends Model
     ];
 
     protected $casts = [
-        'priority_score' => 'integer',
-        'confidence'     => 'float',
-        'dimensions'     => 'array',
-        'safety_flags'   => 'array',
-        'reasons'        => 'array',
-        'needs_review'   => 'boolean',
-        'reviewed_at'    => 'datetime',
+        'skala_keparahan_lokasi' => 'integer',
+        'priority_score'         => 'integer',
+        'confidence'             => 'float',
+        'dimensions'             => 'array',
+        'safety_flags'           => 'array',
+        'reasons'                => 'array',
+        'needs_review'           => 'boolean',
+        'reviewed_at'            => 'datetime',
     ];
 
     public function laporan(): BelongsTo

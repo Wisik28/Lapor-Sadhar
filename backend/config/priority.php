@@ -66,7 +66,72 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Bobot Lokasi Strategis
+    | Kategori Lokasi, Tingkat Keparahan Awal (Skala 1-4), dan Bobot Prioritas
+    |--------------------------------------------------------------------------
+    | Skala Keparahan:
+    | - Rendah (1)
+    | - Sedang (2)
+    | - Tinggi (3)
+    | - Sangat Tinggi (4)
+    */
+    'location_severity_scale' => [
+        'Rendah'        => 1,
+        'Sedang'        => 2,
+        'Tinggi'        => 3,
+        'Sangat Tinggi' => 4,
+    ],
+
+    'location_categories' => [
+        'Laboratorium Praktik' => [
+            'severity_label'  => 'Sangat Tinggi',
+            'severity_score'  => 4,
+            'location_weight' => 1.00,
+        ],
+        'Ruang Kelas' => [
+            'severity_label'  => 'Tinggi',
+            'severity_score'  => 3,
+            'location_weight' => 0.90,
+        ],
+        'Toilet' => [
+            'severity_label'  => 'Tinggi',
+            'severity_score'  => 3,
+            'location_weight' => 0.80,
+        ],
+        'Parkiran' => [
+            'severity_label'  => 'Tinggi',
+            'severity_score'  => 3,
+            'location_weight' => 0.75,
+        ],
+        'Ruang Dosen' => [
+            'severity_label'  => 'Sedang',
+            'severity_score'  => 2,
+            'location_weight' => 0.60,
+        ],
+        'Perpustakaan' => [
+            'severity_label'  => 'Sedang',
+            'severity_score'  => 2,
+            'location_weight' => 0.60,
+        ],
+        'Lapangan' => [
+            'severity_label'  => 'Sedang',
+            'severity_score'  => 2,
+            'location_weight' => 0.50,
+        ],
+        'Ruang Terbuka' => [
+            'severity_label'  => 'Rendah',
+            'severity_score'  => 1,
+            'location_weight' => 0.25,
+        ],
+        'Tidak Diketahui' => [
+            'severity_label'  => 'Sedang',
+            'severity_score'  => 2,
+            'location_weight' => 0.50,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Bobot Lokasi Strategis (Legacy Mapping)
     |--------------------------------------------------------------------------
     */
     'location_weights' => [
@@ -75,13 +140,13 @@ return [
         'ruang_kuliah'   => 0.9,
         'kelas'          => 0.9,
         'toilet'         => 0.8,
-        'perpustakaan'   => 0.8,
+        'perpustakaan'   => 0.6,
         'kantin'         => 0.8,
         'kantor'         => 0.6,
-        'koridor'        => 0.6,
-        'parkir'         => 0.4,
-        'area_luar'      => 0.3,
-        'default'        => 0.4,
+        'koridor'        => 0.25,
+        'parkir'         => 0.75,
+        'area_luar'      => 0.25,
+        'default'        => 0.5,
     ],
 
     /*
