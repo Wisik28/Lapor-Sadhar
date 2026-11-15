@@ -5,7 +5,7 @@ import AdminNavbar from "@/components/AdminNavbar";
 import { authApi, adminLaporanApi } from "@/lib/api";
 import {
   Send, Search, X, CheckCircle2, Settings, Flag,
-  RefreshCw, AlertCircle, ChevronRight,
+  RefreshCw, AlertCircle,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -407,30 +407,28 @@ export default function AdminRekapPage() {
   const [selectedYear, setSelectedYear]   = useState("2026");
   const [rekapData, setRekapData]         = useState<RekapData | null>(null);
   const [laporanTerbaru, setLaporanTerbaru] = useState<LaporanItem[]>([]);
-  const [loading, setLoading]             = useState(true);
-  const [error, setError]                 = useState<string | null>(null);
-  const [adminUser, setAdminUser]         = useState({ nama: "Admin", role: "Admin Pengelola Sarpras" });
-
-  useEffect(() => {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [adminUser] = useState(() => {
     const user = authApi.getCurrentUser();
     if (user && (user.role === "Admin" || user.admin_id)) {
-      setAdminUser({ nama: user.nama, role: user.jabatan_label || user.role_detail || "Admin Pengelola Sarpras" });
+      return { nama: user.nama, role: user.jabatan_label || user.role_detail || "Admin Pengelola Sarpras" };
     }
-  }, []);
+    return { nama: "Admin", role: "Admin Pengelola Sarpras" };
+  });
 
   const fetchRekap = useCallback(async () => {
-    setLoading(true); setError(null);
+    setLoading(true);
+    setError(null);
     try {
-      let params: { bulan?: string; tahun?: string } = {};
+      const params: { bulan?: string; tahun?: string } = {};
       if (selectedMonth !== "Semua" && selectedYear !== "Semua") params.bulan = `${selectedYear}-${selectedMonth}`;
       else if (selectedYear !== "Semua") params.tahun = selectedYear;
       const data = await adminLaporanApi.getRekap(Object.keys(params).length > 0 ? params : undefined);
       setRekapData(data);
 
-      // Fetch laporan terbaru (hanya sekali, atau setiap refresh)
       try {
         const all: LaporanItem[] = await adminLaporanApi.getAll();
-        // Sort by tanggal_buat descending, ambil 5 terakhir
         const sorted = [...all].sort((a, b) =>
           new Date(b.tanggal_buat).getTime() - new Date(a.tanggal_buat).getTime()
         );
@@ -440,10 +438,44 @@ export default function AdminRekapPage() {
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Gagal memuat data rekap.");
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, [selectedMonth, selectedYear]);
 
-  useEffect(() => { fetchRekap(); }, [fetchRekap]);
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      try {
+        const params: { bulan?: string; tahun?: string } = {};
+        if (selectedMonth !== "Semua" && selectedYear !== "Semua") params.bulan = `${selectedYear}-${selectedMonth}`;
+        else if (selectedYear !== "Semua") params.tahun = selectedYear;
+        const data = await adminLaporanApi.getRekap(Object.keys(params).length > 0 ? params : undefined);
+        if (!active) return;
+        setRekapData(data);
+
+        try {
+          const all: LaporanItem[] = await adminLaporanApi.getAll();
+          if (!active) return;
+          const sorted = [...all].sort((a, b) =>
+            new Date(b.tanggal_buat).getTime() - new Date(a.tanggal_buat).getTime()
+          );
+          setLaporanTerbaru(sorted.slice(0, 5));
+        } catch {
+          // optional
+        }
+      } catch (err: unknown) {
+        if (active) setError(err instanceof Error ? err.message : "Gagal memuat data rekap.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [selectedMonth, selectedYear]);
 
   const monthNames: Record<string, string> = {
     Semua: "Semua Bulan", "01": "Januari", "02": "Februari", "03": "Maret", "04": "April",
@@ -529,21 +561,21 @@ export default function AdminRekapPage() {
   const categoryTotal = d ? (d.per_kategori.Fasilitas + d.per_kategori.Kebersihan) || 1 : 1;
 
   return (
-    <div className="min-h-screen w-full bg-[#F5F5F5] flex flex-col font-sans antialiased">
+    <div className="min-h-screen w-full bg-[#F8F9FA] flex flex-col font-sans text-slate-800 antialiased">
       <AdminNavbar
         adminName={adminUser.nama} adminRole={adminUser.role}
         selectedMonth={selectedMonth} selectedYear={selectedYear}
         onMonthChange={setSelectedMonth} onYearChange={setSelectedYear}
       />
 
-      <main className="flex-1 w-full max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4">
 
         {/* Period header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-gray-700">{periodLabel}</span>
             <button onClick={fetchRekap} disabled={loading}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#8C1515] hover:bg-red-50 transition-colors">
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#7A0C0C] hover:bg-red-50 transition-colors">
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
             </button>
           </div>
@@ -552,7 +584,7 @@ export default function AdminRekapPage() {
         {/* Loading / Error */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4">
-            <div className="w-12 h-12 border-4 border-[#8C1515]/20 border-t-[#8C1515] rounded-full animate-spin" />
+            <div className="w-12 h-12 border-4 border-[#7A0C0C]/20 border-t-[#7A0C0C] rounded-full animate-spin" />
             <p className="text-sm text-gray-500">Memuat data rekap...</p>
           </div>
         ) : error ? (
@@ -562,7 +594,7 @@ export default function AdminRekapPage() {
             </div>
             <h3 className="text-base font-bold text-gray-800">Gagal Memuat Data</h3>
             <p className="text-sm text-gray-500 text-center max-w-sm">{error}</p>
-            <button onClick={fetchRekap} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#8C1515] text-white text-sm font-semibold">
+            <button onClick={fetchRekap} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#7A0C0C] text-white text-sm font-semibold">
               <RefreshCw className="w-4 h-4" /> Coba Lagi
             </button>
           </div>
@@ -572,7 +604,7 @@ export default function AdminRekapPage() {
             <section className="grid grid-cols-3 gap-3">
               {statusCards.map((card) => (
                 <div key={card.label}
-                  className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 flex flex-col gap-2 overflow-hidden"
+                  className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs hover:shadow-sm transition-all duration-300 hover:-translate-y-0.5 flex flex-col gap-2 overflow-hidden"
                   style={{ borderLeft: `3px solid ${card.accentColor}` }}>
                   <div className="p-3.5 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
@@ -600,7 +632,7 @@ export default function AdminRekapPage() {
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
               {/* Tren Laporan per Bulan */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-300 p-5">
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs hover:shadow-sm transition-all duration-300 p-5">
                 <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
                   <div>
                     <h2 className="text-sm font-bold text-gray-900">Tren Laporan per Bulan</h2>
@@ -612,7 +644,7 @@ export default function AdminRekapPage() {
               </div>
 
               {/* Donut — Laporan Berdasarkan Status */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-300 p-5">
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs hover:shadow-sm transition-all duration-300 p-5">
                 <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
                   <div>
                     <h2 className="text-sm font-bold text-gray-900">Laporan Berdasarkan Status</h2>
@@ -648,7 +680,7 @@ export default function AdminRekapPage() {
               </div>
 
               {/* Kategori Laporan */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-300 p-5">
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs hover:shadow-sm transition-all duration-300 p-5">
                 <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
                   <div>
                     <h2 className="text-sm font-bold text-gray-900">Laporan per Kategori</h2>
@@ -688,7 +720,7 @@ export default function AdminRekapPage() {
             <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
               {/* Laporan Berdasarkan Lokasi Top 5 */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-300 p-5">
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs hover:shadow-sm transition-all duration-300 p-5">
                 <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
                   <div>
                     <h2 className="text-sm font-bold text-gray-900">Laporan per Lokasi</h2>
@@ -737,13 +769,13 @@ export default function AdminRekapPage() {
                     </tbody>
                   </table>
                 </div>
-                <button className="mt-4 w-full py-2 text-center text-[11px] font-bold text-[#8C1515] bg-red-50 hover:bg-red-100 border border-red-100 rounded-xl transition-colors">
+                <button className="mt-4 w-full py-2 text-center text-[11px] font-bold text-[#7A0C0C] bg-red-50 hover:bg-red-100 border border-red-100 rounded-xl transition-colors">
                   Lihat Selengkapnya
                 </button>
               </div>
 
               {/* Laporan Terbaru */}
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all duration-300 p-5">
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs hover:shadow-sm transition-all duration-300 p-5">
                 <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
                   <div>
                     <h2 className="text-sm font-bold text-gray-900">Laporan Terbaru</h2>
@@ -757,7 +789,7 @@ export default function AdminRekapPage() {
                   ) : laporanTerbaru.map((lap, i) => (
                     <div key={lap.id_laporan}
                       className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-gray-50 transition-colors group cursor-pointer"
-                      style={{ borderLeft: i === 0 ? "2px solid #8C1515" : "2px solid transparent" }}>
+                      style={{ borderLeft: i === 0 ? "2px solid #7A0C0C" : "2px solid transparent" }}>
                       <KategoriIcon kategori={lap.kategori_laporan} />
                       <div className="flex-1 min-w-0">
                         <p className="text-[11px] font-semibold text-gray-800 truncate group-hover:text-gray-900">{lap.deskripsi}</p>
@@ -770,7 +802,7 @@ export default function AdminRekapPage() {
                     </div>
                   ))}
                 </div>
-                <button className="mt-4 w-full py-2 text-center text-[11px] font-bold text-[#8C1515] bg-red-50 hover:bg-red-100 border border-red-100 rounded-xl transition-colors">
+                <button className="mt-4 w-full py-2 text-center text-[11px] font-bold text-[#7A0C0C] bg-red-50 hover:bg-red-100 border border-red-100 rounded-xl transition-colors">
                   Lihat Selengkapnya
                 </button>
               </div>

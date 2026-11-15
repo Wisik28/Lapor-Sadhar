@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import AdminNavbar from "@/components/AdminNavbar";
-import { authApi } from "@/lib/api";
 import { useAdminProtection } from "@/lib/useAuth";
 import {
   Inbox,
@@ -11,17 +10,11 @@ import {
   CheckCircle2,
   AlertCircle,
   Search,
-  Filter,
-  RotateCcw,
   MapPin,
   Calendar,
-  User,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
-  ChevronDown,
-  ArrowUpDown,
-  Building,
   Image as ImageIcon,
   X
 } from "lucide-react";
@@ -195,7 +188,6 @@ export default function AdminDashboardPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterLokasi, setFilterLokasi] = useState("Semua");
   const [filterStatus, setFilterStatus] = useState("Semua");
-  const [filterPrioritas, setFilterPrioritas] = useState("Semua");
 
   // State Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -205,19 +197,12 @@ export default function AdminDashboardPage() {
   const [selectedReport, setSelectedReport] = useState<ReportItem | null>(null);
 
   // Authenticated Admin User
-  const [adminUser, setAdminUser] = useState({
-    nama: "Bapak Hendro",
-    role: "Admin Pengelola Sarpras",
-  });
-
-  useEffect(() => {
-    if (!authLoading && authUser) {
-      setAdminUser({
-        nama: authUser.nama,
-        role: authUser.jabatan_label || authUser.role_detail || "Admin Pengelola Sarpras",
-      });
-    }
-  }, [authLoading, authUser]);
+  const adminUser = useMemo(() => {
+    return {
+      nama: authUser?.nama || "Admin",
+      role: authUser?.jabatan_label || authUser?.role_detail || "Admin Pengelola Sarpras",
+    };
+  }, [authUser]);
 
   // Filter Data Laporan Sesuai Periode Bulan & Tahun serta Filter Tabel
   const filteredReports = useMemo(() => {
@@ -246,17 +231,12 @@ export default function AdminDashboardPage() {
       const matchesStatus =
         filterStatus === "Semua" || item.status === filterStatus;
 
-      // 5. Filter Prioritas
-      const matchesPrioritas =
-        filterPrioritas === "Semua" || item.prioritas === filterPrioritas;
-
       return (
         matchesMonth &&
         matchesYear &&
         matchesSearch &&
         matchesLokasi &&
-        matchesStatus &&
-        matchesPrioritas
+        matchesStatus
       );
     });
   }, [
@@ -264,8 +244,7 @@ export default function AdminDashboardPage() {
     selectedYear,
     searchTerm,
     filterLokasi,
-    filterStatus,
-    filterPrioritas
+    filterStatus
   ]);
 
   // Laporan pada periode terpilih (untuk menghitung metrik KPI periode tersebut)
@@ -293,7 +272,6 @@ export default function AdminDashboardPage() {
     setSearchTerm("");
     setFilterLokasi("Semua");
     setFilterStatus("Semua");
-    setFilterPrioritas("Semua");
     setCurrentPage(1);
   };
 
@@ -369,30 +347,6 @@ export default function AdminDashboardPage() {
     }
   };
 
-  // Helper Badge Prioritas
-  const getPriorityBadge = (prioritas: ReportItem["prioritas"]) => {
-    switch (prioritas) {
-      case "Tinggi":
-        return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-red-100/70 text-red-700">
-            Prioritas Tinggi
-          </span>
-        );
-      case "Sedang":
-        return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-amber-100/70 text-amber-800">
-            Prioritas Sedang
-          </span>
-        );
-      case "Rendah":
-        return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-600">
-            Prioritas Rendah
-          </span>
-        );
-    }
-  };
-
   return (
     <>
       {/* Auth Loading State */}
@@ -406,7 +360,7 @@ export default function AdminDashboardPage() {
       )}
 
       {!authLoading && (
-        <div className="min-h-screen w-full bg-[#F9FAFB] text-gray-900 flex flex-col font-sans antialiased">
+        <div className="min-h-screen w-full bg-[#F8F9FA] text-slate-800 flex flex-col font-sans antialiased">
       {/* ------------------------------------------------------------- */}
       {/* 1. TOP NAVBAR ADMIN (Sesuai DESIGN.md & Permintaan User) */}
       {/* ------------------------------------------------------------- */}
@@ -433,9 +387,9 @@ export default function AdminDashboardPage() {
       {/* ------------------------------------------------------------- */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
         {/* Keterangan Periode Aktif */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-white px-4 py-3 rounded-2xl border border-gray-200/80 shadow-2xs">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-white px-4 py-3 rounded-2xl border border-slate-200/80 shadow-2xs">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#8C1515]" />
+            <span className="w-2.5 h-2.5 rounded-full bg-[#7A0C0C]" />
             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Periode Data Aktif:
             </span>
@@ -453,7 +407,7 @@ export default function AdminDashboardPage() {
         {/* ------------------------------------------------------------- */}
         <section aria-label="Kartu Ringkasan KPI" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-3.5">
           {/* Card 1: TOTAL LAPORAN PERIODE */}
-          <div className="col-span-2 sm:col-span-1 bg-white rounded-2xl p-4 border border-gray-200/90 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
+          <div className="col-span-2 sm:col-span-1 bg-white rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:shadow-xs transition-shadow relative overflow-hidden group">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
@@ -476,7 +430,7 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Card 2: Terkirim */}
-          <div className="bg-white rounded-2xl p-4 border border-blue-100 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
+          <div className="bg-white rounded-2xl p-4 border border-blue-100 shadow-2xs hover:shadow-xs transition-shadow relative overflow-hidden group">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">
@@ -499,7 +453,7 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Card 3: Diverifikasi */}
-          <div className="bg-white rounded-2xl p-4 border border-indigo-100 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
+          <div className="bg-white rounded-2xl p-4 border border-indigo-100 shadow-2xs hover:shadow-xs transition-shadow relative overflow-hidden group">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider">
@@ -522,7 +476,7 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Card 4: Diproses */}
-          <div className="bg-white rounded-2xl p-4 border border-amber-100 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
+          <div className="bg-white rounded-2xl p-4 border border-amber-100 shadow-2xs hover:shadow-xs transition-shadow relative overflow-hidden group">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-[11px] font-bold text-amber-600 uppercase tracking-wider">
@@ -545,7 +499,7 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Card 5: Ditolak */}
-          <div className="bg-white rounded-2xl p-4 border border-red-100 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
+          <div className="bg-white rounded-2xl p-4 border border-red-100 shadow-2xs hover:shadow-xs transition-shadow relative overflow-hidden group">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-[11px] font-bold text-red-600 uppercase tracking-wider">
@@ -568,7 +522,7 @@ export default function AdminDashboardPage() {
           </div>
 
           {/* Card 6: Selesai */}
-          <div className="bg-white rounded-2xl p-4 border border-emerald-100 shadow-xs hover:shadow-md transition-shadow relative overflow-hidden group">
+          <div className="bg-white rounded-2xl p-4 border border-emerald-100 shadow-2xs hover:shadow-xs transition-shadow relative overflow-hidden group">
             <div className="flex items-start justify-between">
               <div>
                 <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">
@@ -612,7 +566,7 @@ export default function AdminDashboardPage() {
                   setCurrentPage(1);
                 }}
                 placeholder="Cari ID tiket, nama pelapor, NIM, fasilitas, atau ruangan..."
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50/50 text-sm text-gray-800 placeholder:text-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#8C1515] focus:border-[#8C1515] transition-all min-h-[44px]"
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50/50 text-sm text-gray-800 placeholder:text-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] transition-all min-h-[44px]"
               />
               {searchTerm && (
                 <button
@@ -628,7 +582,7 @@ export default function AdminDashboardPage() {
             {/* Filter Dropdowns & Reset */}
             <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5">
               {/* Filter Lokasi Kampus */}
-              {/* <div className="w-full sm:w-auto">
+              <div className="w-full sm:w-auto">
                 <select
                   value={filterLokasi}
                   onChange={(e) => {
@@ -636,14 +590,14 @@ export default function AdminDashboardPage() {
                     setCurrentPage(1);
                   }}
                   aria-label="Filter berdasarkan lokasi kampus"
-                  className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#8C1515] transition-colors"
+                  className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
                 >
-                  <option value="Semua">Semua Kampus</option>
+                  <option value="Semua">Semua Lokasi</option>
                   <option value="Kampus I Mrican">Kampus I Mrican</option>
                   <option value="Kampus II Mrican">Kampus II Mrican</option>
                   <option value="Kampus III Paingan">Kampus III Paingan</option>
                 </select>
-              </div> */}
+              </div>
 
               {/* Filter Status Laporan */}
               <div className="w-full sm:w-auto">
@@ -654,7 +608,7 @@ export default function AdminDashboardPage() {
                     setCurrentPage(1);
                   }}
                   aria-label="Filter berdasarkan status laporan"
-                  className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#8C1515] transition-colors"
+                  className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
                 >
                   <option value="Semua">Semua Status</option>
                   <option value="Terkirim">Terkirim</option>
@@ -665,47 +619,27 @@ export default function AdminDashboardPage() {
                 </select>
               </div>
 
-              {/* Filter Tingkat Prioritas */}
-              <div className="w-full sm:w-auto">
-                <select
-                  value={filterPrioritas}
-                  onChange={(e) => {
-                    setFilterPrioritas(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  aria-label="Filter berdasarkan prioritas"
-                  className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#8C1515] transition-colors"
-                >
-                  <option value="Semua">Semua Prioritas</option>
-                  <option value="Tinggi">Tinggi</option>
-                  <option value="Sedang">Sedang</option>
-                  <option value="Rendah">Rendah</option>
-                </select>
-              </div>
-
               {/* Tombol Reset Filter */}
-              {/* <button
+              <button
                 type="button"
                 onClick={handleResetFilter}
-                className="w-full sm:w-auto min-h-[44px] inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 text-xs sm:text-sm font-semibold transition-colors active:scale-98"
+                className="text-xs sm:text-sm font-semibold text-slate-500 hover:text-slate-900 px-3 py-2 transition-colors cursor-pointer"
                 title="Reset seluruh filter"
               >
-                <RotateCcw className="w-3.5 h-3.5 text-gray-500" />
-                <span>Reset</span>
-              </button> */}
+                Reset
+              </button>
             </div>
           </div>
 
           {/* Status Aktif Filter Info */}
           {(searchTerm !== "" ||
             filterLokasi !== "Semua" ||
-            filterStatus !== "Semua" ||
-            filterPrioritas !== "Semua") && (
+            filterStatus !== "Semua") && (
             <div className="pt-2 border-t border-gray-100 flex flex-wrap items-center gap-2 text-xs text-gray-500">
               <span className="font-medium text-gray-700">Filter aktif:</span>
               {searchTerm && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-800">
-                  Pencarian: "{searchTerm}"
+                  Pencarian: &quot;{searchTerm}&quot;
                   <button
                     onClick={() => setSearchTerm("")}
                     className="hover:text-red-600"
@@ -736,17 +670,6 @@ export default function AdminDashboardPage() {
                   </button>
                 </span>
               )}
-              {filterPrioritas !== "Semua" && (
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-800">
-                  Prioritas: {filterPrioritas}
-                  <button
-                    onClick={() => setFilterPrioritas("Semua")}
-                    className="hover:text-red-600"
-                  >
-                    ×
-                  </button>
-                </span>
-              )}
               <span className="text-gray-400">
                 (Ditemukan {filteredReports.length} laporan)
               </span>
@@ -768,7 +691,7 @@ export default function AdminDashboardPage() {
                 Daftar Seluruh Laporan Civitas Kampus
               </h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Urutan laporan berdasarkan prioritas kebutuhan penanganan darurat & tanggal masuk.
+                Urutan laporan berdasarkan tanggal masuk dan status penanganan terkini.
               </p>
             </div>
             <div className="text-xs text-gray-500 font-medium">
@@ -803,7 +726,7 @@ export default function AdminDashboardPage() {
               <button
                 type="button"
                 onClick={handleResetFilter}
-                className="mt-2 px-4 py-2 rounded-xl text-xs font-semibold text-[#8C1515] bg-[#8C1515]/10 hover:bg-[#8C1515]/20 transition-colors"
+                className="mt-2 px-4 py-2 rounded-xl text-xs font-semibold text-[#7A0C0C] bg-[#7A0C0C]/10 hover:bg-[#7A0C0C]/20 transition-colors"
               >
                 Reset Semua Filter
               </button>
@@ -825,7 +748,7 @@ export default function AdminDashboardPage() {
                         Lokasi & Fasilitas
                       </th>
                       <th scope="col" className="px-5 py-3.5">
-                        Status & Prioritas
+                        Status
                       </th>
                       <th scope="col" className="px-5 py-3.5 text-right">
                         Aksi
@@ -840,7 +763,7 @@ export default function AdminDashboardPage() {
                       >
                         {/* Kolom Tiket & Tanggal */}
                         <td className="px-5 py-4 align-top">
-                          <span className="font-mono font-bold text-xs text-[#8C1515] block group-hover:underline">
+                          <span className="font-mono font-bold text-xs text-[#7A0C0C] block group-hover:underline">
                             {report.id}
                           </span>
                           <span className="text-xs text-gray-500 flex items-center gap-1.5 mt-1">
@@ -874,7 +797,7 @@ export default function AdminDashboardPage() {
                             )}
                           </div>
                           <div className="text-xs text-gray-600 flex items-start gap-1 mt-1 leading-relaxed">
-                            <MapPin className="w-3.5 h-3.5 text-[#8C1515] shrink-0 mt-0.5" />
+                            <MapPin className="w-3.5 h-3.5 text-[#7A0C0C] shrink-0 mt-0.5" />
                             <span>{report.lokasi}</span>
                           </div>
                           <span className="text-[11px] font-medium text-gray-500 mt-1 block">
@@ -882,10 +805,9 @@ export default function AdminDashboardPage() {
                           </span>
                         </td>
 
-                        {/* Kolom Status & Prioritas */}
-                        <td className="px-5 py-4 align-top space-y-1.5">
-                          <div>{getStatusBadge(report.status)}</div>
-                          <div>{getPriorityBadge(report.prioritas)}</div>
+                        {/* Kolom Status */}
+                        <td className="px-5 py-4 align-top">
+                          {getStatusBadge(report.status)}
                         </td>
 
                         {/* Kolom Aksi */}
@@ -893,7 +815,7 @@ export default function AdminDashboardPage() {
                           <button
                             type="button"
                             onClick={() => setSelectedReport(report)}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-[#8C1515] bg-[#8C1515]/10 hover:bg-[#8C1515] hover:text-white transition-all shadow-2xs active:scale-95"
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-[#7A0C0C] bg-[#7A0C0C]/10 hover:bg-[#7A0C0C] hover:text-white transition-all shadow-2xs active:scale-95"
                           >
                             <span>Detail</span>
                             <ExternalLink className="w-3 h-3" />
@@ -915,7 +837,7 @@ export default function AdminDashboardPage() {
                     {/* Header Card: Tiket & Status */}
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <span className="font-mono text-xs font-bold text-[#8C1515]">
+                        <span className="font-mono text-xs font-bold text-[#7A0C0C]">
                           {report.id}
                         </span>
                         <p className="text-[11px] text-gray-500 flex items-center gap-1 mt-0.5">
@@ -930,12 +852,9 @@ export default function AdminDashboardPage() {
 
                     {/* Informasi Fasilitas & Kerusakan */}
                     <div>
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-bold text-gray-900">
-                          {report.fasilitas}
-                        </h3>
-                        {getPriorityBadge(report.prioritas)}
-                      </div>
+                      <h3 className="text-sm font-bold text-gray-900">
+                        {report.fasilitas}
+                      </h3>
                       <p className="text-xs text-gray-600 line-clamp-2 mt-1 leading-relaxed">
                         {report.deskripsi}
                       </p>
@@ -943,7 +862,7 @@ export default function AdminDashboardPage() {
 
                     {/* Lokasi Kejadian */}
                     <div className="text-xs text-gray-600 flex items-start gap-1.5 bg-gray-50 p-2.5 rounded-xl">
-                      <MapPin className="w-4 h-4 text-[#8C1515] shrink-0 mt-0.5" />
+                      <MapPin className="w-4 h-4 text-[#7A0C0C] shrink-0 mt-0.5" />
                       <div>
                         <p className="font-medium text-gray-800">
                           {report.lokasi}
@@ -965,7 +884,7 @@ export default function AdminDashboardPage() {
                       <button
                         type="button"
                         onClick={() => setSelectedReport(report)}
-                        className="min-h-[44px] min-w-[88px] inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#8C1515] hover:bg-[#6e1010] active:scale-98 transition-colors shadow-xs"
+                        className="min-h-[44px] min-w-[88px] inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#7A0C0C] hover:bg-[#6e1010] active:scale-98 transition-colors shadow-xs"
                       >
                         <span>Detail</span>
                         <ExternalLink className="w-3.5 h-3.5" />
@@ -1009,7 +928,7 @@ export default function AdminDashboardPage() {
                       onClick={() => setCurrentPage(pageNum)}
                       className={`min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-xs font-bold transition-all ${
                         currentPage === pageNum
-                          ? "bg-[#8C1515] text-white shadow-xs"
+                          ? "bg-[#7A0C0C] text-white shadow-xs"
                           : "bg-white border border-gray-200 text-gray-700 hover:bg-gray-100"
                       }`}
                     >
@@ -1046,7 +965,7 @@ export default function AdminDashboardPage() {
             {/* Header Modal */}
             <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-[#8C1515]/10 text-[#8C1515] flex items-center justify-center font-bold">
+                <div className="w-10 h-10 rounded-xl bg-[#7A0C0C]/10 text-[#7A0C0C] flex items-center justify-center font-bold">
                   <Inbox className="w-5 h-5" />
                 </div>
                 <div>
@@ -1054,7 +973,7 @@ export default function AdminDashboardPage() {
                     <h3 className="text-base font-bold text-gray-900">
                       Rincian Tiket Laporan
                     </h3>
-                    <span className="font-mono text-xs font-bold text-[#8C1515]">
+                    <span className="font-mono text-xs font-bold text-[#7A0C0C]">
                       {selectedReport.id}
                     </span>
                   </div>
@@ -1076,16 +995,10 @@ export default function AdminDashboardPage() {
 
             {/* Konten Modal Scrollable */}
             <div className="p-5 sm:p-6 space-y-5 overflow-y-auto flex-1 text-sm">
-              {/* Status & Prioritas Banner */}
-              <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-200/60 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500 font-medium">Status:</span>
-                  {getStatusBadge(selectedReport.status)}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500 font-medium">Urgensi:</span>
-                  {getPriorityBadge(selectedReport.prioritas)}
-                </div>
+              {/* Status Banner */}
+              <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-200/60 flex items-center gap-2">
+                <span className="text-xs text-gray-500 font-medium">Status:</span>
+                {getStatusBadge(selectedReport.status)}
               </div>
 
               {/* Rincian Pelapor */}
@@ -1155,7 +1068,7 @@ export default function AdminDashboardPage() {
                   );
                   setSelectedReport(null);
                 }}
-                className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 rounded-xl bg-[#8C1515] text-white text-sm font-semibold hover:bg-[#6e1010] transition-colors shadow-xs"
+                className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 rounded-xl bg-[#7A0C0C] text-white text-sm font-semibold hover:bg-[#6e1010] transition-colors shadow-xs"
               >
                 Tindak Lanjuti Tiket
               </button>

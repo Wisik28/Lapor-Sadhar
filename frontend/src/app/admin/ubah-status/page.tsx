@@ -157,7 +157,7 @@ function getStatusColor(status: StatusValue) {
     case "Terverifikasi":
       return "bg-indigo-100 text-indigo-700";
     case "Proses":
-      return "bg-purple-100 text-purple-700";
+      return "bg-purple-100 text-[#7A0C0C]";
     case "Selesai":
       return "bg-green-100 text-green-700";
     case "Ditolak":
@@ -221,21 +221,14 @@ export default function UbahStatusLaporanPage() {
   const [laporanTerpilih, setLaporanTerpilih] =
     useState<Laporan | null>(null);
 
-  const [adminName, setAdminName] = useState("Admin");
-  const [adminRole, setAdminRole] = useState("Administrator");
-  useEffect(() => {
-  const currentUser = getCurrentAuthUser();
-
-  if (currentUser) {
-    setAdminName(currentUser.nama || currentUser.username || "Admin");
-
-    setAdminRole(
-      currentUser.jabatan_label ||
-      currentUser.jabatan ||
-      "Administrator"
-    );
-  }
-  }, []);
+  const [adminName] = useState(() => {
+    const currentUser = getCurrentAuthUser();
+    return currentUser?.nama || currentUser?.username || "Admin";
+  });
+  const [adminRole] = useState(() => {
+    const currentUser = getCurrentAuthUser();
+    return currentUser?.jabatan_label || currentUser?.jabatan || "Administrator";
+  });
 
   const [pencarian, setPencarian] = useState("");
   const [filterStatus, setFilterStatus] = useState("Semua");
@@ -528,7 +521,7 @@ export default function UbahStatusLaporanPage() {
   const fotoList = getFotoList(laporanTerpilih?.foto);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-[#F8F9FA] text-slate-800 flex flex-col font-sans">
       <AdminNavbar
         adminName={adminName}
         adminRole={adminRole}
@@ -537,7 +530,7 @@ export default function UbahStatusLaporanPage() {
       <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
-            <p className="text-sm font-medium text-purple-700">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#7A0C0C]">
               ADMINISTRATOR
             </p>
             <h1 className="mt-1 text-2xl font-bold text-slate-900 sm:text-3xl">
@@ -553,7 +546,7 @@ export default function UbahStatusLaporanPage() {
             type="button"
             onClick={() => void muatLaporan()}
             disabled={loading}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? "Memuat..." : "↻ Muat Ulang"}
           </button>
@@ -582,13 +575,13 @@ export default function UbahStatusLaporanPage() {
             { label: "Total Laporan", value: statistik.total, color: "text-slate-900" },
             { label: "Terkirim", value: statistik.terkirim, color: "text-blue-700" },
             { label: "Verifikasi", value: statistik.verifikasi, color: "text-amber-700" },
-            { label: "Diproses", value: statistik.proses, color: "text-purple-700" },
+            { label: "Diproses", value: statistik.proses, color: "text-[#7A0C0C]" },
             { label: "Selesai", value: statistik.selesai, color: "text-green-700" },
             { label: "Ditolak", value: statistik.ditolak, color: "text-red-700" },
           ].map((item) => (
           <div
             key={item.label}
-            className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-sm"
+            className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-2xs"
           >
           <p className="text-sm font-medium text-slate-500">
             {item.label}
@@ -603,7 +596,7 @@ export default function UbahStatusLaporanPage() {
 
         <section className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
           <div className="space-y-4 lg:col-span-5">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
               <h2 className="font-bold text-slate-900">Daftar Laporan</h2>
 
               <div className="mt-4 space-y-3">
@@ -612,13 +605,13 @@ export default function UbahStatusLaporanPage() {
                   value={pencarian}
                   onChange={(event) => setPencarian(event.target.value)}
                   placeholder="Cari nama, NIM, kategori, lokasi..."
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10"
                 />
 
                 <select
                   value={filterStatus}
                   onChange={(event) => setFilterStatus(event.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-purple-500"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#7A0C0C]"
                 >
                   <option value="Semua">Semua Status</option>
                   {STATUS_LIST.map((status) => (
@@ -640,7 +633,7 @@ export default function UbahStatusLaporanPage() {
                     id="filterKategori"
                     value={filterKategori}
                     onChange={(event) => setFilterKategori(event.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10"
                   >
                     <option value="Semua">Semua Kategori</option>
                     <option value="Kebersihan">Kebersihan</option>
@@ -661,7 +654,7 @@ export default function UbahStatusLaporanPage() {
                       id="filterBulan"
                       value={filterBulan}
                       onChange={(event) => setFilterBulan(event.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10"
                     >
                       <option value="Semua">Semua Bulan</option>
                       {BULAN_LIST.map((bulan) => (
@@ -683,7 +676,7 @@ export default function UbahStatusLaporanPage() {
                       id="filterTahun"
                       value={filterTahun}
                       onChange={(event) => setFilterTahun(event.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10"
                     >
                       <option value="Semua">Semua Tahun</option>
                       {daftarTahun.map((tahun) => (
@@ -708,7 +701,7 @@ export default function UbahStatusLaporanPage() {
                   <button
                     type="button"
                     onClick={resetFilter}
-                    className="rounded-lg px-3 py-2 text-xs font-semibold text-purple-700 transition hover:bg-purple-50"
+                    className="rounded-lg px-3 py-2 text-xs font-semibold text-[#7A0C0C] transition hover:bg-[#7A0C0C]/10"
                   >
                     Reset Filter
                   </button>
@@ -743,15 +736,15 @@ export default function UbahStatusLaporanPage() {
                       key={item.id_laporan}
                       type="button"
                       onClick={() => pilihLaporan(item)}
-                      className={`w-full rounded-2xl border bg-white p-4 text-left shadow-sm transition hover:border-purple-300 hover:shadow-md ${
+                      className={`w-full rounded-2xl border bg-white p-4 text-left shadow-2xs transition hover:border-[#7A0C0C]/40 hover:shadow-md ${
                         aktif
-                          ? "border-purple-500 ring-2 ring-purple-100"
+                          ? "border-[#7A0C0C] ring-2 ring-[#7A0C0C]/15"
                           : "border-slate-200"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="text-xs font-semibold text-purple-700">
+                          <p className="text-xs font-semibold text-[#7A0C0C]">
                             LAPORAN #{item.id_laporan}
                           </p>
                           <h3 className="mt-1 truncate font-bold text-slate-900">
@@ -787,7 +780,7 @@ export default function UbahStatusLaporanPage() {
           <div className="space-y-6 lg:col-span-7">
             {!laporanTerpilih ? (
               <div className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-50 text-2xl">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#7A0C0C]/5 text-2xl">
                   📋
                 </div>
                 <h2 className="mt-4 font-bold text-slate-800">
@@ -800,10 +793,10 @@ export default function UbahStatusLaporanPage() {
               </div>
             ) : (
               <>
-                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs sm:p-6">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs font-semibold text-purple-700">
+                      <p className="text-xs font-semibold text-[#7A0C0C]">
                         DETAIL LAPORAN #{laporanTerpilih.id_laporan}
                       </p>
                       <h2 className="mt-2 text-xl font-bold text-slate-900">
@@ -883,12 +876,13 @@ export default function UbahStatusLaporanPage() {
                             rel="noreferrer"
                             className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
                           >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={foto}
                               alt={`Bukti laporan ${index + 1}`}
                               className="h-36 w-full object-cover transition group-hover:scale-105"
                             />
-                            <p className="p-2 text-center text-xs text-purple-700">
+                            <p className="p-2 text-center text-xs text-[#7A0C0C]">
                               Lihat foto
                             </p>
                           </a>
@@ -898,7 +892,7 @@ export default function UbahStatusLaporanPage() {
                   )}
                 </section>
 
-                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs sm:p-6">
                   <div>
                     <h2 className="text-lg font-bold text-slate-900">
                       Perbarui Status Laporan
@@ -922,19 +916,19 @@ export default function UbahStatusLaporanPage() {
                           onClick={() => setStatusBaru(status)}
                           className={`rounded-xl border p-3 text-left transition ${
                             dipilih
-                              ? "border-purple-500 bg-purple-50 ring-2 ring-purple-100"
+                              ? "border-purple-500 bg-[#7A0C0C]/5 ring-2 ring-purple-100"
                               : "border-slate-200 bg-white"
                           } ${
                             !diizinkan
                               ? "cursor-not-allowed opacity-40"
-                              : "hover:border-purple-300"
+                              : "hover:border-[#7A0C0C]/40"
                           }`}
                         >
                           <div className="flex items-center gap-3">
                             <span
                               className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs ${
                                 dipilih
-                                  ? "border-purple-600 bg-purple-600 text-white"
+                                  ? "border-[#7A0C0C] bg-[#7A0C0C] text-white"
                                   : "border-slate-300"
                               }`}
                             >
@@ -978,7 +972,7 @@ export default function UbahStatusLaporanPage() {
                       maxLength={2000}
                       rows={4}
                       placeholder="Tuliskan hasil verifikasi, tindak lanjut, atau alasan penolakan..."
-                      className="w-full resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none transition focus:border-purple-500 focus:ring-2 focus:ring-purple-100"
+                      className="w-full resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none transition focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10"
                     />
 
                     <p className="mt-1 text-right text-xs text-slate-400">
@@ -1012,25 +1006,25 @@ export default function UbahStatusLaporanPage() {
                             (laporanTerpilih.pesan_tanggapan ?? "").trim())
                       }
                       onClick={() => void simpanStatus()}
-                      className="rounded-xl bg-purple-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-purple-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="rounded-xl bg-[#7A0C0C] px-5 py-3 text-sm font-semibold text-white shadow-2xs transition hover:bg-[#600909] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {menyimpan ? "Menyimpan..." : "Simpan Perubahan"}
                     </button>
                   </div>
 
                   {laporanTerpilih.pesan_tanggapan && (
-                    <div className="mt-5 rounded-xl border border-purple-100 bg-purple-50 p-4">
-                      <p className="text-sm font-semibold text-purple-900">
+                    <div className="mt-5 rounded-xl border border-[#7A0C0C]/20 bg-[#7A0C0C]/5 p-4">
+                      <p className="text-sm font-semibold text-[#7A0C0C]">
                         Tanggapan Tersimpan
                       </p>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-purple-800">
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#7A0C0C]">
                         {laporanTerpilih.pesan_tanggapan}
                       </p>
                     </div>
                   )}
                 </section>
 
-                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs sm:p-6">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <h2 className="text-lg font-bold text-slate-900">
@@ -1075,7 +1069,7 @@ export default function UbahStatusLaporanPage() {
                               className="flex gap-3"
                             >
                               <div className="flex flex-col items-center">
-                                <span className="mt-1 h-3 w-3 rounded-full bg-purple-600 ring-4 ring-purple-100" />
+                                <span className="mt-1 h-3 w-3 rounded-full bg-[#7A0C0C] ring-4 ring-[#7A0C0C]/15" />
                                 {index <
                                   (laporanTerpilih.riwayat_status ?? [])
                                     .length -

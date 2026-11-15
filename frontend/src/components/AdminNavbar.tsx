@@ -1,15 +1,15 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  ShieldCheck,
   Menu,
   X,
   LogOut,
-  Calendar
+  User,
+  Calendar,
 } from "lucide-react";
 import { authApi } from "@/lib/api";
 
@@ -24,17 +24,49 @@ export interface AdminNavbarProps {
 }
 
 export default function AdminNavbar({
-  adminName = "Bapak Hendro",
-  adminRole = "Admin Pengelola Sarpras",
+  adminName = "Admin",
+  adminRole = "Administrator",
   onLogout,
   selectedMonth,
   selectedYear,
   onMonthChange,
-  onYearChange
+  onYearChange,
 }: AdminNavbarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setProfileDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    if (onLogout) {
+      onLogout();
+    } else {
+      await authApi.adminLogout();
+      router.replace("/admin/login");
+    }
+  };
+
+  const navLinks = [
+    { label: "Dashboard", href: "/admin/dashboard" },
+    { label: "Prioritas", href: "/admin/prioritas" }, // sementara dlu, nanti dihapus kl jadi satu sm dashboard
+    { label: "Ubah Status", href: "/admin/ubah-status" }, 
+    { label: "Riwayat", href: "/admin/riwayat" },
+    { label: "Rekap", href: "/admin/rekap" },
+    { label: "Akun", href: "/admin/account" },
+  ];
 
   const months = [
     { value: "Semua", label: "Semua Bulan" },
@@ -49,79 +81,43 @@ export default function AdminNavbar({
     { value: "09", label: "September" },
     { value: "10", label: "Oktober" },
     { value: "11", label: "November" },
-    { value: "12", label: "Desember" }
+    { value: "12", label: "Desember" },
   ];
 
   const years = ["Semua", "2026", "2025", "2024"];
 
-  const navLinks = [
-    {
-      label: "Dashboard",
-      href: "/admin/dashboard"
-    },
-    {
-      label: "Prioritas",
-      href: "/admin/prioritas"
-    },
-    {
-      label: "Akun",
-      href: "/admin/account"
-    },
-    {
-      label: "Ubah Status",
-      href: "/admin/ubah-status"
-    },
-    {
-      label: "Riwayat",
-      href: "/admin/riwayat"
-    },
-    {
-      label: "Rekap",
-      href: "/admin/rekap"
-    }
-  ];
-
-  const handleLogout = async () => {
-    if (onLogout) {
-      onLogout();
-    } else {
-      await authApi.adminLogout();
-      router.replace("/admin/login");
-    }
-  };
-
   return (
-    <header className="sticky top-0 z-30 w-full bg-white border-b border-gray-200/80 shadow-xs">
+    <header className="sticky top-0 z-30 w-full bg-white border-b border-slate-200/80 shadow-2xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Sisi Kiri: Logo USD & Nama Lapor Sadhar */}
+          {/* Sisi Kiri: Logo SiLapor */}
           <div className="flex items-center gap-3">
             <Link
               href="/admin/dashboard"
-              className="flex items-center gap-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8C1515] rounded-xl"
+              className="flex items-center gap-2.5 group focus:outline-none"
             >
-              <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center p-1.5 shadow-xs transition-transform group-hover:scale-105">
+              <div className="w-9 h-9 rounded-full bg-amber-50 border border-amber-200/80 flex items-center justify-center p-1 shadow-2xs transition-transform group-hover:scale-105">
                 <Image
                   src="/assets/logo_usd.png"
                   alt="Logo USD"
-                  width={32}
-                  height={32}
+                  width={28}
+                  height={28}
                   className="w-full h-full object-contain"
                 />
               </div>
               <div className="flex flex-col">
-                <span className="text-lg font-bold tracking-tight text-gray-900 group-hover:text-[#8C1515] transition-colors leading-tight">
-                  Lapor Sadhar
+                <span className="text-base font-extrabold tracking-tight text-slate-900 group-hover:text-[#7A0C0C] transition-colors leading-tight">
+                  SiLapor
                 </span>
-                <span className="text-[11px] font-medium text-gray-500 hidden sm:block leading-none">
-                  Universitas Sanata Dharma
+                <span className="text-[10px] text-slate-400 font-medium leading-none hidden sm:block">
+                  Admin Portal USD
                 </span>
               </div>
             </Link>
           </div>
 
-          {/* Tengah: Navigasi Menu Admin (Desktop & Tablet) */}
-          <nav className="hidden md:flex items-center gap-1.5 bg-gray-50/80 p-1.5 rounded-2xl border border-gray-200/60">
+          {/* Tengah: Navigasi Menu Admin (Semua 6 Halaman dengan Pill Style) */}
+          <nav className="hidden lg:flex items-center gap-1.5">
             {navLinks.map((item) => {
               const isActive =
                 pathname === item.href ||
@@ -130,36 +126,28 @@ export default function AdminNavbar({
                 <Link
                   key={item.label}
                   href={item.href}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                  className={`text-xs sm:text-sm transition-all duration-200 ${
                     isActive
-                      ? "bg-[#8C1515] text-white shadow-xs"
-                      : "text-gray-600 hover:text-gray-900 hover:bg-white/80"
+                      ? "bg-[#EBD8D8] text-[#5C0C0C] font-semibold px-4 py-1.5 rounded-full shadow-2xs"
+                      : "text-slate-600 hover:text-slate-900 font-medium px-3.5 py-1.5 rounded-full hover:bg-slate-100/70"
                   }`}
                 >
-                  <span>{item.label}</span>
+                  {item.label}
                 </Link>
               );
             })}
           </nav>
 
-          {/* Sisi Kanan: Filter Periode & Profil Admin */}
+          {/* Sisi Kanan: Filter Periode (jika ada) & Profile Avatar Admin */}
           <div className="flex items-center gap-2.5 sm:gap-3">
-            {/* Filter Periode Bulan & Tahun Menggunakan Dropdown Interaktif */}
+            {/* Filter Periode Bulan & Tahun (khusus di halaman yang membutuhkan) */}
             {onMonthChange && onYearChange && (
-              <div className="hidden sm:flex items-center gap-1.5 bg-white p-1.5 rounded-xl border border-gray-300 shadow-2xs hover:border-[#8C1515] transition-colors">
-                <div className="flex items-center gap-1 pl-1 text-gray-500 pointer-events-none">
-                  <Calendar className="w-3.5 h-3.5 text-[#8C1515]" />
-                  <span className="text-[11px] font-bold text-gray-600 hidden md:inline">
-                    Periode:
-                  </span>
-                </div>
-                
-                {/* Dropdown Input Bulan */}
+              <div className="hidden xl:flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-200 text-xs">
+                <Calendar className="w-3.5 h-3.5 text-[#7A0C0C]" />
                 <select
                   value={selectedMonth || "Semua"}
                   onChange={(e) => onMonthChange(e.target.value)}
-                  aria-label="Pilih Bulan Laporan"
-                  className="bg-gray-50 text-xs font-semibold text-gray-800 py-1.5 px-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#8C1515] focus:bg-white cursor-pointer transition-all"
+                  className="bg-transparent font-medium text-slate-700 py-0.5 px-1 outline-none cursor-pointer text-xs"
                 >
                   {months.map((m) => (
                     <option key={m.value} value={m.value}>
@@ -167,122 +155,100 @@ export default function AdminNavbar({
                     </option>
                   ))}
                 </select>
-
-                <span className="text-gray-300 font-bold">/</span>
-
-                {/* Dropdown Input Tahun */}
+                <span className="text-slate-300">/</span>
                 <select
                   value={selectedYear || "Semua"}
                   onChange={(e) => onYearChange(e.target.value)}
-                  aria-label="Pilih Tahun Laporan"
-                  className="bg-gray-50 text-xs font-semibold text-gray-800 py-1.5 px-2.5 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#8C1515] focus:bg-white cursor-pointer transition-all"
+                  className="bg-transparent font-medium text-slate-700 py-0.5 px-1 outline-none cursor-pointer text-xs"
                 >
                   {years.map((y) => (
                     <option key={y} value={y}>
-                      {y === "Semua" ? "Semua Tahun" : y}
+                      {y}
                     </option>
                   ))}
                 </select>
               </div>
             )}
 
-            <div className="flex items-center gap-3 pl-2 sm:pl-3 border-l border-gray-200">
-              <div className="text-right hidden sm:block">
-                <div className="flex items-center justify-end gap-1.5">
-                  <span className="text-sm font-bold text-gray-900 leading-tight">
-                    {adminName}
-                  </span>
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#8C1515]/10 text-[#8C1515] uppercase tracking-wider">
-                    Admin
-                  </span>
+            {/* Profile Avatar & Admin Label */}
+            <div className="relative" ref={dropdownRef}>
+              <button
+                type="button"
+                onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+                className="flex flex-col items-center justify-center group focus:outline-none cursor-pointer p-1"
+                aria-label="Menu Akun Admin"
+              >
+                <div className="w-8 h-8 rounded-full border border-slate-300 flex items-center justify-center text-slate-700 group-hover:border-slate-400 group-hover:text-slate-900 transition-colors bg-white shadow-2xs">
+                  <User className="w-4 h-4" />
                 </div>
-                <p className="text-xs text-gray-500 font-medium mt-0.5">
-                  {adminRole}
-                </p>
-              </div>
+                <span className="text-[11px] font-semibold text-slate-700 group-hover:text-slate-900 mt-0.5 leading-none">
+                  Admin
+                </span>
+              </button>
 
-              {/* Avatar Icon */}
-              <div className="w-10 h-10 rounded-full bg-red-50 border-2 border-[#8C1515]/20 flex items-center justify-center text-[#8C1515] shadow-xs">
-                <ShieldCheck className="w-5 h-5" />
-              </div>
+              {/* Profile Dropdown */}
+              {profileDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-60 bg-white rounded-2xl shadow-xl border border-slate-200/90 py-2 z-50 text-slate-800 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="px-4 py-2.5 border-b border-slate-100">
+                    <p className="text-xs font-bold text-slate-900 truncate">{adminName}</p>
+                    <p className="text-[11px] text-slate-500 truncate mt-0.5">{adminRole}</p>
+                  </div>
+
+                  <div className="py-1">
+                    <Link
+                      href="/admin/account"
+                      onClick={() => setProfileDropdownOpen(false)}
+                      className="flex items-center gap-2.5 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-[#7A0C0C] transition-colors"
+                    >
+                      <User className="w-4 h-4 text-slate-400" />
+                      <span>Pengaturan Akun</span>
+                    </Link>
+                  </div>
+
+                  <div className="pt-1 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileDropdownOpen(false);
+                        handleLogout();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span>Keluar Akun</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Tombol Logout Desktop */}
-            <button
-              onClick={handleLogout}
-              type="button"
-              title="Keluar dari akun admin"
-              className="hidden lg:flex items-center justify-center w-9 h-9 rounded-xl text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-
-            {/* Hamburger Mobile Toggle Button */}
+            {/* Hamburger Button for Mobile / Tablet */}
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              aria-label="Toggle menu navigasi"
-              className="md:hidden flex items-center justify-center w-11 h-11 rounded-xl text-gray-700 hover:text-[#8C1515] hover:bg-gray-100 active:bg-gray-200 transition-colors"
+              className="lg:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100 cursor-pointer"
+              aria-label="Toggle Navigation"
             >
-              {mobileMenuOpen ? (
-                <X className="w-6 h-6 text-gray-800" />
-              ) : (
-                <Menu className="w-6 h-6 text-gray-800" />
-              )}
+              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Menu Mobile Dropdown Drawer */}
+      {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-gray-200 bg-white px-4 pt-3 pb-5 space-y-3 shadow-lg animate-in fade-in slide-in-from-top-2 duration-150">
-          <div className="pb-3 border-b border-gray-100 flex items-center justify-between">
+        <div className="lg:hidden border-t border-slate-200 bg-white px-4 py-3 space-y-2 shadow-lg">
+          <div className="pb-2 border-b border-slate-100 flex items-center justify-between">
             <div>
-              <p className="text-sm font-bold text-gray-900">{adminName}</p>
-              <p className="text-xs text-gray-500">{adminRole}</p>
+              <p className="text-xs font-bold text-slate-900">{adminName}</p>
+              <p className="text-[11px] text-slate-500">{adminRole}</p>
             </div>
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-[#8C1515]/10 text-[#8C1515]">
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-[#7A0C0C]/10 text-[#7A0C0C]">
               Admin
             </span>
           </div>
 
-          {/* Filter Periode Bulan & Tahun di Mobile Drawer */}
-          {onMonthChange && onYearChange && (
-            <div className="p-3 bg-gray-50 rounded-2xl border border-gray-200 space-y-2">
-              <label className="block text-xs font-bold text-gray-700">
-                Filter Periode Laporan
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={selectedMonth || "Semua"}
-                  onChange={(e) => onMonthChange(e.target.value)}
-                  aria-label="Filter Bulan Mobile"
-                  className="min-h-[44px] px-3 py-2 bg-white rounded-xl border border-gray-200 text-xs font-semibold text-gray-800"
-                >
-                  {months.map((m) => (
-                    <option key={m.value} value={m.value}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={selectedYear || "Semua"}
-                  onChange={(e) => onYearChange(e.target.value)}
-                  aria-label="Filter Tahun Mobile"
-                  className="min-h-[44px] px-3 py-2 bg-white rounded-xl border border-gray-200 text-xs font-semibold text-gray-800"
-                >
-                  {years.map((y) => (
-                    <option key={y} value={y}>
-                      {y === "Semua" ? "Semua Thn" : y}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-1 pt-1">
+          <div className="space-y-1">
             {navLinks.map((item) => {
               const isActive =
                 pathname === item.href ||
@@ -292,27 +258,28 @@ export default function AdminNavbar({
                   key={item.label}
                   href={item.href}
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center px-4 py-3 rounded-xl text-sm font-semibold transition-all min-h-[44px] ${
+                  className={`block px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-colors ${
                     isActive
-                      ? "bg-[#8C1515] text-white"
-                      : "text-gray-700 hover:bg-gray-50 active:bg-gray-100"
+                      ? "bg-[#EBD8D8] text-[#5C0C0C]"
+                      : "text-slate-700 hover:bg-slate-50"
                   }`}
                 >
-                  <span>{item.label}</span>
+                  {item.label}
                 </Link>
               );
             })}
           </div>
 
-          <div className="pt-2 border-t border-gray-100">
+          <div className="pt-2 border-t border-slate-100">
             <button
+              type="button"
               onClick={() => {
                 setMobileMenuOpen(false);
                 handleLogout();
               }}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 active:bg-red-200 transition-colors min-h-[44px]"
+              className="w-full flex items-center justify-center gap-2 py-2 text-xs font-semibold text-rose-600 bg-rose-50 rounded-xl"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-3.5 h-3.5" />
               <span>Keluar</span>
             </button>
           </div>

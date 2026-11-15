@@ -1,7 +1,14 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { KeyRound, ShieldCheck, UserRound } from "lucide-react";
+import {
+  KeyRound,
+  ShieldCheck,
+  UserRound,
+  Mail,
+  CheckCircle2,
+  AlertTriangle,
+} from "lucide-react";
 import AdminNavbar from "@/components/AdminNavbar";
 import { authApi } from "@/lib/api";
 import { setAuthSession } from "@/lib/auth";
@@ -12,17 +19,19 @@ export default function AdminAccountPage() {
   const [profileMessage, setProfileMessage] = useState("");
   const [profileError, setProfileError] = useState("");
   const [profileLoading, setProfileLoading] = useState(false);
+
   const [newEmail, setNewEmail] = useState("");
   const [emailCode, setEmailCode] = useState("");
   const [emailStep, setEmailStep] = useState<"request" | "confirm">("request");
   const [emailMessage, setEmailMessage] = useState("");
   const [emailError, setEmailError] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
+
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [passwordError, setPasswordError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -43,13 +52,13 @@ export default function AdminAccountPage() {
     setProfileLoading(false);
   };
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handlePasswordSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setError("");
-    setMessage("");
+    setPasswordError("");
+    setPasswordMessage("");
 
     if (newPassword !== confirmation) {
-      setError("Konfirmasi kata sandi baru tidak cocok.");
+      setPasswordError("Konfirmasi kata sandi baru tidak cocok.");
       return;
     }
 
@@ -63,9 +72,9 @@ export default function AdminAccountPage() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmation("");
-      setMessage(result.message);
+      setPasswordMessage(result.message);
     } else {
-      setError(result.message || "Kata sandi tidak dapat diubah.");
+      setPasswordError(result.message || "Kata sandi tidak dapat diubah.");
     }
     setIsLoading(false);
   };
@@ -107,106 +116,259 @@ export default function AdminAccountPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f7f5] text-slate-900">
-      <AdminNavbar adminName={user?.nama} adminRole={user?.jabatan_label || user?.role_detail || "Admin"} />
-      <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mb-7">
-          <p className="text-xs font-semibold uppercase tracking-wider text-[#7a171b]">Pengaturan akun</p>
-          <h1 className="mt-1 text-2xl font-semibold">Keamanan akun</h1>
-          <p className="mt-2 text-sm text-slate-500">Perbarui kata sandi admin Anda.</p>
+    <div className="min-h-screen bg-[#F8F9FA] text-slate-800 flex flex-col font-sans">
+      <AdminNavbar
+        adminName={user?.nama}
+        adminRole={user?.jabatan_label || user?.role_detail || "Administrator"}
+      />
+
+      <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Pengaturan Akun Admin</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Kelola profil tampilan, kontak email, dan keamanan kata sandi akun admin Anda.
+          </p>
         </div>
 
-        <section className="max-w-2xl border-y border-slate-200 bg-white px-5 py-6 sm:px-7">
-          <div className="mb-6 border-b border-slate-100 pb-6">
-            <div className="mb-5 flex items-start gap-3">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#7a171b]/10 text-[#7a171b]">
-                <UserRound className="h-5 w-5" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          {/* Kolom Kiri: Profil & Ganti Email */}
+          <div className="space-y-6">
+            {/* Profil Admin */}
+            <section className="rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-2xs">
+              <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-5">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#7A0C0C]/10 text-[#7A0C0C]">
+                  <UserRound className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-slate-900">Profil Tampilan</h2>
+                  <p className="text-xs text-slate-500">
+                    Nama pelapor dan jabatan administrasi Anda
+                  </p>
+                </div>
               </div>
-              <div>
-                <h2 className="font-semibold">Profil admin</h2>
-                <p className="mt-1 text-sm text-slate-500">Nama dan email dapat diperbarui. Jabatan dan hak akses tetap ditentukan oleh akun admin.</p>
-              </div>
-            </div>
 
-            {profileError && <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-800">{profileError}</p>}
-            {profileMessage && <p role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">{profileMessage}</p>}
+              {profileError && (
+                <div role="alert" className="mb-4 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs text-rose-800">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
+                  <span>{profileError}</span>
+                </div>
+              )}
+              {profileMessage && (
+                <div role="status" className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs text-emerald-800">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                  <span>{profileMessage}</span>
+                </div>
+              )}
 
-            <form onSubmit={handleProfileSubmit} className="space-y-4">
-              <div>
-                <label htmlFor="admin-name" className="mb-1.5 block text-sm font-medium text-slate-700">Nama tampilan</label>
-                <input id="admin-name" required maxLength={255} value={name} onChange={(event) => setName(event.target.value)} className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15" />
-              </div>
-              <div className="text-sm text-slate-600">
-                Jabatan: <span className="font-medium text-slate-900">{user?.jabatan_label || user?.role_detail || "—"}</span>
-                <span className="ml-3">Email: <span className="font-medium text-slate-900">{user?.email || "Belum diisi"}</span></span>
-              </div>
-              <button disabled={profileLoading} className="h-10 rounded-lg bg-[#7a171b] px-4 text-sm font-semibold text-white hover:bg-[#641216] disabled:opacity-60">
-                {profileLoading ? "Menyimpan..." : "Simpan nama"}
-              </button>
-            </form>
-          </div>
+              <form onSubmit={handleProfileSubmit} className="space-y-4">
+                <div>
+                  <label htmlFor="admin-name" className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+                    Nama Tampilan
+                  </label>
+                  <input
+                    id="admin-name"
+                    required
+                    maxLength={255}
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    className="h-11 w-full rounded-xl border border-slate-200/90 bg-white px-3.5 text-sm text-slate-800 outline-none focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10 shadow-2xs transition-all"
+                  />
+                </div>
 
-          <div className="mb-6 border-b border-slate-100 pb-6">
-            <div className="mb-5">
-              <h2 className="font-semibold">Ganti email admin</h2>
-              <p className="mt-1 text-sm text-slate-500">Verifikasi kode yang dikirim ke email lama sebelum menyimpan email baru.</p>
-            </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                    <span className="text-[11px] font-bold uppercase text-slate-400 block">Jabatan</span>
+                    <span className="text-xs font-bold text-slate-800 mt-0.5 block truncate">
+                      {user?.jabatan_label || user?.role_detail || "—"}
+                    </span>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                    <span className="text-[11px] font-bold uppercase text-slate-400 block">Email Aktif</span>
+                    <span className="text-xs font-bold text-slate-800 mt-0.5 block truncate">
+                      {user?.email || "Belum diisi"}
+                    </span>
+                  </div>
+                </div>
 
-            {emailError && <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-800">{emailError}</p>}
-            {emailMessage && <p role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">{emailMessage}</p>}
-
-            {emailStep === "request" ? (
-              <form onSubmit={requestEmailCode} className="space-y-4">
-                <label htmlFor="admin-new-email" className="block text-sm font-medium text-slate-700">
-                  Email baru
-                  <input id="admin-new-email" type="email" autoComplete="email" required value={newEmail} onChange={(event) => setNewEmail(event.target.value)} className="mt-1.5 h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15" />
-                </label>
-                <p className="text-xs text-slate-500">
-                  {user?.email
-                    ? `Kode verifikasi akan dikirim ke email lama: ${user.email}`
-                    : "Akun ini belum memiliki email. Kode verifikasi awal akan dikirim ke email baru."}
-                </p>
-                <button disabled={emailLoading} className="h-10 rounded-lg bg-[#7a171b] px-4 text-sm font-semibold text-white hover:bg-[#641216] disabled:opacity-60">
-                  {emailLoading ? "Mengirim kode..." : "Kirim kode verifikasi"}
-                </button>
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={profileLoading}
+                    className="h-10 rounded-xl bg-[#7A0C0C] px-5 text-xs font-semibold text-white hover:bg-[#600909] disabled:opacity-60 transition-colors shadow-2xs cursor-pointer"
+                  >
+                    {profileLoading ? "Menyimpan..." : "Simpan Perubahan Nama"}
+                  </button>
+                </div>
               </form>
-            ) : (
-              <form onSubmit={confirmEmailChange} className="space-y-4">
-                <label htmlFor="admin-email-code" className="block text-sm font-medium text-slate-700">
-                  Kode verifikasi 6 digit
-                  <input id="admin-email-code" inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={emailCode} onChange={(event) => setEmailCode(event.target.value)} className="mt-1.5 h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15" />
-                </label>
-                <p className="text-xs text-slate-500">Kode berlaku selama 10 menit.</p>
-                <button disabled={emailLoading} className="h-10 rounded-lg bg-[#7a171b] px-4 text-sm font-semibold text-white hover:bg-[#641216] disabled:opacity-60">
-                  {emailLoading ? "Memverifikasi..." : "Verifikasi dan simpan email"}
-                </button>
+            </section>
+
+            {/* Ganti Email Admin */}
+            <section className="rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-2xs">
+              <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-5">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#7A0C0C]/10 text-[#7A0C0C]">
+                  <Mail className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-slate-900">Alamat Email Admin</h2>
+                  <p className="text-xs text-slate-500">
+                    Verifikasi kode yang dikirim ke email lama sebelum menyimpan email baru
+                  </p>
+                </div>
+              </div>
+
+              {emailError && (
+                <div role="alert" className="mb-4 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs text-rose-800">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
+                  <span>{emailError}</span>
+                </div>
+              )}
+              {emailMessage && (
+                <div role="status" className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs text-emerald-800">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                  <span>{emailMessage}</span>
+                </div>
+              )}
+
+              {emailStep === "request" ? (
+                <form onSubmit={requestEmailCode} className="space-y-4">
+                  <div>
+                    <label htmlFor="admin-new-email" className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+                      Email Baru
+                    </label>
+                    <input
+                      id="admin-new-email"
+                      type="email"
+                      autoComplete="email"
+                      required
+                      placeholder="admin@usd.ac.id"
+                      value={newEmail}
+                      onChange={(event) => setNewEmail(event.target.value)}
+                      className="h-11 w-full rounded-xl border border-slate-200/90 bg-white px-3.5 text-sm text-slate-800 outline-none focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10 shadow-2xs transition-all"
+                    />
+                    <p className="mt-1.5 text-xs text-slate-400">
+                      {user?.email
+                        ? `Kode verifikasi 6 digit akan dikirim ke email saat ini: ${user.email}`
+                        : "Akun ini belum memiliki email. Kode verifikasi awal akan dikirim ke email baru."}
+                    </p>
+                  </div>
+                  <div>
+                    <button
+                      type="submit"
+                      disabled={emailLoading}
+                      className="h-10 rounded-xl bg-[#7A0C0C] px-5 text-xs font-semibold text-white hover:bg-[#600909] disabled:opacity-60 transition-colors shadow-2xs cursor-pointer"
+                    >
+                      {emailLoading ? "Mengirim kode..." : "Kirim Kode Verifikasi"}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <form onSubmit={confirmEmailChange} className="space-y-4">
+                  <div>
+                    <label htmlFor="admin-email-code" className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+                      Kode Verifikasi 6 Digit
+                    </label>
+                    <input
+                      id="admin-email-code"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      required
+                      pattern="[0-9]{6}"
+                      maxLength={6}
+                      placeholder="Contoh: 123456"
+                      value={emailCode}
+                      onChange={(event) => setEmailCode(event.target.value)}
+                      className="h-11 w-full rounded-xl border border-slate-200/90 bg-white px-3.5 text-sm text-slate-800 outline-none focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10 shadow-2xs transition-all tracking-widest"
+                    />
+                    <p className="mt-1.5 text-xs text-slate-400">Kode verifikasi berlaku selama 10 menit.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="submit"
+                      disabled={emailLoading}
+                      className="h-10 rounded-xl bg-[#7A0C0C] px-5 text-xs font-semibold text-white hover:bg-[#600909] disabled:opacity-60 transition-colors shadow-2xs cursor-pointer"
+                    >
+                      {emailLoading ? "Memverifikasi..." : "Verifikasi & Simpan Email"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEmailStep("request")}
+                      className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                  </div>
+                </form>
+              )}
+            </section>
+          </div>
+
+          {/* Kolom Kanan: Ubah Kata Sandi */}
+          <div>
+            <section className="rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-2xs">
+              <div className="flex items-center gap-3 border-b border-slate-100 pb-4 mb-5">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#7A0C0C]/10 text-[#7A0C0C]">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-slate-900">Keamanan Kata Sandi</h2>
+                  <p className="text-xs text-slate-500">
+                    Minimal 12 karakter untuk menjaga keamanan akun administrasi
+                  </p>
+                </div>
+              </div>
+
+              {passwordError && (
+                <div role="alert" className="mb-4 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs text-rose-800">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
+                  <span>{passwordError}</span>
+                </div>
+              )}
+              {passwordMessage && (
+                <div role="status" className="mb-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2.5 text-xs text-emerald-800">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                  <span>{passwordMessage}</span>
+                </div>
+              )}
+
+              <form onSubmit={handlePasswordSubmit} className="space-y-4">
+                <PasswordField
+                  id="current-password"
+                  label="Kata Sandi Saat Ini"
+                  value={currentPassword}
+                  onChange={setCurrentPassword}
+                  autoComplete="current-password"
+                />
+                <PasswordField
+                  id="new-password"
+                  label="Kata Sandi Baru"
+                  value={newPassword}
+                  onChange={setNewPassword}
+                  autoComplete="new-password"
+                  minLength={12}
+                />
+                <PasswordField
+                  id="confirm-password"
+                  label="Konfirmasi Kata Sandi Baru"
+                  value={confirmation}
+                  onChange={setConfirmation}
+                  autoComplete="new-password"
+                  minLength={12}
+                />
+
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#7A0C0C] px-5 text-xs font-semibold text-white hover:bg-[#600909] disabled:opacity-60 transition-colors shadow-2xs cursor-pointer"
+                  >
+                    <KeyRound className="h-3.5 w-3.5" />
+                    <span>{isLoading ? "Menyimpan..." : "Simpan Kata Sandi"}</span>
+                  </button>
+                </div>
               </form>
-            )}
+            </section>
           </div>
-
-          <div className="mb-6 flex items-start gap-3">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#7a171b]/10 text-[#7a171b]">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="font-semibold">Ubah kata sandi</h2>
-              <p className="mt-1 text-sm text-slate-500">Gunakan minimal 12 karakter. Sesi admin lain akan dikeluarkan.</p>
-            </div>
-          </div>
-
-          {error && <p role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-800">{error}</p>}
-          {message && <p role="status" className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">{message}</p>}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <PasswordField id="current-password" label="Kata sandi saat ini" value={currentPassword} onChange={setCurrentPassword} autoComplete="current-password" />
-            <PasswordField id="new-password" label="Kata sandi baru" value={newPassword} onChange={setNewPassword} autoComplete="new-password" minLength={12} />
-            <PasswordField id="confirm-password" label="Konfirmasi kata sandi baru" value={confirmation} onChange={setConfirmation} autoComplete="new-password" minLength={12} />
-            <button disabled={isLoading} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#7a171b] px-4 text-sm font-semibold text-white hover:bg-[#641216] disabled:opacity-60">
-              <KeyRound className="h-4 w-4" />
-              {isLoading ? "Menyimpan..." : "Simpan kata sandi"}
-            </button>
-          </form>
-        </section>
+        </div>
       </main>
     </div>
   );
@@ -229,8 +391,22 @@ function PasswordField({
 }) {
   return (
     <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-slate-700">{label}</label>
-      <input id={id} type="password" required minLength={minLength} autoComplete={autoComplete} value={value} onChange={(event) => onChange(event.target.value)} className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15" />
+      <label htmlFor={id} className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+        {label}
+      </label>
+      <input
+        id={id}
+        type="password"
+        required
+        minLength={minLength}
+        autoComplete={autoComplete}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 w-full rounded-xl border border-slate-200/90 bg-white px-3.5 text-sm text-slate-800 outline-none focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10 shadow-2xs transition-all"
+      />
+      {minLength && (
+        <span className="text-[11px] text-slate-400 mt-1 block">Minimal {minLength} karakter</span>
+      )}
     </div>
   );
 }

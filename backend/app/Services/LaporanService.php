@@ -6,6 +6,7 @@ use App\Models\Laporan;
 use App\Models\Status;
 use App\Services\Priority\LocationCategorizer;
 use App\Services\Priority\LocationSeverityAssessor;
+use App\Support\SchemaVerification;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -47,7 +48,14 @@ class LaporanService
                 return true;
             }
 
+            // Sudah diverifikasi pada request sebelumnya: lewati query skema ke database jarak jauh.
+            if (SchemaVerification::isVerified('laporan_location_columns')) {
+                return self::$verifiedColumnsByPdo[$pdoId] = true;
+            }
+
             if (Schema::hasColumns('laporan', ['kategori_lokasi', 'tingkat_keparahan', 'skala_keparahan'])) {
+                SchemaVerification::markVerified('laporan_location_columns');
+
                 return self::$verifiedColumnsByPdo[$pdoId] = true;
             }
 
@@ -66,6 +74,8 @@ class LaporanService
                     $table->unsignedTinyInteger('skala_keparahan')->default(2);
                 }
             });
+
+            SchemaVerification::markVerified('laporan_location_columns');
 
             return self::$verifiedColumnsByPdo[$pdoId] = true;
         } catch (\Throwable $e) {
