@@ -8,21 +8,20 @@ import {
   ShieldAlert,
   AlertTriangle,
   Clock,
-  Sparkles,
+  CheckCircle2,
+  FileText,
   RotateCcw,
   Search,
   Building,
   TrendingUp,
-  Inbox,
-  ChevronRight,
-  Info
+  Inbox
 } from "lucide-react";
 import {
   priorityApi,
   PriorityReportItem,
   PrioritySummary
 } from "@/lib/priorityApi";
-import { PriorityScoreBadge, SeverityBadge } from "@/components/priority/PriorityScoreBadge";
+import { PriorityScoreBadge } from "@/components/priority/PriorityScoreBadge";
 import { PriorityDetailModal } from "@/components/priority/PriorityDetailModal";
 
 export default function UserPriorityDashboardPage() {
@@ -121,135 +120,118 @@ export default function UserPriorityDashboardPage() {
         {/* Konten Utama */}
         <main className="flex-1 overflow-y-auto px-4 py-5 sm:p-6 md:p-8 bg-[#F3F4F6] space-y-6">
           <div className="max-w-6xl mx-auto space-y-6">
-            {/* Banner Header User */}
-            <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/90 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-              <div>
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-[#7A0C0C]/10 text-[#7A0C0C] mb-2">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Sistem Prioritas Kerusakan & Kebersihan</span>
-                </div>
-                <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-                  Dashboard Prioritas Penanganan Laporan
-                </h1>
-                <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1 max-w-2xl leading-relaxed">
-                  Menampilkan urutan prioritas penanganan laporan di lingkungan kampus Universitas Sanata Dharma
-                  berdasarkan keparahan, sinyal urgensi AI, lokasi strategis, dan waktu tunggu.
-                </p>
-              </div>
+            {/* Kartu Ringkasan Jumlah Laporan Berdasarkan Prioritas */}
+            {(() => {
+              const totalCount = summary?.total_laporan ?? reports.length;
+              const tinggiCount = summary
+                ? (summary.kritis_berat ?? 0) + (summary.tinggi ?? 0)
+                : reports.filter(
+                    (r) =>
+                      r.priority_level === "tinggi" ||
+                      r.priority_level === "kritis" ||
+                      r.severity_level === "berat"
+                  ).length;
+              const sedangCount = summary
+                ? (summary.sedang ?? 0)
+                : reports.filter(
+                    (r) => r.priority_level === "sedang" && r.severity_level !== "berat"
+                  ).length;
+              const rendahCount = summary
+                ? (summary.rendah ?? 0)
+                : reports.filter(
+                    (r) =>
+                      (r.priority_level === "rendah" || !r.priority_level) &&
+                      r.severity_level !== "berat"
+                  ).length;
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={fetchData}
-                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#7A0C0C] hover:bg-[#9E1B1B] text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Segarkan</span>
-                </button>
-              </div>
-            </div>
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Card 1: Total Laporan */}
+                  <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-xs flex flex-col justify-between relative overflow-hidden">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                        Total Laporan
+                      </span>
+                      <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+                        <FileText className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <span className="text-2xl sm:text-3xl font-extrabold text-slate-900">
+                        {totalCount}
+                      </span>
+                      <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                        Total seluruh laporan terdaftar
+                      </p>
+                    </div>
+                    <div className="absolute top-0 right-0 w-2 h-full bg-[#7A0C0C]" />
+                  </div>
 
-            {/* Notice Penjelasan untuk Pelapor */}
-            <div className="p-4 bg-linear-to-r from-red-50 to-amber-50 rounded-2xl border border-red-200/70 flex items-start gap-3">
-              <Info className="w-5 h-5 text-[#7A0C0C] shrink-0 mt-0.5" />
-              <div className="text-xs text-slate-700">
-                <p className="font-bold text-slate-900">Transparansi Urutan Penanganan</p>
-                <p className="mt-0.5 text-slate-600 leading-relaxed">
-                  Laporan civitas akademika diproses secara otomatis oleh sistem cerdas untuk membantu admin BLU dan BPS
-                  mendahulukan masalah yang membahayakan keselamatan atau menghentikan aktivitas perkuliahan.
-                </p>
-              </div>
-            </div>
+                  {/* Card 2: Prioritas Tinggi */}
+                  <div className="p-4 sm:p-5 rounded-2xl bg-white border border-red-200 shadow-xs flex flex-col justify-between relative overflow-hidden">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-red-700 uppercase tracking-wider">
+                        Prioritas Tinggi
+                      </span>
+                      <div className="w-8 h-8 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
+                        <ShieldAlert className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <span className="text-2xl sm:text-3xl font-extrabold text-red-900">
+                        {tinggiCount}
+                      </span>
+                      <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                        Membutuhkan penanganan segera
+                      </p>
+                    </div>
+                    <div className="absolute top-0 right-0 w-2 h-full bg-red-600" />
+                  </div>
 
-            {/* Kartu Ringkasan Metrik */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Card 1: Prioritas Kritis */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-white border border-red-200 shadow-xs flex flex-col justify-between relative overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-red-700 uppercase tracking-wider">
-                    Prioritas Kritis / Berat
-                  </span>
-                  <div className="w-8 h-8 rounded-xl bg-red-50 text-red-600 flex items-center justify-center">
-                    <ShieldAlert className="w-4 h-4" />
+                  {/* Card 3: Prioritas Sedang */}
+                  <div className="p-4 sm:p-5 rounded-2xl bg-white border border-amber-200 shadow-xs flex flex-col justify-between relative overflow-hidden">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">
+                        Prioritas Sedang
+                      </span>
+                      <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                        <AlertTriangle className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <span className="text-2xl sm:text-3xl font-extrabold text-amber-900">
+                        {sedangCount}
+                      </span>
+                      <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                        Gangguan fungsi fasilitas / kenyamanan
+                      </p>
+                    </div>
+                    <div className="absolute top-0 right-0 w-2 h-full bg-amber-500" />
+                  </div>
+
+                  {/* Card 4: Prioritas Rendah */}
+                  <div className="p-4 sm:p-5 rounded-2xl bg-white border border-emerald-200 shadow-xs flex flex-col justify-between relative overflow-hidden">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">
+                        Prioritas Rendah
+                      </span>
+                      <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                        <CheckCircle2 className="w-4 h-4" />
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <span className="text-2xl sm:text-3xl font-extrabold text-emerald-900">
+                        {rendahCount}
+                      </span>
+                      <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                        Kerusakan ringan / perawatan rutin
+                      </p>
+                    </div>
+                    <div className="absolute top-0 right-0 w-2 h-full bg-emerald-500" />
                   </div>
                 </div>
-                <div className="mt-3">
-                  <span className="text-2xl sm:text-3xl font-extrabold text-red-900">
-                    {summary?.kritis_berat ?? 0}
-                  </span>
-                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                    Membutuhkan penanganan paling mendesak
-                  </p>
-                </div>
-                <div className="absolute top-0 right-0 w-2 h-full bg-red-600" />
-              </div>
-
-              {/* Card 2: Prioritas Tinggi */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-white border border-amber-200 shadow-xs flex flex-col justify-between relative overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">
-                    Prioritas Tinggi
-                  </span>
-                  <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                    <AlertTriangle className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <span className="text-2xl sm:text-3xl font-extrabold text-amber-900">
-                    {summary?.tinggi ?? 0}
-                  </span>
-                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                    Mengganggu fungsi fasilitas / area ramai
-                  </p>
-                </div>
-                <div className="absolute top-0 right-0 w-2 h-full bg-amber-500" />
-              </div>
-
-              {/* Card 3: Perlu Konfirmasi AI */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-white border border-purple-200 shadow-xs flex flex-col justify-between relative overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">
-                    Perlu Konfirmasi AI
-                  </span>
-                  <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <span className="text-2xl sm:text-3xl font-extrabold text-purple-900">
-                    {summary?.perlu_konfirmasi ?? 0}
-                  </span>
-                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                    Usulan AI dalam peninjauan admin
-                  </p>
-                </div>
-                <div className="absolute top-0 right-0 w-2 h-full bg-purple-600" />
-              </div>
-
-              {/* Card 4: Rata-Rata Skor */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-xs flex flex-col justify-between relative overflow-hidden">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    Rata-rata Skor
-                  </span>
-                  <div className="w-8 h-8 rounded-xl bg-slate-50 text-slate-600 flex items-center justify-center">
-                    <TrendingUp className="w-4 h-4" />
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-2xl sm:text-3xl font-extrabold text-slate-900">
-                      {summary?.rata_skor_prioritas ?? 0}
-                    </span>
-                    <span className="text-xs font-bold text-slate-400">/ 100</span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                    Dari {summary?.total_laporan ?? 0} total laporan terdaftar
-                  </p>
-                </div>
-                <div className="absolute top-0 right-0 w-2 h-full bg-[#7A0C0C]" />
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Filter Bar */}
             <div className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
@@ -313,7 +295,16 @@ export default function UserPriorityDashboardPage() {
               <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
                 <span className="text-slate-500 font-medium">
                   Menampilkan <span className="font-bold text-slate-900">{reports.length}</span> laporan
+                  <span className="hidden sm:inline text-slate-400 ml-2">• Klik baris laporan untuk melihat detail</span>
                 </span>
+                <button
+                  type="button"
+                  onClick={fetchData}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+                  <span>Segarkan</span>
+                </button>
               </div>
             </div>
 
@@ -339,45 +330,55 @@ export default function UserPriorityDashboardPage() {
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-slate-50/80 border-b border-slate-200/70 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                        <th className="py-4 px-4 sm:px-6">Peringkat & Skor</th>
-                        <th className="py-4 px-4">Nomor & Tanggal</th>
+                        <th className="py-4 px-4 sm:pl-6 text-center">No</th>
+                        <th className="py-4 px-4">Peringkat & Skor</th>
+                        <th className="py-4 px-4">Pelapor & Tanggal</th>
                         <th className="py-4 px-4">Kategori & Lokasi</th>
-                        <th className="py-4 px-4">Tingkat Kerusakan</th>
                         <th className="py-4 px-4 hidden lg:table-cell">Alasan Prioritas AI</th>
-                        <th className="py-4 px-4">Status</th>
-                        <th className="py-4 px-4 text-right pr-6">Rincian</th>
+                        <th className="py-4 px-4 sm:pr-6">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs">
-                      {reports.map((item, index) => {
+                      {reports.map((item) => {
                         const isTopPriority = item.priority_level === "kritis" || item.severity_level === "berat";
                         return (
                           <tr
                             key={item.id_laporan}
-                            className={`hover:bg-slate-50/80 transition-colors ${
-                              isTopPriority ? "bg-red-50/30" : ""
+                            onClick={() => handleOpenDetail(item)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                handleOpenDetail(item);
+                              }
+                            }}
+                            tabIndex={0}
+                            role="button"
+                            title="Klik untuk melihat detail laporan"
+                            className={`cursor-pointer transition-colors outline-none focus-visible:bg-slate-100 ${
+                              isTopPriority
+                                ? "bg-red-50/30 hover:bg-red-50/70 active:bg-red-100/60"
+                                : "hover:bg-slate-50 active:bg-slate-100/80"
                             }`}
                           >
-                            {/* Peringkat & Skor */}
-                            <td className="py-4 px-4 sm:px-6">
-                              <div className="flex items-center gap-3">
-                                <span className="w-6 text-center font-bold text-slate-400 text-xs font-mono">
-                                  #{index + 1}
-                                </span>
-                                <PriorityScoreBadge
-                                  score={item.priority_score}
-                                  level={item.priority_level}
-                                />
-                              </div>
+                            {/* No (ID Laporan) */}
+                            <td className="py-4 px-4 sm:pl-6 text-center">
+                              <span className="font-bold text-slate-900 font-mono text-xs">
+                                #{item.id_laporan}
+                              </span>
                             </td>
 
-                            {/* Nomor & Tanggal */}
+                            {/* Peringkat & Skor */}
+                            <td className="py-4 px-4">
+                              <PriorityScoreBadge
+                                score={item.priority_score}
+                                level={item.priority_level}
+                              />
+                            </td>
+
+                            {/* Pelapor & Tanggal */}
                             <td className="py-4 px-4">
                               <div className="space-y-0.5">
-                                <span className="font-bold text-slate-900 block font-mono">
-                                  #{item.id_laporan}
-                                </span>
-                                <span className="text-[11px] text-slate-500 block truncate max-w-[130px]">
+                                <span className="text-[11px] font-semibold text-slate-800 block truncate max-w-[130px]">
                                   {item.nama_pelapor}
                                 </span>
                                 <span className="inline-flex items-center gap-1 text-[10px] text-slate-400">
@@ -399,20 +400,11 @@ export default function UserPriorityDashboardPage() {
                                 >
                                   {item.kategori_laporan}
                                 </span>
-                                <div className="flex items-center gap-1 text-slate-700 font-medium">
+                                <div className="flex items-center gap-1 text-slate-700 font-medium" title={item.lokasi}>
                                   <Building className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                   <span className="truncate max-w-[160px]">{item.lokasi}</span>
                                 </div>
                               </div>
-                            </td>
-
-                            {/* Tingkat Kerusakan */}
-                            <td className="py-4 px-4">
-                              <SeverityBadge
-                                severity={item.severity_level}
-                                source={item.severity_source}
-                                needsReview={item.needs_review}
-                              />
                             </td>
 
                             {/* Alasan AI */}
@@ -423,22 +415,10 @@ export default function UserPriorityDashboardPage() {
                             </td>
 
                             {/* Status */}
-                            <td className="py-4 px-4">
+                            <td className="py-4 px-4 sm:pr-6">
                               <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-800 border border-slate-200">
                                 {item.status_terkini}
                               </span>
-                            </td>
-
-                            {/* Aksi Detail */}
-                            <td className="py-4 px-4 text-right pr-6">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenDetail(item)}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs hover:border-[#7A0C0C] hover:text-[#7A0C0C] transition-all cursor-pointer"
-                              >
-                                <span>Detail</span>
-                                <ChevronRight className="w-3.5 h-3.5" />
-                              </button>
                             </td>
                           </tr>
                         );
@@ -452,7 +432,7 @@ export default function UserPriorityDashboardPage() {
         </main>
       </div>
 
-      {/* Modal Detail & Analisis AI */}
+      {/* Modal Detail Laporan */}
       <PriorityDetailModal
         report={selectedReport}
         isOpen={isModalOpen}
@@ -460,6 +440,9 @@ export default function UserPriorityDashboardPage() {
         onUpdated={() => {
           fetchData();
         }}
+        hideAiAnalysis={true}
+        hideScoreBreakdown={true}
+        hideHandlingInfo={true}
       />
     </div>
   );

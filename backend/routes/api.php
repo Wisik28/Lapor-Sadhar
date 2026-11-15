@@ -36,6 +36,10 @@ Route::middleware('admin.session')->prefix('admin')->group(function () {
 });
 
 Route::middleware('user.session')->prefix('profile')->group(function () {
+    Route::get('/me', [AuthController::class, 'me']);
+    Route::put('/', [AuthController::class, 'updateProfile']);
+    Route::put('/update', [AuthController::class, 'updateProfile']);
+    Route::put('/password', [AuthController::class, 'changePassword']);
     Route::post('/email-change/request', [EmailSecurityController::class, 'requestUserEmailChange'])->middleware('throttle:3,1');
     Route::post('/email-change/confirm', [EmailSecurityController::class, 'confirmUserEmailChange'])->middleware('throttle:10,1');
 });

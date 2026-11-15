@@ -414,7 +414,7 @@ export default function AdminPriorityDashboardPage() {
                             >
                               {item.kategori_laporan}
                             </span>
-                            <div className="flex items-center gap-1 text-gray-700 font-medium">
+                            <div className="flex items-center gap-1 text-gray-700 font-medium" title={item.lokasi}>
                               <Building className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                               <span className="truncate max-w-[180px]">{item.lokasi}</span>
                             </div>

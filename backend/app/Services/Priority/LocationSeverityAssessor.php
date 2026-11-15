@@ -73,6 +73,13 @@ class LocationSeverityAssessor
 
     private LocationCategorizer $categorizer;
 
+    /**
+     * Cache hasil penilaian lokasi di memori per input string lokasi.
+     *
+     * @var array<string, array{kategori_lokasi: string, tingkat_keparahan: string, skala_keparahan: int, location_weight: float}>
+     */
+    private static array $locationCache = [];
+
     public function __construct(?LocationCategorizer $categorizer = null)
     {
         $this->categorizer = $categorizer ?? new LocationCategorizer();
@@ -120,9 +127,18 @@ class LocationSeverityAssessor
      */
     public function assessLocation(?string $rawLocation): array
     {
+        $cacheKey = $rawLocation ?? '';
+        if (isset(self::$locationCache[$cacheKey])) {
+            return self::$locationCache[$cacheKey];
+        }
+
         try {
+            if (count(self::$locationCache) >= 512) {
+                self::$locationCache = [];
+            }
+
             $category = $this->categorizer->categorize($rawLocation);
-            return $this->assessByCategory($category);
+            return self::$locationCache[$cacheKey] = $this->assessByCategory($category);
         } catch (\Throwable $e) {
             return $this->assessByCategory(LocationCategorizer::CATEGORY_TIDAK_DIKETAHUI);
         }

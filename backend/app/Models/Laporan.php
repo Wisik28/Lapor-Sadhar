@@ -31,6 +31,13 @@ class Laporan extends Model
         'skala_keparahan' => 'integer',
     ];
 
+    protected $appends = ['nama_pelapor'];
+
+    public function getNamaPelaporAttribute(): ?string
+    {
+        return $this->pelapor?->mahasiswa?->nama ?? $this->pelapor?->pegawai?->nama;
+    }
+
     public function pelapor()
     {
         return $this->belongsTo(Pelapor::class, 'nim', 'nomor_identitas');

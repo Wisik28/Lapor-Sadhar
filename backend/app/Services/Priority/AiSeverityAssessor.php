@@ -64,6 +64,18 @@ class AiSeverityAssessor
     ];
 
     /**
+     * Pola gabungan untuk deteksi prompt injection dalam satu eksekusi regex
+     */
+    private const COMBINED_INJECTION_PATTERN = '/(?:abaikan\s+instruksi|anggap\s+ini\s+kritis|ignore\s+(?:previous|above|all)\s+instructions|prioritaskan\s+tinggi|wajib\s+kritis|system\s*:\s*)/i';
+
+    /**
+     * Cache hasil analisis AI di memori untuk menghindari pemindaian string berulang
+     *
+     * @var array<string, array>
+     */
+    private static array $assessCache = [];
+
+    /**
      * Lakukan analisis laporan dan usulkan penilaian tingkat kerusakan & sinyal dimensi.
      *
      * @param string $kategori 'Fasilitas' | 'Kebersihan'
@@ -74,20 +86,22 @@ class AiSeverityAssessor
      */
     public function assess(string $kategori, string $deskripsi, string $lokasi = '', bool $hasPhoto = false): array
     {
+        $cacheKey = strtolower($kategori) . '|' . ($hasPhoto ? '1|' : '0|') . $deskripsi;
+        if (isset(self::$assessCache[$cacheKey])) {
+            return self::$assessCache[$cacheKey];
+        }
+
+        if (count(self::$assessCache) >= 512) {
+            self::$assessCache = [];
+        }
+
         $descLower = strtolower($deskripsi);
         $reasons = [];
         $safetyFlags = [];
-        $needsReview = true; // Usulan AI selalu menandai perlu konfirmasi hingga admin menetapkan
         $confidence = 0.82;
 
         // 1. Deteksi upaya manipulasi instruksi (Prompt Injection Protection)
-        $injectionDetected = false;
-        foreach (self::INJECTION_PATTERNS as $pattern) {
-            if (preg_match($pattern, $deskripsi)) {
-                $injectionDetected = true;
-                break;
-            }
-        }
+        $injectionDetected = preg_match(self::COMBINED_INJECTION_PATTERN, $deskripsi) === 1;
 
         if ($injectionDetected) {
             $reasons[] = 'Deskripsi mengandung pola kalimat instruksi/manipulasi prioritas.';
@@ -118,7 +132,7 @@ class AiSeverityAssessor
             $allReasons[] = 'Terdeteksi sinyal bahaya keselamatan (' . implode(', ', $safetyFlags) . ').';
         }
 
-        return [
+        return self::$assessCache[$cacheKey] = [
             'subcategory'            => $result['subcategory'],
             'suggested_severity'     => $result['severity'],
             'dimensions'             => $result['dimensions'],

@@ -17,6 +17,14 @@ class PriorityScoringService
     private LocationCategorizer $locationCategorizer;
     private LocationSeverityAssessor $locationSeverityAssessor;
 
+    /**
+     * Cache status verifikasi tabel & kolom per koneksi PDO untuk mencegah query skema berulang.
+     *
+     * @var array<int, bool>
+     */
+    private static array $tablesVerifiedByPdo = [];
+    private static array $verifiedLaporanColumnsByPdo = [];
+
     public function __construct(
         AiSeverityAssessor $aiAssessor,
         ?LocationCategorizer $locationCategorizer = null,
@@ -35,26 +43,36 @@ class PriorityScoringService
     public function ensureTablesExist(): bool
     {
         try {
-            $hasAssessments = Schema::hasTable('priority_assessments');
-            $hasFeedback = Schema::hasTable('priority_feedback');
+            $pdoId = spl_object_id(DB::connection()->getPdo());
 
             // Jangan jalankan DDL di dalam transaksi aktif PostgreSQL
             if (DB::transactionLevel() > 0) {
-                return $hasAssessments;
+                return Schema::hasTable('priority_assessments');
             }
 
-            if (Schema::hasTable('laporan') && !Schema::hasColumn('laporan', 'kategori_lokasi')) {
-                Schema::table('laporan', function (Blueprint $table) {
-                    if (!Schema::hasColumn('laporan', 'kategori_lokasi')) {
-                        $table->string('kategori_lokasi', 60)->default('Tidak Diketahui');
+            if (!empty(self::$tablesVerifiedByPdo[$pdoId])) {
+                return true;
+            }
+
+            $hasAssessments = Schema::hasTable('priority_assessments');
+
+            if (empty(self::$verifiedLaporanColumnsByPdo[$pdoId])) {
+                if (Schema::hasTable('laporan')) {
+                    if (!Schema::hasColumns('laporan', ['kategori_lokasi', 'tingkat_keparahan', 'skala_keparahan'])) {
+                        Schema::table('laporan', function (Blueprint $table) {
+                            if (!Schema::hasColumn('laporan', 'kategori_lokasi')) {
+                                $table->string('kategori_lokasi', 60)->default('Tidak Diketahui');
+                            }
+                            if (!Schema::hasColumn('laporan', 'tingkat_keparahan')) {
+                                $table->string('tingkat_keparahan', 30)->default('Sedang');
+                            }
+                            if (!Schema::hasColumn('laporan', 'skala_keparahan')) {
+                                $table->unsignedTinyInteger('skala_keparahan')->default(2);
+                            }
+                        });
                     }
-                    if (!Schema::hasColumn('laporan', 'tingkat_keparahan')) {
-                        $table->string('tingkat_keparahan', 30)->default('Sedang');
-                    }
-                    if (!Schema::hasColumn('laporan', 'skala_keparahan')) {
-                        $table->unsignedTinyInteger('skala_keparahan')->default(2);
-                    }
-                });
+                    self::$verifiedLaporanColumnsByPdo[$pdoId] = true;
+                }
             }
 
             if (!$hasAssessments) {
@@ -86,7 +104,7 @@ class PriorityScoringService
                     $table->index('severity_level');
                     $table->index('needs_review');
                 });
-            } elseif (!Schema::hasColumn('priority_assessments', 'kategori_lokasi')) {
+            } elseif (!Schema::hasColumns('priority_assessments', ['kategori_lokasi', 'tingkat_keparahan_lokasi', 'skala_keparahan_lokasi'])) {
                 Schema::table('priority_assessments', function (Blueprint $table) {
                     if (!Schema::hasColumn('priority_assessments', 'kategori_lokasi')) {
                         $table->string('kategori_lokasi', 60)->default('Tidak Diketahui');
@@ -100,7 +118,7 @@ class PriorityScoringService
                 });
             }
 
-            if (!$hasFeedback) {
+            if (!Schema::hasTable('priority_feedback')) {
                 Schema::create('priority_feedback', function (Blueprint $table) {
                     $table->id();
                     $table->unsignedBigInteger('id_laporan');
@@ -113,6 +131,8 @@ class PriorityScoringService
                     $table->index('id_laporan');
                 });
             }
+
+            self::$tablesVerifiedByPdo[$pdoId] = true;
 
             return true;
         } catch (\Throwable $e) {
@@ -270,6 +290,56 @@ class PriorityScoringService
     }
 
     /**
+     * Lakukan penilaian dan simpan ke database secara batch untuk kumpulan laporan
+     * (Menghindari masalah N+1 query pada daftar laporan dan ringkasan dashboard)
+     *
+     * @param iterable<int, Laporan> $laporans
+     * @param bool $force
+     * @return \Illuminate\Support\Collection<int, PriorityAssessment>
+     */
+    public function assessAndSaveMany(iterable $laporans, bool $force = false): \Illuminate\Support\Collection
+    {
+        $collection = $laporans instanceof \Illuminate\Support\Collection ? $laporans : collect($laporans);
+        if ($collection->isEmpty()) {
+            return collect();
+        }
+
+        $hasTable = $this->ensureTablesExist();
+        $existingMap = collect();
+
+        if ($hasTable) {
+            try {
+                $ids = $collection->pluck('id_laporan')->filter()->values()->all();
+                if (!empty($ids)) {
+                    $existingMap = PriorityAssessment::whereIn('id_laporan', $ids)
+                        ->get()
+                        ->keyBy('id_laporan');
+                }
+            } catch (\Throwable $e) {
+                $pdoId = spl_object_id(DB::connection()->getPdo());
+                unset(self::$tablesVerifiedByPdo[$pdoId]);
+                $hasTable = false;
+            }
+        }
+
+        $results = collect();
+        foreach ($collection as $laporan) {
+            $existing = $existingMap->get($laporan->id_laporan);
+            if ($existing && !$force) {
+                $results->put($laporan->id_laporan, $existing);
+                continue;
+            }
+
+            $results->put(
+                $laporan->id_laporan,
+                $this->computeAndPersistAssessment($laporan, $existing, $hasTable, $force)
+            );
+        }
+
+        return $results;
+    }
+
+    /**
      * Lakukan penilaian dan simpan ke database untuk sebuah laporan
      */
     public function assessAndSave(Laporan $laporan, bool $force = false): PriorityAssessment
@@ -284,10 +354,24 @@ class PriorityScoringService
                     return $existing;
                 }
             } catch (\Throwable $e) {
+                $pdoId = spl_object_id(DB::connection()->getPdo());
+                unset(self::$tablesVerifiedByPdo[$pdoId]);
                 $hasTable = false;
             }
         }
 
+        return $this->computeAndPersistAssessment($laporan, $existing, $hasTable, $force);
+    }
+
+    /**
+     * Inti komputasi skor prioritas dan penyimpanan ke database
+     */
+    private function computeAndPersistAssessment(
+        Laporan $laporan,
+        ?PriorityAssessment $existing,
+        bool $hasTable,
+        bool $force = false
+    ): PriorityAssessment {
         $kategori = $laporan->kategori_laporan ?? 'Fasilitas';
         $deskripsi = $laporan->deskripsi ?? '';
         $lokasi = $laporan->lokasi ?? '';
@@ -300,13 +384,18 @@ class PriorityScoringService
         $skalaKeparahan     = $locationAssessment['skala_keparahan'];
         $locationWeight     = $locationAssessment['location_weight'];
 
-        // Sinkronkan atribut lokasi pada model Laporan jika belum terisi
-        if (empty($laporan->kategori_lokasi) || $force) {
+        // Sinkronkan atribut lokasi pada model Laporan hanya jika belum sesuai di DB
+        $needsLaporanSync = $laporan->kategori_lokasi !== $kategoriLokasi
+            || $laporan->tingkat_keparahan !== $tingkatKeparahan
+            || (int) $laporan->skala_keparahan !== $skalaKeparahan;
+
+        if ($needsLaporanSync) {
             $laporan->kategori_lokasi   = $kategoriLokasi;
             $laporan->tingkat_keparahan = $tingkatKeparahan;
             $laporan->skala_keparahan   = $skalaKeparahan;
 
-            if (DB::transactionLevel() === 0 && $laporan->exists && Schema::hasColumn('laporan', 'kategori_lokasi')) {
+            $pdoId = spl_object_id(DB::connection()->getPdo());
+            if (DB::transactionLevel() === 0 && $laporan->exists && !empty(self::$verifiedLaporanColumnsByPdo[$pdoId])) {
                 try {
                     Laporan::where('id_laporan', $laporan->id_laporan)->update([
                         'kategori_lokasi'   => $kategoriLokasi,
@@ -394,11 +483,19 @@ class PriorityScoringService
 
         if ($hasTable) {
             try {
+                if ($existing) {
+                    $existing->fill($attributes);
+                    $existing->save();
+                    return $existing;
+                }
+
                 return PriorityAssessment::updateOrCreate(
                     ['id_laporan' => $laporan->id_laporan],
                     $attributes
                 );
             } catch (\Throwable $e) {
+                $pdoId = spl_object_id(DB::connection()->getPdo());
+                unset(self::$tablesVerifiedByPdo[$pdoId]);
                 report($e);
             }
         }
