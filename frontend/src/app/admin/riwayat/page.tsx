@@ -154,6 +154,7 @@ export default function AdminRiwayatLaporanPage() {
   const [modalError, setModalError] = useState("");
 
   // Pengecekan Hak Akses Admin berdasarkan Wewenang Unit & Kampus
+  // Fasilitas -> BPS | Kebersihan -> BLU
   const checkCanEditStatus = useCallback(
     (laporan: LaporanItem): boolean => {
       const role = (adminUser.role || "").toLowerCase();
@@ -166,8 +167,8 @@ export default function AdminRiwayatLaporanPage() {
         return true;
       }
 
-      const isBLU = laporan.kategori_laporan === "Fasilitas" || laporan.kategori_laporan === "BLU";
-      const isBPS = laporan.kategori_laporan === "Kebersihan" || laporan.kategori_laporan === "BPS";
+      const isBPS = laporan.kategori_laporan === "Fasilitas" || laporan.kategori_laporan === "BPS";
+      const isBLU = laporan.kategori_laporan === "Kebersihan" || laporan.kategori_laporan === "BLU";
 
       if (role.includes("kepala biro layanan umum") || role.includes("kepala blu")) {
         return isBLU;
