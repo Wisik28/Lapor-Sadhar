@@ -67,7 +67,7 @@ class AuthControllerTest extends TestCase
         $this->assertDatabaseMissing('user_mahasiswa', ['nim' => '198501012010121001']);
         $this->assertTrue(Hash::check('password123', $pegawai->password));
 
-        $this->postJson('/api/login', [
+        $login = $this->postJson('/api/login', [
             'identifier' => $pegawai->nomor_identitas,
             'password' => 'password123',
             'role' => 'semua',
@@ -80,7 +80,7 @@ class AuthControllerTest extends TestCase
             'role' => 'mahasiswa',
         ])->assertUnauthorized();
 
-        $report = $this->postJson('/api/laporan', [
+        $report = $this->withToken($login->json('token'))->postJson('/api/laporan', [
             'nim' => $pegawai->nomor_identitas,
             'kategori_laporan' => 'Fasilitas',
             'deskripsi' => 'Kerusakan fasilitas ruang kerja.',
@@ -88,7 +88,7 @@ class AuthControllerTest extends TestCase
             'lokasi' => 'Ruang Kerja',
         ])->assertCreated();
 
-        $this->getJson('/api/laporan/'.$report->json('data.id_laporan'))
+        $this->withToken($login->json('token'))->getJson('/api/laporan/'.$report->json('data.id_laporan'))
             ->assertOk()
             ->assertJsonPath('data.nama_pelapor', 'Pegawai Tes');
     }
@@ -173,7 +173,15 @@ class AuthControllerTest extends TestCase
         $this->assertDatabaseHas('user_pegawai', ['nomor_identitas' => $identifier]);
         $this->assertDatabaseHas('laporan', ['nim' => $identifier]);
 
-        $this->getJson('/api/laporan/1')
+        UserSession::create([
+            'account_type' => 'karyawan',
+            'account_id' => $identifier,
+            'token_hash' => hash('sha256', 'pegawai-migration-token'),
+            'expires_at' => now()->addHour(),
+        ]);
+
+        $this->withToken('pegawai-migration-token')
+            ->getJson('/api/laporan/1')
             ->assertOk()
             ->assertJsonPath('data.nama_pelapor', 'Pegawai Lama');
     }
@@ -287,5 +295,147 @@ class AuthControllerTest extends TestCase
             ->assertJsonPath('email', 'first.email@example.com');
 
         $this->assertSame('first.email@example.com', UserMahasiswa::findOrFail($identifier)->email);
+    }
+
+    public function test_user_can_view_profile_me(): void
+    {
+        $identifier = '225314999';
+        Pelapor::create(['nomor_identitas' => $identifier, 'tipe_user' => 'mahasiswa']);
+        $user = UserMahasiswa::create([
+            'nim' => $identifier,
+            'nama' => 'Profil User',
+            'email' => 'profil@example.com',
+            'no_handphone' => '081234567890',
+            'password' => Hash::make('password123'),
+        ]);
+        UserSession::create([
+            'account_type' => 'mahasiswa',
+            'account_id' => $identifier,
+            'token_hash' => hash('sha256', 'profile-test-token'),
+            'expires_at' => now()->addHour(),
+        ]);
+
+        $this->withToken('profile-test-token')
+            ->getJson('/api/profile/me')
+            ->assertOk()
+            ->assertJsonPath('status', 'success')
+            ->assertJsonPath('user.nama', 'Profil User')
+            ->assertJsonPath('user.no_handphone', '081234567890')
+            ->assertJsonPath('user.email', 'profil@example.com');
+    }
+
+    public function test_user_can_update_phone_number_and_email_directly(): void
+    {
+        $identifier = '225314888';
+        Pelapor::create(['nomor_identitas' => $identifier, 'tipe_user' => 'mahasiswa']);
+        $user = UserMahasiswa::create([
+            'nim' => $identifier,
+            'nama' => 'Update User',
+            'email' => 'old@example.com',
+            'no_handphone' => '0811111111',
+            'password' => Hash::make('password123'),
+        ]);
+        UserSession::create([
+            'account_type' => 'mahasiswa',
+            'account_id' => $identifier,
+            'token_hash' => hash('sha256', 'update-test-token'),
+            'expires_at' => now()->addHour(),
+        ]);
+
+        $this->withToken('update-test-token')
+            ->putJson('/api/profile', [
+                'no_handphone' => '0899999999',
+                'email' => 'newdirect@example.com',
+            ])
+            ->assertOk()
+            ->assertJsonPath('status', 'success')
+            ->assertJsonPath('user.no_handphone', '0899999999')
+            ->assertJsonPath('user.email', 'newdirect@example.com');
+
+        $user->refresh();
+        $this->assertSame('0899999999', $user->no_handphone);
+        $this->assertSame('newdirect@example.com', $user->email);
+    }
+
+    public function test_user_cannot_update_email_to_another_users_email(): void
+    {
+        $identifier1 = '225314771';
+        $identifier2 = '225314772';
+        Pelapor::create(['nomor_identitas' => $identifier1, 'tipe_user' => 'mahasiswa']);
+        Pelapor::create(['nomor_identitas' => $identifier2, 'tipe_user' => 'mahasiswa']);
+        UserMahasiswa::create([
+            'nim' => $identifier1,
+            'nama' => 'User One',
+            'email' => 'taken@example.com',
+            'no_handphone' => '0811111111',
+            'password' => Hash::make('password123'),
+        ]);
+        UserMahasiswa::create([
+            'nim' => $identifier2,
+            'nama' => 'User Two',
+            'email' => 'two@example.com',
+            'no_handphone' => '0822222222',
+            'password' => Hash::make('password123'),
+        ]);
+        UserSession::create([
+            'account_type' => 'mahasiswa',
+            'account_id' => $identifier2,
+            'token_hash' => hash('sha256', 'dup-test-token'),
+            'expires_at' => now()->addHour(),
+        ]);
+
+        $this->withToken('dup-test-token')
+            ->putJson('/api/profile', [
+                'email' => 'taken@example.com',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('status', 'error');
+    }
+
+    public function test_user_can_change_password(): void
+    {
+        $identifier = '225314666';
+        Pelapor::create(['nomor_identitas' => $identifier, 'tipe_user' => 'mahasiswa']);
+        $user = UserMahasiswa::create([
+            'nim' => $identifier,
+            'nama' => 'Password User',
+            'email' => 'pwd@example.com',
+            'no_handphone' => '081234567890',
+            'password' => Hash::make('oldpassword'),
+        ]);
+        UserSession::create([
+            'account_type' => 'mahasiswa',
+            'account_id' => $identifier,
+            'token_hash' => hash('sha256', 'pwd-test-token'),
+            'expires_at' => now()->addHour(),
+        ]);
+
+        // Wrong current password
+        $this->withToken('pwd-test-token')
+            ->putJson('/api/profile/password', [
+                'current_password' => 'wrongpass',
+                'password' => 'newpassword123',
+                'password_confirmation' => 'newpassword123',
+            ])
+            ->assertStatus(422);
+
+        // Success
+        $this->withToken('pwd-test-token')
+            ->putJson('/api/profile/password', [
+                'current_password' => 'oldpassword',
+                'password' => 'newpassword123',
+                'password_confirmation' => 'newpassword123',
+            ])
+            ->assertOk()
+            ->assertJsonPath('status', 'success');
+
+        $user->refresh();
+        $this->assertTrue(Hash::check('newpassword123', $user->password));
+
+        // Can login with new password
+        $this->postJson('/api/login', [
+            'identifier' => $identifier,
+            'password' => 'newpassword123',
+        ])->assertOk();
     }
 }

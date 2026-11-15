@@ -104,13 +104,18 @@ export function useBuatLaporan(today: string) {
 
       try {
         // Use state directly within the async function
+        const fotoPayload =
+          state.attachments.length > 1
+            ? JSON.stringify(state.attachments.map((a) => a.url))
+            : (state.attachments[0]?.url ?? undefined);
+
         const res = await laporanApi.create({
           nim,
           kategori_laporan: state.kategori,
           deskripsi: state.deskripsi,
           tanggal_kejadian: state.tanggal,
           lokasi: state.lokasi,
-          foto: state.attachments[0]?.url ?? undefined,
+          foto: fotoPayload,
         });
 
         if (res.status === 'success') {

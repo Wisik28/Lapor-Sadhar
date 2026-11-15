@@ -269,6 +269,69 @@ export const authApi = {
     return this.postAuth("/admin/password/reset", data, "Gagal mereset kata sandi admin.");
   },
 
+  async getUserSession(): Promise<AuthResponse> {
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+      if (!token) return { status: "error", message: "Sesi pengguna tidak ditemukan." };
+
+      const response = await fetch(`${API_BASE_URL}/profile/me`, {
+        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json();
+      if (response.ok && result.status === "success" && result.user) {
+        localStorage.setItem("user_session", JSON.stringify(result.user));
+        return result;
+      }
+      return result;
+    } catch (error: unknown) {
+      return { status: "error", message: getErrorMessage(error, "Gagal memeriksa sesi pengguna.") };
+    }
+  },
+
+  async updateUserProfile(data: {
+    nama?: string;
+    no_handphone?: string;
+    email?: string;
+  }): Promise<AuthResponse> {
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+      const response = await fetch(`${API_BASE_URL}/profile`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(data),
+      });
+      return await response.json();
+    } catch (error: unknown) {
+      return { status: "error", message: getErrorMessage(error, "Gagal memperbarui profil pengguna.") };
+    }
+  },
+
+  async changeUserPassword(data: {
+    current_password: string;
+    password: string;
+    password_confirmation: string;
+  }): Promise<AuthResponse> {
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+      const response = await fetch(`${API_BASE_URL}/profile/password`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(data),
+      });
+      return await response.json();
+    } catch (error: unknown) {
+      return { status: "error", message: getErrorMessage(error, "Gagal mengubah kata sandi.") };
+    }
+  },
+
   async requestUserEmailChange(new_email: string): Promise<AuthResponse> {
     const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
     return this.authenticatedRequest("/profile/email-change/request", { new_email }, token, "Gagal meminta kode verifikasi email.");

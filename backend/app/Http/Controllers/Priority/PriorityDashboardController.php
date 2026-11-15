@@ -37,98 +37,96 @@ class PriorityDashboardController extends Controller
 
             $laporans = $query->get();
 
-            // Pastikan setiap laporan memiliki PriorityAssessment (baik dari DB maupun in-memory)
-            $assessments = collect();
-            foreach ($laporans as $laporan) {
-                $assessments->put(
-                    $laporan->id_laporan,
-                    $this->scoringService->assessAndSave($laporan)
-                );
-            }
+            // Pastikan setiap laporan memiliki PriorityAssessment secara batch (menghindari N+1 query)
+            $assessments = $this->scoringService->assessAndSaveMany($laporans);
+            $now = now();
 
             // Format dan susun data laporan
-            $items = $laporans->map(function ($laporan) use ($assessments) {
+            $items = $laporans->map(function ($laporan) use ($assessments, $now) {
                 $assessment = $assessments->get($laporan->id_laporan);
                 $latestStatus = $laporan->statuses->first();
                 $statusName = $latestStatus?->status_laporan ?? 'Terkirim';
 
-                $createdAt = $laporan->tanggal_buat ? Carbon::parse($laporan->tanggal_buat) : now();
-                $diffDays = (int) $createdAt->diffInDays(now());
-                $diffHours = (int) $createdAt->diffInHours(now());
+                $createdAt = $laporan->tanggal_buat ? Carbon::parse($laporan->tanggal_buat) : $now;
+                $diffDays = (int) $createdAt->diffInDays($now);
+                $diffHours = (int) $createdAt->diffInHours($now);
 
                 $lamaMenunggu = $diffDays > 0 ? "{$diffDays} hari lalu" : ($diffHours > 0 ? "{$diffHours} jam lalu" : 'Baru saja');
 
                 return [
-                    'id_laporan'             => $laporan->id_laporan,
-                    'nim'                    => $laporan->nim,
-                    'nama_pelapor'           => $laporan->pelapor?->mahasiswa?->nama ?? 'Civitas USD',
-                    'kategori_laporan'       => $laporan->kategori_laporan,
-                    'deskripsi'              => $laporan->deskripsi,
-                    'tanggal_buat'           => $laporan->tanggal_buat,
-                    'tanggal_kejadian'       => $laporan->tanggal_kejadian,
-                    'lokasi'                 => $laporan->lokasi,
-                    'kategori_lokasi'        => $assessment?->kategori_lokasi ?? $laporan->kategori_lokasi ?? 'Tidak Diketahui',
+                    'id_laporan'               => $laporan->id_laporan,
+                    'nim'                      => $laporan->nim,
+                    'nama_pelapor'             => $laporan->pelapor?->mahasiswa?->nama ?? 'Civitas USD',
+                    'kategori_laporan'         => $laporan->kategori_laporan,
+                    'deskripsi'                => $laporan->deskripsi,
+                    'tanggal_buat'             => $laporan->tanggal_buat,
+                    'tanggal_kejadian'         => $laporan->tanggal_kejadian,
+                    'lokasi'                   => $laporan->lokasi,
+                    'kategori_lokasi'          => $assessment?->kategori_lokasi ?? $laporan->kategori_lokasi ?? 'Tidak Diketahui',
                     'tingkat_keparahan_lokasi' => $assessment?->tingkat_keparahan_lokasi ?? $laporan->tingkat_keparahan ?? 'Sedang',
-                    'skala_keparahan_lokasi' => (int) ($assessment?->skala_keparahan_lokasi ?? $laporan->skala_keparahan ?? 2),
-                    'foto'                   => $laporan->foto,
-                    'status_terkini'         => $statusName,
-                    'lama_menunggu'          => $lamaMenunggu,
-                    'lama_menunggu_hari'     => $diffDays,
+                    'skala_keparahan_lokasi'   => (int) ($assessment?->skala_keparahan_lokasi ?? $laporan->skala_keparahan ?? 2),
+                    'foto'                     => $laporan->foto,
+                    'status_terkini'           => $statusName,
+                    'lama_menunggu'            => $lamaMenunggu,
+                    'lama_menunggu_hari'       => $diffDays,
 
                     // Prioritas & Penilaian
-                    'priority_score'         => $assessment?->priority_score ?? 0,
-                    'priority_level'         => $assessment?->priority_level ?? 'sedang',
-                    'severity_level'         => $assessment?->severity_level ?? 'sedang',
-                    'severity_source'        => $assessment?->severity_source ?? 'ai',
-                    'ai_suggested_severity'  => $assessment?->ai_suggested_severity ?? 'sedang',
-                    'admin_severity'         => $assessment?->admin_severity,
-                    'confidence'             => $assessment?->confidence ?? 0.8,
-                    'needs_review'           => $assessment?->needs_review ?? true,
-                    'reasons'                => $assessment?->reasons ?? [],
-                    'ringkasan_alasan'       => !empty($assessment?->reasons) ? $assessment->reasons[0] : '-',
-                    'safety_flags'           => $assessment?->safety_flags ?? [],
-                    'admin_notes'            => $assessment?->admin_notes,
-                    'reviewed_at'            => $assessment?->reviewed_at?->toIso8601String(),
+                    'priority_score'           => $assessment?->priority_score ?? 0,
+                    'priority_level'           => $assessment?->priority_level ?? 'sedang',
+                    'severity_level'           => $assessment?->severity_level ?? 'sedang',
+                    'severity_source'          => $assessment?->severity_source ?? 'ai',
+                    'ai_suggested_severity'    => $assessment?->ai_suggested_severity ?? 'sedang',
+                    'admin_severity'           => $assessment?->admin_severity,
+                    'confidence'               => $assessment?->confidence ?? 0.8,
+                    'needs_review'             => $assessment?->needs_review ?? true,
+                    'reasons'                  => $assessment?->reasons ?? [],
+                    'ringkasan_alasan'         => !empty($assessment?->reasons) ? $assessment->reasons[0] : '-',
+                    'safety_flags'             => $assessment?->safety_flags ?? [],
+                    'admin_notes'              => $assessment?->admin_notes,
+                    'reviewed_at'              => $assessment?->reviewed_at?->toIso8601String(),
                 ];
             });
 
-            // Filter Kategori
-            if ($request->filled('kategori') && $request->kategori !== 'Semua') {
-                $kat = strtolower($request->kategori);
-                $items = $items->filter(fn ($it) => strtolower($it['kategori_laporan']) === $kat);
-            }
+            // Siapkan parameter filter satu kali di luar iterasi (Single-Pass Filtering)
+            $katFilter = ($request->filled('kategori') && $request->kategori !== 'Semua')
+                ? strtolower($request->kategori)
+                : null;
+            $sevFilter = ($request->filled('severity') && $request->severity !== 'Semua')
+                ? strtolower($request->severity)
+                : null;
+            $plFilter = ($request->filled('priority_level') && $request->priority_level !== 'Semua')
+                ? strtolower($request->priority_level)
+                : null;
+            $stFilter = ($request->filled('status') && $request->status !== 'Semua')
+                ? strtolower($request->status)
+                : null;
+            $needsReviewFilter = $request->boolean('needs_review');
+            $searchQuery = $request->filled('search') ? strtolower($request->search) : null;
 
-            // Filter Tingkat Kerusakan (Severity)
-            if ($request->filled('severity') && $request->severity !== 'Semua') {
-                $sev = strtolower($request->severity);
-                $items = $items->filter(fn ($it) => strtolower($it['severity_level']) === $sev);
-            }
-
-            // Filter Level Prioritas (Kritis, Tinggi, Sedang, Rendah)
-            if ($request->filled('priority_level') && $request->priority_level !== 'Semua') {
-                $pl = strtolower($request->priority_level);
-                $items = $items->filter(fn ($it) => strtolower($it['priority_level']) === $pl);
-            }
-
-            // Filter Status
-            if ($request->filled('status') && $request->status !== 'Semua') {
-                $st = strtolower($request->status);
-                $items = $items->filter(fn ($it) => strtolower($it['status_terkini']) === $st);
-            }
-
-            // Filter Perlu Konfirmasi / Tinjauan AI
-            if ($request->boolean('needs_review')) {
-                $items = $items->filter(fn ($it) => $it['needs_review'] === true);
-            }
-
-            // Search (Cari kata kunci pada deskripsi, lokasi, nama pelapor, id laporan)
-            if ($request->filled('search')) {
-                $q = strtolower($request->search);
-                $items = $items->filter(function ($it) use ($q) {
-                    return str_contains(strtolower($it['deskripsi']), $q)
-                        || str_contains(strtolower($it['lokasi']), $q)
-                        || str_contains(strtolower($it['nama_pelapor']), $q)
-                        || str_contains((string) $it['id_laporan'], $q);
+            if ($katFilter !== null || $sevFilter !== null || $plFilter !== null || $stFilter !== null || $needsReviewFilter || $searchQuery !== null) {
+                $items = $items->filter(function ($it) use ($katFilter, $sevFilter, $plFilter, $stFilter, $needsReviewFilter, $searchQuery) {
+                    if ($katFilter !== null && strtolower($it['kategori_laporan']) !== $katFilter) {
+                        return false;
+                    }
+                    if ($sevFilter !== null && strtolower($it['severity_level']) !== $sevFilter) {
+                        return false;
+                    }
+                    if ($plFilter !== null && strtolower($it['priority_level']) !== $plFilter) {
+                        return false;
+                    }
+                    if ($stFilter !== null && strtolower($it['status_terkini']) !== $stFilter) {
+                        return false;
+                    }
+                    if ($needsReviewFilter && $it['needs_review'] !== true) {
+                        return false;
+                    }
+                    if ($searchQuery !== null) {
+                        return str_contains(strtolower($it['deskripsi']), $searchQuery)
+                            || str_contains(strtolower($it['lokasi']), $searchQuery)
+                            || str_contains(strtolower($it['nama_pelapor']), $searchQuery)
+                            || str_contains((string) $it['id_laporan'], $searchQuery);
+                    }
+                    return true;
                 });
             }
 
@@ -270,11 +268,8 @@ class PriorityDashboardController extends Controller
         try {
             $laporans = Laporan::with('statuses')->get();
 
-            // Pastikan terdata (baik dari DB maupun in-memory)
-            $assessments = collect();
-            foreach ($laporans as $laporan) {
-                $assessments->push($this->scoringService->assessAndSave($laporan));
-            }
+            // Pastikan terdata secara batch (menghindari N+1 query)
+            $assessments = $this->scoringService->assessAndSaveMany($laporans);
 
             $totalActive = 0;
             $countKritis = 0;
@@ -333,12 +328,8 @@ class PriorityDashboardController extends Controller
     {
         try {
             $laporans = Laporan::all();
-            $count = 0;
-
-            foreach ($laporans as $laporan) {
-                $this->scoringService->assessAndSave($laporan, true);
-                $count++;
-            }
+            $assessments = $this->scoringService->assessAndSaveMany($laporans, true);
+            $count = $assessments->count();
 
             return response()->json([
                 'status'  => 'success',

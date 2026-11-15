@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Image from "next/image";
 import {
   X,
@@ -15,7 +15,10 @@ import {
   Clock,
   Send,
   History,
-  FileText
+  FileText,
+  ImageIcon,
+  Eye,
+  ExternalLink
 } from "lucide-react";
 import {
   priorityApi,
@@ -30,6 +33,56 @@ interface PriorityDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpdated: () => void;
+  hideAiAnalysis?: boolean;
+  hideScoreBreakdown?: boolean;
+  hideHandlingInfo?: boolean;
+}
+
+function getFotoList(fotoSource: any): string[] {
+  if (!fotoSource) return [];
+
+  if (Array.isArray(fotoSource)) {
+    return fotoSource
+      .map((item) => {
+        if (typeof item === "string") return item.trim();
+        if (item && typeof item === "object") return (item.url || item.path || "").trim();
+        return "";
+      })
+      .filter((url) => url.length > 0);
+  }
+
+  if (typeof fotoSource === "string") {
+    const trimmed = fotoSource.trim();
+    if (!trimmed) return [];
+
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map((item) => {
+              if (typeof item === "string") return item.trim();
+              if (item && typeof item === "object") return (item.url || item.path || "").trim();
+              return "";
+            })
+            .filter((url) => url.length > 0);
+        }
+      } catch {
+        // Fallback jika bukan JSON valid
+      }
+    }
+
+    if (trimmed.includes(",")) {
+      const parts = trimmed.split(",").map((p) => p.trim()).filter((p) => p.length > 0);
+      if (parts.length > 1) {
+        return parts;
+      }
+    }
+
+    return [trimmed];
+  }
+
+  return [];
 }
 
 export function PriorityDetailModal({
@@ -37,6 +90,9 @@ export function PriorityDetailModal({
   isOpen,
   onClose,
   onUpdated,
+  hideAiAnalysis = false,
+  hideScoreBreakdown = false,
+  hideHandlingInfo = false,
 }: PriorityDetailModalProps) {
   const [loading, setLoading] = useState(false);
   const [detailData, setDetailData] = useState<PriorityDetailData | null>(null);
@@ -45,6 +101,15 @@ export function PriorityDetailModal({
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null);
+
+  const rawFoto =
+    detailData?.laporan?.foto ||
+    (report as any)?.fotos ||
+    (report as any)?.attachments ||
+    report?.foto;
+
+  const fotoList = useMemo(() => getFotoList(rawFoto), [rawFoto]);
 
   useEffect(() => {
     if (isOpen && report) {
@@ -52,9 +117,11 @@ export function PriorityDetailModal({
       setAdminNotes(report.admin_notes || "");
       setSaveSuccess(false);
       setErrorMessage(null);
+      setActivePhotoIndex(null);
       loadDetail(report.id_laporan);
     } else {
       setDetailData(null);
+      setActivePhotoIndex(null);
     }
   }, [isOpen, report]);
 
@@ -100,7 +167,7 @@ export function PriorityDetailModal({
             </span>
             <div>
               <h2 className="text-lg font-bold text-gray-900 leading-tight">
-                Penetapan Prioritas & Verifikasi AI
+                {hideAiAnalysis ? "Detail Laporan" : "Penetapan Prioritas & Verifikasi AI"}
               </h2>
               <p className="text-xs text-gray-500 font-medium">
                 Kategori: <span className="font-semibold text-gray-700">{report.kategori_laporan}</span> • Status:{" "}
@@ -132,105 +199,174 @@ export function PriorityDetailModal({
             </div>
           )}
 
-          {/* Grid: Foto & Info Utama */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* Foto Laporan */}
-            <div className="md:col-span-1">
-              <div className="rounded-2xl border border-gray-200 overflow-hidden bg-gray-50 h-52 relative flex items-center justify-center">
-                {report.foto ? (
-                  <Image
-                    src={report.foto}
-                    alt="Foto Kerusakan"
-                    fill
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center justify-center text-gray-400 p-4 text-center">
-                    <FileText className="w-8 h-8 mb-1.5 opacity-60" />
-                    <span className="text-xs font-medium">Tidak ada foto terlampir</span>
-                  </div>
-                )}
-              </div>
+          {/* Info Laporan */}
+          <div className="space-y-3">
+            <div className="p-4 bg-gray-50/80 rounded-2xl border border-gray-100 space-y-2">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                Deskripsi Laporan Civitas:
+              </p>
+              <p className="text-sm text-gray-800 font-medium leading-relaxed whitespace-pre-wrap">
+                {report.deskripsi}
+              </p>
             </div>
 
-            {/* Info Laporan */}
-            <div className="md:col-span-2 space-y-3">
-              <div className="p-4 bg-gray-50/80 rounded-2xl border border-gray-100 space-y-2">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">
-                  Deskripsi Laporan Civitas:
-                </p>
-                <p className="text-sm text-gray-800 font-medium leading-relaxed whitespace-pre-wrap">
-                  {report.deskripsi}
-                </p>
+            {/* Lokasi Kejadian (Sama persis seperti yang diinputkan user) */}
+            <div className="p-3.5 bg-white rounded-2xl border border-gray-200/90 shadow-2xs space-y-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-[#8C1515]" />
+                  Lokasi Kejadian (Input Pengguna):
+                </span>
+                {/* Konteks Kategori Sistem Backend */}
+                {(report.kategori_lokasi || detailData?.laporan?.kategori_lokasi) && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                    <span>Kategori Sistem:</span>
+                    <span className="text-[#8C1515]">
+                      {detailData?.laporan?.kategori_lokasi || report.kategori_lokasi}
+                    </span>
+                    {(report.tingkat_keparahan_lokasi || detailData?.laporan?.tingkat_keparahan) && (
+                      <span className="text-slate-500 font-medium">
+                        • {detailData?.laporan?.tingkat_keparahan || report.tingkat_keparahan_lokasi}
+                      </span>
+                    )}
+                  </span>
+                )}
               </div>
+              <p className="text-sm font-semibold text-gray-900 break-words leading-snug">
+                {detailData?.laporan?.lokasi || report.lokasi || "Lokasi tidak dicantumkan."}
+              </p>
+            </div>
 
-              <div className="grid grid-cols-2 gap-3 text-xs text-gray-600">
-                <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-gray-200/80">
-                  <MapPin className="w-4 h-4 text-[#8C1515] shrink-0" />
-                  <span className="truncate font-medium">{report.lokasi}</span>
+            {/* Pelapor, Tanggal, dan Lama Menunggu */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs text-gray-600">
+              <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-gray-200/80">
+                <User className="w-4 h-4 text-gray-500 shrink-0" />
+                <div className="min-w-0">
+                  <span className="block text-[10px] text-gray-400 font-medium">Pelapor</span>
+                  <span className="truncate font-semibold text-gray-800 block">{report.nama_pelapor}</span>
                 </div>
-                <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-gray-200/80">
-                  <User className="w-4 h-4 text-gray-500 shrink-0" />
-                  <span className="truncate font-medium">{report.nama_pelapor}</span>
+              </div>
+              <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-gray-200/80">
+                <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
+                <div className="min-w-0">
+                  <span className="block text-[10px] text-gray-400 font-medium">Waktu Buat</span>
+                  <span className="truncate font-semibold text-gray-800 block">{report.lama_menunggu}</span>
                 </div>
-                <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-gray-200/80">
-                  <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
-                  <span>Dibuat: {report.lama_menunggu}</span>
-                </div>
-                <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-gray-200/80">
-                  <Clock className="w-4 h-4 text-gray-500 shrink-0" />
-                  <span>Lama: {report.lama_menunggu_hari} hari menunggu</span>
+              </div>
+              <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-gray-200/80">
+                <Clock className="w-4 h-4 text-gray-500 shrink-0" />
+                <div className="min-w-0">
+                  <span className="block text-[10px] text-gray-400 font-medium">Lama Menunggu</span>
+                  <span className="truncate font-semibold text-gray-800 block">{report.lama_menunggu_hari} hari</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Kartu Analisis AI */}
-          <div className="p-5 bg-linear-to-br from-purple-50/80 to-indigo-50/50 rounded-2xl border border-purple-100/90 space-y-3">
+          {/* Lampiran Seluruh Foto Bukti */}
+          <div className="space-y-2.5 pt-1">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-purple-900 font-bold text-sm">
-                <Sparkles className="w-4 h-4 text-purple-600" />
-                <span>Usulan Analisis AI (Sistem Cerdas)</span>
-              </div>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200">
-                Tingkat Keyakinan: {Math.round(report.confidence * 100)}%
-              </span>
-            </div>
-
-            <div className="space-y-1.5 pt-1">
-              <p className="text-xs font-semibold text-gray-700">Alasan Analisis AI:</p>
-              <ul className="space-y-1 text-xs text-gray-700">
-                {report.reasons.map((r, i) => (
-                  <li key={i} className="flex items-start gap-1.5">
-                    <span className="text-purple-600 font-bold">•</span>
-                    <span>{r}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {report.safety_flags && report.safety_flags.length > 0 && (
-              <div className="pt-2 flex items-center gap-2">
-                <span className="text-xs font-bold text-red-700 flex items-center gap-1">
-                  <ShieldAlert className="w-3.5 h-3.5 text-red-600" />
-                  Indikator Bahaya Langsung:
+              <p className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                <ImageIcon className="w-4 h-4 text-[#8C1515]" />
+                <span>Foto Bukti Kerusakan ({fotoList.length} Foto)</span>
+              </p>
+              {fotoList.length > 0 && (
+                <span className="text-[11px] text-gray-400 font-medium">
+                  Klik foto untuk melihat ukuran penuh
                 </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {report.safety_flags.map((flag, idx) => (
-                    <span
-                      key={idx}
-                      className="px-2 py-0.5 rounded-md bg-red-100 border border-red-300 text-red-800 text-[11px] font-bold"
-                    >
-                      {flag.replace(/_/g, " ")}
+              )}
+            </div>
+
+            {fotoList.length === 0 ? (
+              <div className="flex items-center gap-2.5 p-4 rounded-2xl bg-gray-50 border border-gray-200/80 text-gray-400 text-xs">
+                <FileText className="w-5 h-5 opacity-60 shrink-0" />
+                <span>Tidak ada foto terlampir pada laporan ini.</span>
+              </div>
+            ) : (
+              <div
+                className={`grid gap-3.5 ${
+                  fotoList.length === 1
+                    ? "grid-cols-1 sm:grid-cols-2 max-w-xl"
+                    : fotoList.length === 2
+                    ? "grid-cols-1 sm:grid-cols-2"
+                    : "grid-cols-1 sm:grid-cols-2 md:grid-cols-3"
+                }`}
+              >
+                {fotoList.map((fotoUrl, idx) => (
+                  <div
+                    key={`${fotoUrl}-${idx}`}
+                    onClick={() => setActivePhotoIndex(idx)}
+                    className="group relative h-48 rounded-2xl overflow-hidden border border-gray-200 bg-gray-100 cursor-pointer shadow-2xs hover:shadow-md transition-all"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={fotoUrl}
+                      alt={`Bukti foto ${idx + 1}`}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <span className="px-3 py-1.5 rounded-xl bg-white/95 text-gray-900 text-xs font-bold shadow-md flex items-center gap-1.5">
+                        <Eye className="w-3.5 h-3.5 text-[#8C1515]" />
+                        Lihat Foto
+                      </span>
+                    </div>
+                    <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-lg bg-black/60 backdrop-blur-xs text-[10px] font-bold text-white shadow-xs">
+                      Foto #{idx + 1}
                     </span>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
 
+          {/* Kartu Analisis AI */}
+          {!hideAiAnalysis && (
+            <div className="p-5 bg-linear-to-br from-purple-50/80 to-indigo-50/50 rounded-2xl border border-purple-100/90 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-purple-900 font-bold text-sm">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  <span>Usulan Analisis AI (Sistem Cerdas)</span>
+                </div>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-100 text-purple-800 border border-purple-200">
+                  Tingkat Keyakinan: {Math.round(report.confidence * 100)}%
+                </span>
+              </div>
+
+              <div className="space-y-1.5 pt-1">
+                <p className="text-xs font-semibold text-gray-700">Alasan Analisis AI:</p>
+                <ul className="space-y-1 text-xs text-gray-700">
+                  {report.reasons.map((r, i) => (
+                    <li key={i} className="flex items-start gap-1.5">
+                      <span className="text-purple-600 font-bold">•</span>
+                      <span>{r}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {report.safety_flags && report.safety_flags.length > 0 && (
+                <div className="pt-2 flex items-center gap-2">
+                  <span className="text-xs font-bold text-red-700 flex items-center gap-1">
+                    <ShieldAlert className="w-3.5 h-3.5 text-red-600" />
+                    Indikator Bahaya Langsung:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {report.safety_flags.map((flag, idx) => (
+                      <span
+                        key={idx}
+                        className="px-2 py-0.5 rounded-md bg-red-100 border border-red-300 text-red-800 text-[11px] font-bold"
+                      >
+                        {flag.replace(/_/g, " ")}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Breakdown Faktor Skor */}
-          {detailData?.breakdown && (
+          {!hideScoreBreakdown && detailData?.breakdown && (
             <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200/80 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
@@ -339,7 +475,7 @@ export function PriorityDetailModal({
                 />
               </div>
             </div>
-          ) : (
+          ) : !hideHandlingInfo ? (
             <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200/80 flex items-start gap-3 text-xs text-amber-800">
               <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
@@ -349,7 +485,7 @@ export function PriorityDetailModal({
                 </p>
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* Riwayat Koreksi Sebelumnya */}
           {detailData?.feedback && detailData.feedback.length > 0 && (
@@ -415,6 +551,91 @@ export function PriorityDetailModal({
           )}
         </div>
       </div>
+
+      {/* Lightbox / Preview Ukuran Penuh Foto */}
+      {activePhotoIndex !== null && fotoList[activePhotoIndex] && (
+        <div
+          className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-in fade-in duration-150"
+          onClick={() => setActivePhotoIndex(null)}
+        >
+          <div
+            className="relative max-w-4xl w-full max-h-[92vh] flex flex-col items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-full flex items-center justify-between pb-3 text-white">
+              <span className="text-sm font-bold">
+                Foto Bukti #{activePhotoIndex + 1} dari {fotoList.length}
+              </span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={fotoList[activePhotoIndex]}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-semibold transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Buka di Tab Baru</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setActivePhotoIndex(null)}
+                  className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="relative w-full max-h-[75vh] flex items-center justify-center bg-black/50 rounded-2xl overflow-hidden border border-white/10 p-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={fotoList[activePhotoIndex]}
+                alt={`Preview Foto ${activePhotoIndex + 1}`}
+                className="max-h-[72vh] max-w-full object-contain rounded-lg shadow-2xl"
+              />
+            </div>
+
+            {fotoList.length > 1 && (
+              <div className="flex items-center gap-3 pt-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActivePhotoIndex((prev) =>
+                      prev !== null ? (prev - 1 + fotoList.length) % fotoList.length : 0
+                    )
+                  }
+                  className="px-4 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Sebelumnya
+                </button>
+                <div className="flex gap-1.5">
+                  {fotoList.map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setActivePhotoIndex(i)}
+                      className={`h-2.5 rounded-full transition-all cursor-pointer ${
+                        i === activePhotoIndex ? "bg-white w-6" : "bg-white/40 w-2.5"
+                      }`}
+                    />
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActivePhotoIndex((prev) =>
+                      prev !== null ? (prev + 1) % fotoList.length : 0
+                    )
+                  }
+                  className="px-4 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Berikutnya
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

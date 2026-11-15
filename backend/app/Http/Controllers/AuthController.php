@@ -7,6 +7,7 @@ use App\Models\Pelapor;
 use App\Models\UserMahasiswa;
 use App\Models\UserPegawai;
 use App\Models\UserSession;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -245,6 +246,163 @@ class AuthController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Berhasil keluar dari akun.',
+        ]);
+    }
+
+    /**
+     * Get current user profile
+     */
+    public function me(Request $request): JsonResponse
+    {
+        $user = $request->attributes->get('authenticated_user');
+        $session = $request->attributes->get('user_session');
+        $identifier = $session->account_id;
+        $roleLabel = $session->account_type === 'karyawan' ? 'Karyawan' : 'Mahasiswa';
+
+        return response()->json([
+            'status' => 'success',
+            'user' => [
+                'nomor_identitas' => $identifier,
+                'nim' => $identifier,
+                'nama' => $user->nama,
+                'email' => $user->email,
+                'no_handphone' => $user->no_handphone,
+                'tipe_user' => $session->account_type,
+                'role' => $roleLabel,
+            ],
+        ]);
+    }
+
+    /**
+     * Update user profile (phone number, email, and/or name)
+     */
+    public function updateProfile(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'nama' => 'nullable|string|max:255',
+            'no_handphone' => 'nullable|string|max:20',
+            'email' => 'nullable|email|max:255',
+        ], [
+            'email.email' => 'Format email tidak valid.',
+            'no_handphone.max' => 'Nomor WhatsApp / Handphone maksimal 20 karakter.',
+            'nama.max' => 'Nama maksimal 255 karakter.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $validator->errors()->first(),
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $user = $request->attributes->get('authenticated_user');
+        $session = $request->attributes->get('user_session');
+
+        $updates = [];
+
+        if ($request->has('nama') && trim((string) $request->nama) !== '') {
+            $updates['nama'] = trim($request->nama);
+        }
+
+        if ($request->has('no_handphone')) {
+            $updates['no_handphone'] = trim((string) $request->no_handphone);
+        }
+
+        if ($request->has('email')) {
+            $rawEmail = $request->email;
+            if ($rawEmail !== null && trim((string) $rawEmail) !== '') {
+                $newEmail = mb_strtolower(trim($rawEmail));
+
+                // Check uniqueness across user_mahasiswa, user_pegawai, admin
+                $isUsed = UserMahasiswa::where('email', $newEmail)
+                    ->when($user instanceof UserMahasiswa, fn ($q) => $q->where('nim', '!=', $user->nim))
+                    ->exists()
+                    || UserPegawai::where('email', $newEmail)
+                    ->when($user instanceof UserPegawai, fn ($q) => $q->where('nomor_identitas', '!=', $user->nomor_identitas))
+                    ->exists()
+                    || Admin::where('email', $newEmail)->exists();
+
+                if ($isUsed) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Email tersebut sudah digunakan oleh akun lain.',
+                    ], 422);
+                }
+
+                $updates['email'] = $newEmail;
+            } elseif ($rawEmail === null || trim((string) $rawEmail) === '') {
+                $updates['email'] = null;
+            }
+        }
+
+        if (! empty($updates)) {
+            $user->update($updates);
+        }
+
+        $user->refresh();
+        $identifier = $session->account_id;
+        $roleLabel = $session->account_type === 'karyawan' ? 'Karyawan' : 'Mahasiswa';
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Profil berhasil diperbarui.',
+            'user' => [
+                'nomor_identitas' => $identifier,
+                'nim' => $identifier,
+                'nama' => $user->nama,
+                'email' => $user->email,
+                'no_handphone' => $user->no_handphone,
+                'tipe_user' => $session->account_type,
+                'role' => $roleLabel,
+            ],
+        ]);
+    }
+
+    /**
+     * Change user password
+     */
+    public function changePassword(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'current_password' => 'required|string',
+            'password' => 'required|string|min:6|confirmed',
+        ], [
+            'current_password.required' => 'Kata sandi saat ini wajib diisi.',
+            'password.required' => 'Kata sandi baru wajib diisi.',
+            'password.min' => 'Kata sandi baru minimal 6 karakter.',
+            'password.confirmed' => 'Konfirmasi kata sandi baru tidak cocok.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $validator->errors()->first(),
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $user = $request->attributes->get('authenticated_user');
+        $session = $request->attributes->get('user_session');
+
+        if (! Hash::check($request->current_password, $user->password)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Kata sandi saat ini tidak sesuai.',
+            ], 422);
+        }
+
+        $user->update(['password' => Hash::make($request->password)]);
+
+        // Hapus sesi lain milik user ini, pertahankan sesi saat ini
+        UserSession::where('account_type', $session->account_type)
+            ->where('account_id', $session->account_id)
+            ->where('id', '!=', $session->id)
+            ->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Kata sandi berhasil diubah.',
         ]);
     }
 

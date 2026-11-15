@@ -20,6 +20,13 @@ class LaporanService
     private LocationCategorizer $locationCategorizer;
     private LocationSeverityAssessor $locationSeverityAssessor;
 
+    /**
+     * Cache verifikasi kolom lokasi per koneksi PDO untuk mencegah query skema berulang.
+     *
+     * @var array<int, bool>
+     */
+    private static array $verifiedColumnsByPdo = [];
+
     public function __construct(
         ?LocationCategorizer $locationCategorizer = null,
         ?LocationSeverityAssessor $locationSeverityAssessor = null
@@ -35,11 +42,13 @@ class LaporanService
     private function ensureLocationColumnsOnLaporan(): bool
     {
         try {
-            if (Schema::hasColumn('laporan', 'kategori_lokasi')
-                && Schema::hasColumn('laporan', 'tingkat_keparahan')
-                && Schema::hasColumn('laporan', 'skala_keparahan')
-            ) {
+            $pdoId = spl_object_id(DB::connection()->getPdo());
+            if (!empty(self::$verifiedColumnsByPdo[$pdoId])) {
                 return true;
+            }
+
+            if (Schema::hasColumns('laporan', ['kategori_lokasi', 'tingkat_keparahan', 'skala_keparahan'])) {
+                return self::$verifiedColumnsByPdo[$pdoId] = true;
             }
 
             if (DB::transactionLevel() > 0) {
@@ -58,7 +67,7 @@ class LaporanService
                 }
             });
 
-            return true;
+            return self::$verifiedColumnsByPdo[$pdoId] = true;
         } catch (\Throwable $e) {
             return false;
         }
@@ -298,7 +307,10 @@ class LaporanService
                 $kategoriCounts[$kat]++;
             }
 
-            $bulan = Carbon::parse($laporan->tanggal_buat)->format('Y-m');
+            $rawBuat = (string) $laporan->tanggal_buat;
+            $bulan = (strlen($rawBuat) >= 7 && $rawBuat[4] === '-')
+                ? substr($rawBuat, 0, 7)
+                : Carbon::parse($laporan->tanggal_buat)->format('Y-m');
             $bulanCounts[$bulan] = ($bulanCounts[$bulan] ?? 0) + 1;
         }
 

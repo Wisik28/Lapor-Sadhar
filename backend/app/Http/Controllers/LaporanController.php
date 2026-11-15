@@ -307,10 +307,12 @@ class LaporanController extends Controller
             $bulanCounts       = [];
             $bulanSelesaiCount = []; // untuk chart 2-seri
 
-            // ── Kalkulasi per laporan ─────────────────────────────────────────
-            $resolusiJam     = [];
-            $SLA_TARGET_JAM  = 24; // target SLA: 24 jam
-            $selesaiDalamSLA = 0;
+            // ── Kalkulasi per laporan (Single-Pass Aggregation) ───────────────
+            $resolusiJam       = [];
+            $SLA_TARGET_JAM    = 24; // target SLA: 24 jam
+            $selesaiDalamSLA   = 0;
+            $selesaiFasilitas  = 0;
+            $selesaiKebersihan = 0;
 
             foreach ($laporans as $laporan) {
                 // Status terkini — normalisasi semua varian nama status ke bucket rekap
@@ -330,23 +332,32 @@ class LaporanController extends Controller
                 $lokasiKey = trim(explode(',', $laporan->lokasi)[0]);
                 $lokasiCounts[$lokasiKey] = ($lokasiCounts[$lokasiKey] ?? 0) + 1;
 
-                // Per bulan masuk
-                $bln = \Carbon\Carbon::parse($laporan->tanggal_buat)->format('Y-m');
+                // Per bulan masuk (ekstraksi cepat YYYY-MM tanpa alokasi Carbon berulang)
+                $rawBuat = (string) $laporan->tanggal_buat;
+                $bln = (strlen($rawBuat) >= 7 && $rawBuat[4] === '-')
+                    ? substr($rawBuat, 0, 7)
+                    : \Carbon\Carbon::parse($laporan->tanggal_buat)->format('Y-m');
                 $bulanCounts[$bln] = ($bulanCounts[$bln] ?? 0) + 1;
 
-                // Per bulan selesai + resolusi
-                if ($bucket === 'Selesai' && $laporan->tanggal_rubah) {
+                // Per bulan selesai + resolusi + perhitungan kategori selesai dalam satu iterasi
+                if ($bucket === 'Selesai') {
                     $bulanSelesaiCount[$bln] = ($bulanSelesaiCount[$bln] ?? 0) + 1;
 
-                    $jamResolusi = \Carbon\Carbon::parse($laporan->tanggal_buat)
-                        ->diffInMinutes(\Carbon\Carbon::parse($laporan->tanggal_rubah)) / 60;
-                    $resolusiJam[] = $jamResolusi;
-
-                    if ($jamResolusi <= $SLA_TARGET_JAM) {
-                        $selesaiDalamSLA++;
+                    if ($kat === 'Fasilitas') {
+                        $selesaiFasilitas++;
+                    } elseif ($kat === 'Kebersihan') {
+                        $selesaiKebersihan++;
                     }
-                } elseif ($bucket === 'Selesai') {
-                    $bulanSelesaiCount[$bln] = ($bulanSelesaiCount[$bln] ?? 0) + 1;
+
+                    if ($laporan->tanggal_rubah) {
+                        $jamResolusi = \Carbon\Carbon::parse($laporan->tanggal_buat)
+                            ->diffInMinutes(\Carbon\Carbon::parse($laporan->tanggal_rubah)) / 60;
+                        $resolusiJam[] = $jamResolusi;
+
+                        if ($jamResolusi <= $SLA_TARGET_JAM) {
+                            $selesaiDalamSLA++;
+                        }
+                    }
                 }
             }
 
@@ -359,9 +370,10 @@ class LaporanController extends Controller
 
             $bulanFormatted = [];
             foreach ($allBulan as $key) {
+                $dt = \Carbon\Carbon::createFromFormat('Y-m', $key);
                 $bulanFormatted[] = [
-                    'bulan'    => \Carbon\Carbon::createFromFormat('Y-m', $key)->locale('id')->isoFormat('MMM YYYY'),
-                    'bulan_en' => \Carbon\Carbon::createFromFormat('Y-m', $key)->format('M'),
+                    'bulan'    => (clone $dt)->locale('id')->isoFormat('MMM YYYY'),
+                    'bulan_en' => $dt->format('M'),
                     'key'      => $key,
                     'masuk'    => $bulanCounts[$key] ?? 0,
                     'selesai'  => $bulanSelesaiCount[$key] ?? 0,
@@ -399,22 +411,6 @@ class LaporanController extends Controller
             // Fasilitas: Rp 500.000/tiket, Kebersihan: Rp 150.000/tiket
             $BIAYA_FASILITAS  = 500000;
             $BIAYA_KEBERSIHAN = 150000;
-
-            // Hitung selesai per kategori
-            $selesaiFasilitas  = 0;
-            $selesaiKebersihan = 0;
-            foreach ($laporans as $laporan) {
-                $terkiniCheck = $this->normalizeBucketStatus(
-                    $laporan->statuses->first()?->status_laporan ?? 'Terkirim'
-                );
-                if ($terkiniCheck === 'Selesai') {
-                    if ($laporan->kategori_laporan === 'Fasilitas') {
-                        $selesaiFasilitas++;
-                    } elseif ($laporan->kategori_laporan === 'Kebersihan') {
-                        $selesaiKebersihan++;
-                    }
-                }
-            }
 
             $realisasiAnggaran = ($selesaiFasilitas * $BIAYA_FASILITAS) + ($selesaiKebersihan * $BIAYA_KEBERSIHAN);
             // Budget target: 10 juta per bulan / per periode (bisa disesuaikan)

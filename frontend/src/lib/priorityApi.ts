@@ -32,7 +32,10 @@ export interface PriorityReportItem {
   tanggal_buat: string;
   tanggal_kejadian: string;
   lokasi: string;
-  foto?: string | null;
+  kategori_lokasi?: string;
+  tingkat_keparahan_lokasi?: string;
+  skala_keparahan_lokasi?: number;
+  foto?: string | string[] | null;
   status_terkini: string;
   lama_menunggu: string;
   lama_menunggu_hari: number;
