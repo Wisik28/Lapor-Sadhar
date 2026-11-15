@@ -4,7 +4,11 @@ namespace App\Services;
 
 use App\Models\Laporan;
 use App\Models\Status;
+use App\Services\Priority\LocationCategorizer;
+use App\Services\Priority\LocationSeverityAssessor;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
 /**
@@ -13,13 +17,63 @@ use Carbon\Carbon;
  */
 class LaporanService
 {
+    private LocationCategorizer $locationCategorizer;
+    private LocationSeverityAssessor $locationSeverityAssessor;
+
+    public function __construct(
+        ?LocationCategorizer $locationCategorizer = null,
+        ?LocationSeverityAssessor $locationSeverityAssessor = null
+    ) {
+        $this->locationCategorizer = $locationCategorizer ?? new LocationCategorizer();
+        $this->locationSeverityAssessor = $locationSeverityAssessor ?? new LocationSeverityAssessor($this->locationCategorizer);
+    }
+
     /**
-     * Buat laporan baru
+     * Pastikan kolom kategorisasi lokasi tersedia pada tabel laporan.
+     * Aman terhadap transaksi PostgreSQL (tidak pernah membatalkan transaksi aktif).
+     */
+    private function ensureLocationColumnsOnLaporan(): bool
+    {
+        try {
+            if (Schema::hasColumn('laporan', 'kategori_lokasi')
+                && Schema::hasColumn('laporan', 'tingkat_keparahan')
+                && Schema::hasColumn('laporan', 'skala_keparahan')
+            ) {
+                return true;
+            }
+
+            if (DB::transactionLevel() > 0) {
+                return false;
+            }
+
+            Schema::table('laporan', function (Blueprint $table) {
+                if (!Schema::hasColumn('laporan', 'kategori_lokasi')) {
+                    $table->string('kategori_lokasi', 60)->default('Tidak Diketahui');
+                }
+                if (!Schema::hasColumn('laporan', 'tingkat_keparahan')) {
+                    $table->string('tingkat_keparahan', 30)->default('Sedang');
+                }
+                if (!Schema::hasColumn('laporan', 'skala_keparahan')) {
+                    $table->unsignedTinyInteger('skala_keparahan')->default(2);
+                }
+            });
+
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Buat laporan baru beserta kategorisasi lokasi dan tingkat keparahan awal secara otomatis
      */
     public function createLaporan(array $data): Laporan
     {
-        return DB::transaction(function () use ($data) {
-            $laporan = Laporan::create([
+        $locationAssessment = $this->locationSeverityAssessor->assessLocation($data['lokasi'] ?? '');
+        $hasLocationColumns = $this->ensureLocationColumnsOnLaporan();
+
+        return DB::transaction(function () use ($data, $locationAssessment, $hasLocationColumns) {
+            $payload = [
                 'nim'              => $data['nim'],
                 'kategori_laporan' => $data['kategori_laporan'],
                 'deskripsi'        => $data['deskripsi'],
@@ -27,7 +81,15 @@ class LaporanService
                 'lokasi'           => $data['lokasi'],
                 'foto'             => $data['foto'] ?? null,
                 'tanggal_buat'     => now(),
-            ]);
+            ];
+
+            if ($hasLocationColumns) {
+                $payload['kategori_lokasi']   = $locationAssessment['kategori_lokasi'];
+                $payload['tingkat_keparahan'] = $locationAssessment['tingkat_keparahan'];
+                $payload['skala_keparahan']   = $locationAssessment['skala_keparahan'];
+            }
+
+            $laporan = Laporan::create($payload);
 
             // Buat status awal: Terkirim
             Status::create([
@@ -36,7 +98,12 @@ class LaporanService
                 'tanggal_merubah' => now(),
             ]);
 
-            return $laporan->fresh()->load('statuses');
+            $result = $laporan->fresh()->load('statuses');
+            $result->setAttribute('kategori_lokasi', $result->kategori_lokasi ?? $locationAssessment['kategori_lokasi']);
+            $result->setAttribute('tingkat_keparahan', $result->tingkat_keparahan ?? $locationAssessment['tingkat_keparahan']);
+            $result->setAttribute('skala_keparahan', (int) ($result->skala_keparahan ?? $locationAssessment['skala_keparahan']));
+
+            return $result;
         });
     }
 
@@ -79,7 +146,9 @@ class LaporanService
      */
     public function updateLaporan(int $id, array $data): Laporan
     {
-        return DB::transaction(function () use ($id, $data) {
+        $hasLocationColumns = $this->ensureLocationColumnsOnLaporan();
+
+        return DB::transaction(function () use ($id, $data, $hasLocationColumns) {
             $laporan = Laporan::with(['statuses' => function ($q) {
                 $q->orderBy('tanggal_merubah', 'desc');
             }])->findOrFail($id);
@@ -95,16 +164,32 @@ class LaporanService
                 );
             }
 
-            $laporan->update([
+            $newLokasi = $data['lokasi'] ?? $laporan->lokasi;
+            $locationAssessment = $this->locationSeverityAssessor->assessLocation($newLokasi);
+
+            $updatePayload = [
                 'kategori_laporan' => $data['kategori_laporan'] ?? $laporan->kategori_laporan,
                 'deskripsi'        => $data['deskripsi'] ?? $laporan->deskripsi,
                 'tanggal_kejadian' => $data['tanggal_kejadian'] ?? $laporan->tanggal_kejadian,
-                'lokasi'           => $data['lokasi'] ?? $laporan->lokasi,
+                'lokasi'           => $newLokasi,
                 'foto'             => $data['foto'] ?? $laporan->foto,
                 'tanggal_rubah'    => now(),
-            ]);
+            ];
 
-            return $laporan->fresh()->load('statuses');
+            if ($hasLocationColumns) {
+                $updatePayload['kategori_lokasi']   = $locationAssessment['kategori_lokasi'];
+                $updatePayload['tingkat_keparahan'] = $locationAssessment['tingkat_keparahan'];
+                $updatePayload['skala_keparahan']   = $locationAssessment['skala_keparahan'];
+            }
+
+            $laporan->update($updatePayload);
+
+            $result = $laporan->fresh()->load('statuses');
+            $result->setAttribute('kategori_lokasi', $result->kategori_lokasi ?? $locationAssessment['kategori_lokasi']);
+            $result->setAttribute('tingkat_keparahan', $result->tingkat_keparahan ?? $locationAssessment['tingkat_keparahan']);
+            $result->setAttribute('skala_keparahan', (int) ($result->skala_keparahan ?? $locationAssessment['skala_keparahan']));
+
+            return $result;
         });
     }
 
@@ -246,21 +331,25 @@ class LaporanService
     private function formatLaporanResponse(Laporan $laporan): array
     {
         $latestStatus = $laporan->statuses->first();
+        $locationAssessment = $this->locationSeverityAssessor->assessLocation($laporan->lokasi);
 
         return [
-            'id_laporan'       => $laporan->id_laporan,
-            'nim'              => $laporan->nim,
-            'nama_pelapor'     => $laporan->pelapor?->mahasiswa?->nama ?? $laporan->pelapor?->pegawai?->nama,
-            'kategori_laporan' => $laporan->kategori_laporan,
-            'deskripsi'        => $laporan->deskripsi,
-            'tanggal_kejadian' => $laporan->tanggal_kejadian,
-            'tanggal_buat'     => $laporan->tanggal_buat,
-            'tanggal_rubah'    => $laporan->tanggal_rubah,
-            'lokasi'           => $laporan->lokasi,
-            'foto'             => $laporan->foto,
-            'pesan_tanggapan'  => $laporan->pesan_tanggapan ?? '',
-            'status_terkini'   => $latestStatus?->status_laporan ?? 'Terkirim',
-            'riwayat_status'   => $laporan->statuses,
+            'id_laporan'        => $laporan->id_laporan,
+            'nim'               => $laporan->nim,
+            'nama_pelapor'      => $laporan->pelapor?->mahasiswa?->nama ?? $laporan->pelapor?->pegawai?->nama,
+            'kategori_laporan'  => $laporan->kategori_laporan,
+            'deskripsi'         => $laporan->deskripsi,
+            'tanggal_kejadian'  => $laporan->tanggal_kejadian,
+            'tanggal_buat'      => $laporan->tanggal_buat,
+            'tanggal_rubah'     => $laporan->tanggal_rubah,
+            'lokasi'            => $laporan->lokasi,
+            'kategori_lokasi'   => $laporan->kategori_lokasi ?: $locationAssessment['kategori_lokasi'],
+            'tingkat_keparahan' => $laporan->tingkat_keparahan ?: $locationAssessment['tingkat_keparahan'],
+            'skala_keparahan'   => (int) ($laporan->skala_keparahan ?: $locationAssessment['skala_keparahan']),
+            'foto'              => $laporan->foto,
+            'pesan_tanggapan'   => $laporan->pesan_tanggapan ?? '',
+            'status_terkini'    => $latestStatus?->status_laporan ?? 'Terkirim',
+            'riwayat_status'    => $laporan->statuses,
         ];
     }
 }

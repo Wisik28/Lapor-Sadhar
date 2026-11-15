@@ -8,6 +8,7 @@ import {
   Eye,
   History,
   FileEdit,
+  Sparkles,
   LogOut,
   X
 } from "lucide-react";
@@ -32,6 +33,7 @@ const MENU_ITEMS: MenuItem[] = [
   { id: "lihat-status", label: "Lihat Status", icon: Eye, route: "/status-laporan" },
   { id: "riwayat-laporan", label: "Riwayat Laporan", icon: History, route: "/riwayat-laporan" },
   { id: "ubah-pengajuan", label: "Ubah Pengajuan", icon: FileEdit, route: "/ubah-pengajuan" },
+  { id: "dashboard-prioritas", label: "Dashboard Prioritas", icon: Sparkles, route: "/dashboard-prioritas" },
 ];
 
 export default function Sidebar({

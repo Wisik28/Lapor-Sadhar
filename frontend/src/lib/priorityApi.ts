@@ -1,14 +1,23 @@
-// Client API untuk Dashboard Prioritas (Khusus Admin)
+// Client API untuk Dashboard Prioritas (Mendukung Admin & Pelapor)
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
-function getAdminAuthHeaders() {
-  const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
+function getPriorityAuthHeaders() {
+  const token = typeof window !== "undefined"
+    ? (localStorage.getItem("admin_token") || localStorage.getItem("auth_token"))
+    : null;
   return {
     "Content-Type": "application/json",
     Accept: "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
+}
+
+function getPriorityEndpointPrefix() {
+  if (typeof window !== "undefined" && localStorage.getItem("admin_token")) {
+    return "admin/priority";
+  }
+  return "priority";
 }
 
 export type SeverityLevel = "berat" | "sedang" | "ringan";
@@ -104,9 +113,9 @@ export const priorityApi = {
     }
 
     const queryStr = searchParams.toString() ? `?${searchParams.toString()}` : "";
-    const response = await fetch(`${API_BASE_URL}/admin/priority/reports${queryStr}`, {
+    const response = await fetch(`${API_BASE_URL}/${getPriorityEndpointPrefix()}/reports${queryStr}`, {
       method: "GET",
-      headers: getAdminAuthHeaders(),
+      headers: getPriorityAuthHeaders(),
       cache: "no-store",
     });
 
@@ -123,9 +132,9 @@ export const priorityApi = {
    * Mengambil detail laporan dan kalkulasi faktor skor
    */
   async getReportDetail(id: number): Promise<PriorityDetailData> {
-    const response = await fetch(`${API_BASE_URL}/admin/priority/reports/${id}`, {
+    const response = await fetch(`${API_BASE_URL}/${getPriorityEndpointPrefix()}/reports/${id}`, {
       method: "GET",
-      headers: getAdminAuthHeaders(),
+      headers: getPriorityAuthHeaders(),
       cache: "no-store",
     });
 
@@ -148,7 +157,7 @@ export const priorityApi = {
   ): Promise<any> {
     const response = await fetch(`${API_BASE_URL}/admin/priority/reports/${id}/severity`, {
       method: "PATCH",
-      headers: getAdminAuthHeaders(),
+      headers: getPriorityAuthHeaders(),
       body: JSON.stringify({
         severity_level,
         admin_notes: admin_notes ?? "",
@@ -168,9 +177,9 @@ export const priorityApi = {
    * Mengambil statistik ringkasan dashboard prioritas
    */
   async getSummary(): Promise<PrioritySummary> {
-    const response = await fetch(`${API_BASE_URL}/admin/priority/summary`, {
+    const response = await fetch(`${API_BASE_URL}/${getPriorityEndpointPrefix()}/summary`, {
       method: "GET",
-      headers: getAdminAuthHeaders(),
+      headers: getPriorityAuthHeaders(),
       cache: "no-store",
     });
 
@@ -197,7 +206,7 @@ export const priorityApi = {
   async recalculateAll(): Promise<void> {
     const response = await fetch(`${API_BASE_URL}/admin/priority/recalculate`, {
       method: "POST",
-      headers: getAdminAuthHeaders(),
+      headers: getPriorityAuthHeaders(),
     });
 
     const result = await response.json().catch(() => null);

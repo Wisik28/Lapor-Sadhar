@@ -7,15 +7,117 @@ use App\Models\Laporan;
 use App\Models\Priority\PriorityAssessment;
 use App\Models\Priority\PriorityFeedback;
 use Carbon\Carbon;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class PriorityScoringService
 {
     private AiSeverityAssessor $aiAssessor;
+    private LocationCategorizer $locationCategorizer;
+    private LocationSeverityAssessor $locationSeverityAssessor;
 
-    public function __construct(AiSeverityAssessor $aiAssessor)
-    {
+    public function __construct(
+        AiSeverityAssessor $aiAssessor,
+        ?LocationCategorizer $locationCategorizer = null,
+        ?LocationSeverityAssessor $locationSeverityAssessor = null
+    ) {
         $this->aiAssessor = $aiAssessor;
+        $this->locationCategorizer = $locationCategorizer ?? new LocationCategorizer();
+        $this->locationSeverityAssessor = $locationSeverityAssessor ?? new LocationSeverityAssessor($this->locationCategorizer);
+    }
+
+    /**
+     * Pastikan tabel priority_assessments, priority_feedback, serta kolom kategorisasi lokasi tersedia.
+     * Hanya menjalankan DDL jika tidak sedang berada di dalam transaksi DB
+     * agar tidak memicu error SQLSTATE[25P02] pada PostgreSQL/Supabase.
+     */
+    public function ensureTablesExist(): bool
+    {
+        try {
+            $hasAssessments = Schema::hasTable('priority_assessments');
+            $hasFeedback = Schema::hasTable('priority_feedback');
+
+            // Jangan jalankan DDL di dalam transaksi aktif PostgreSQL
+            if (DB::transactionLevel() > 0) {
+                return $hasAssessments;
+            }
+
+            if (Schema::hasTable('laporan') && !Schema::hasColumn('laporan', 'kategori_lokasi')) {
+                Schema::table('laporan', function (Blueprint $table) {
+                    if (!Schema::hasColumn('laporan', 'kategori_lokasi')) {
+                        $table->string('kategori_lokasi', 60)->default('Tidak Diketahui');
+                    }
+                    if (!Schema::hasColumn('laporan', 'tingkat_keparahan')) {
+                        $table->string('tingkat_keparahan', 30)->default('Sedang');
+                    }
+                    if (!Schema::hasColumn('laporan', 'skala_keparahan')) {
+                        $table->unsignedTinyInteger('skala_keparahan')->default(2);
+                    }
+                });
+            }
+
+            if (!$hasAssessments) {
+                Schema::create('priority_assessments', function (Blueprint $table) {
+                    $table->id();
+                    $table->unsignedBigInteger('id_laporan')->unique();
+                    $table->string('kategori', 50)->default('Fasilitas');
+                    $table->string('kategori_lokasi', 60)->default('Tidak Diketahui');
+                    $table->string('tingkat_keparahan_lokasi', 30)->default('Sedang');
+                    $table->unsignedTinyInteger('skala_keparahan_lokasi')->default(2);
+                    $table->string('severity_level', 30)->default('sedang');
+                    $table->string('severity_source', 30)->default('ai');
+                    $table->string('ai_suggested_severity', 30)->default('sedang');
+                    $table->string('admin_severity', 30)->nullable();
+                    $table->unsignedInteger('priority_score')->default(0);
+                    $table->string('priority_level', 30)->default('sedang');
+                    $table->decimal('confidence', 4, 2)->default(0.80);
+                    $table->json('dimensions')->nullable();
+                    $table->json('safety_flags')->nullable();
+                    $table->json('reasons')->nullable();
+                    $table->boolean('needs_review')->default(true);
+                    $table->text('admin_notes')->nullable();
+                    $table->unsignedBigInteger('admin_id')->nullable();
+                    $table->timestamp('reviewed_at')->nullable();
+                    $table->timestamps();
+
+                    $table->index('priority_score');
+                    $table->index('priority_level');
+                    $table->index('severity_level');
+                    $table->index('needs_review');
+                });
+            } elseif (!Schema::hasColumn('priority_assessments', 'kategori_lokasi')) {
+                Schema::table('priority_assessments', function (Blueprint $table) {
+                    if (!Schema::hasColumn('priority_assessments', 'kategori_lokasi')) {
+                        $table->string('kategori_lokasi', 60)->default('Tidak Diketahui');
+                    }
+                    if (!Schema::hasColumn('priority_assessments', 'tingkat_keparahan_lokasi')) {
+                        $table->string('tingkat_keparahan_lokasi', 30)->default('Sedang');
+                    }
+                    if (!Schema::hasColumn('priority_assessments', 'skala_keparahan_lokasi')) {
+                        $table->unsignedTinyInteger('skala_keparahan_lokasi')->default(2);
+                    }
+                });
+            }
+
+            if (!$hasFeedback) {
+                Schema::create('priority_feedback', function (Blueprint $table) {
+                    $table->id();
+                    $table->unsignedBigInteger('id_laporan');
+                    $table->unsignedBigInteger('admin_id')->nullable();
+                    $table->string('original_level', 30);
+                    $table->string('corrected_level', 30);
+                    $table->text('note')->nullable();
+                    $table->timestamps();
+
+                    $table->index('id_laporan');
+                });
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     /**
@@ -118,29 +220,29 @@ class PriorityScoringService
     }
 
     /**
-     * Dapatkan bobot lokasi berdasarkan teks lokasi
+     * Identifikasi kategori lokasi dan tingkat keparahan awal berdasarkan teks lokasi.
+     *
+     * @param string|null $lokasi
+     * @return array{
+     *     kategori_lokasi: string,
+     *     tingkat_keparahan: string,
+     *     skala_keparahan: int,
+     *     location_weight: float
+     * }
+     */
+    public function assessLocation(?string $lokasi): array
+    {
+        return $this->locationSeverityAssessor->assessLocation($lokasi);
+    }
+
+    /**
+     * Dapatkan bobot lokasi berdasarkan hasil kategorisasi dan tingkat keparahan lokasi
      */
     public function resolveLocationWeight(string $lokasi): float
     {
-        $locLower = strtolower($lokasi);
+        $assessment = $this->locationSeverityAssessor->assessLocation($lokasi);
 
-        if (str_contains($locLower, 'laboratorium') || str_contains($locLower, 'lab') || str_contains($locLower, 'evakuasi')) {
-            return 1.0;
-        }
-        if (str_contains($locLower, 'kelas') || str_contains($locLower, 'kuliah') || str_contains($locLower, 'ruang k.') || str_contains($locLower, 'seminar')) {
-            return 0.9;
-        }
-        if (str_contains($locLower, 'toilet') || str_contains($locLower, 'wc') || str_contains($locLower, 'perpustakaan') || str_contains($locLower, 'kantin')) {
-            return 0.8;
-        }
-        if (str_contains($locLower, 'kantor') || str_contains($locLower, 'koridor') || str_contains($locLower, 'hall') || str_contains($locLower, 'lobby')) {
-            return 0.6;
-        }
-        if (str_contains($locLower, 'parkir') || str_contains($locLower, 'halaman') || str_contains($locLower, 'lapangan')) {
-            return 0.4;
-        }
-
-        return (float) config('priority.location_weights.default', 0.4);
+        return (float) $assessment['location_weight'];
     }
 
     /**
@@ -172,9 +274,18 @@ class PriorityScoringService
      */
     public function assessAndSave(Laporan $laporan, bool $force = false): PriorityAssessment
     {
-        $existing = PriorityAssessment::where('id_laporan', $laporan->id_laporan)->first();
-        if ($existing && !$force) {
-            return $existing;
+        $hasTable = $this->ensureTablesExist();
+        $existing = null;
+
+        if ($hasTable) {
+            try {
+                $existing = PriorityAssessment::where('id_laporan', $laporan->id_laporan)->first();
+                if ($existing && !$force) {
+                    return $existing;
+                }
+            } catch (\Throwable $e) {
+                $hasTable = false;
+            }
         }
 
         $kategori = $laporan->kategori_laporan ?? 'Fasilitas';
@@ -182,20 +293,75 @@ class PriorityScoringService
         $lokasi = $laporan->lokasi ?? '';
         $hasPhoto = !empty($laporan->foto);
 
-        // 1. Dapatkan usulan AI
+        // 1. Kategorisasi lokasi & penentuan tingkat keparahan awal berdasarkan lokasi
+        $locationAssessment = $this->assessLocation($lokasi);
+        $kategoriLokasi     = $locationAssessment['kategori_lokasi'];
+        $tingkatKeparahan   = $locationAssessment['tingkat_keparahan'];
+        $skalaKeparahan     = $locationAssessment['skala_keparahan'];
+        $locationWeight     = $locationAssessment['location_weight'];
+
+        // Sinkronkan atribut lokasi pada model Laporan jika belum terisi
+        if (empty($laporan->kategori_lokasi) || $force) {
+            $laporan->kategori_lokasi   = $kategoriLokasi;
+            $laporan->tingkat_keparahan = $tingkatKeparahan;
+            $laporan->skala_keparahan   = $skalaKeparahan;
+
+            if (DB::transactionLevel() === 0 && $laporan->exists && Schema::hasColumn('laporan', 'kategori_lokasi')) {
+                try {
+                    Laporan::where('id_laporan', $laporan->id_laporan)->update([
+                        'kategori_lokasi'   => $kategoriLokasi,
+                        'tingkat_keparahan' => $tingkatKeparahan,
+                        'skala_keparahan'   => $skalaKeparahan,
+                    ]);
+                } catch (\Throwable $e) {
+                    // Jangan gagalkan alur apabila update kolom tambahan gagal
+                }
+            }
+        }
+
+        // 2. Dapatkan usulan AI dari teks deskripsi
         $aiResult = $this->aiAssessor->assess($kategori, $deskripsi, $lokasi, $hasPhoto);
 
-        // 2. Hitung faktor lingkungan
-        $locationWeight    = $this->resolveLocationWeight($lokasi);
-        $distinctReporters = $this->countNearbyReporters($laporan);
+        // Gunakan tingkat keparahan awal lokasi (skala 1-4) sebagai parameter penguat dimensi dampak operasional/kesehatan
+        $dimensions = $aiResult['dimensions'];
+        $locationImpactFloor = match ($skalaKeparahan) {
+            LocationSeverityAssessor::SCALE_SANGAT_TINGGI => 0.75,
+            LocationSeverityAssessor::SCALE_TINGGI        => 0.55,
+            LocationSeverityAssessor::SCALE_SEDANG        => 0.35,
+            default                                       => 0.20,
+        };
+
+        if (strcasecmp($kategori, 'fasilitas') === 0) {
+            $dimensions['operational_impact'] = max(
+                (float) ($dimensions['operational_impact'] ?? 0.2),
+                $locationImpactFloor
+            );
+        } else {
+            $dimensions['health_risk'] = max(
+                (float) ($dimensions['health_risk'] ?? 0.2),
+                $locationImpactFloor
+            );
+        }
+
+        // Tambahkan informasi kategori lokasi & keparahan awal ke dalam alasan penilaian
+        $reasons = $aiResult['reasons'];
+        $reasons[] = sprintf(
+            'Kategori lokasi: %s (Keparahan Awal: %s - Skala %d/4).',
+            $kategoriLokasi,
+            $tingkatKeparahan,
+            $skalaKeparahan
+        );
+
+        // 3. Hitung faktor lingkungan
+        $distinctReporters = DB::transactionLevel() === 0 ? $this->countNearbyReporters($laporan) : 1;
 
         $createdAt = $laporan->tanggal_buat ? Carbon::parse($laporan->tanggal_buat) : now();
         $daysWaiting = (float) max(0, $createdAt->diffInDays(now()));
 
-        // 3. Hitung skor
+        // 4. Hitung skor prioritas menggunakan bobot lokasi & dimensi yang dipengaruhi keparahan lokasi
         $calculated = $this->calculateScore(
             $kategori,
-            $aiResult['dimensions'],
+            $dimensions,
             $locationWeight,
             $distinctReporters,
             $daysWaiting,
@@ -204,26 +370,40 @@ class PriorityScoringService
 
         $effectiveSeverity = $existing?->admin_severity ?: $aiResult['suggested_severity'];
 
-        return PriorityAssessment::updateOrCreate(
-            ['id_laporan' => $laporan->id_laporan],
-            [
-                'kategori'              => $kategori,
-                'severity_level'        => $effectiveSeverity,
-                'severity_source'       => $existing?->admin_severity ? 'admin' : 'ai',
-                'ai_suggested_severity' => $aiResult['suggested_severity'],
-                'admin_severity'        => $existing?->admin_severity,
-                'priority_score'        => $calculated['priority_score'],
-                'priority_level'        => $calculated['priority_level'],
-                'confidence'            => $aiResult['confidence'],
-                'dimensions'            => $aiResult['dimensions'],
-                'safety_flags'          => $aiResult['safety_flags'],
-                'reasons'               => $aiResult['reasons'],
-                'needs_review'          => $existing ? $existing->needs_review : true,
-                'admin_notes'           => $existing?->admin_notes,
-                'admin_id'              => $existing?->admin_id,
-                'reviewed_at'           => $existing?->reviewed_at,
-            ]
-        );
+        $attributes = [
+            'id_laporan'               => $laporan->id_laporan,
+            'kategori'                 => $kategori,
+            'kategori_lokasi'          => $kategoriLokasi,
+            'tingkat_keparahan_lokasi' => $tingkatKeparahan,
+            'skala_keparahan_lokasi'   => $skalaKeparahan,
+            'severity_level'           => $effectiveSeverity,
+            'severity_source'          => $existing?->admin_severity ? 'admin' : 'ai',
+            'ai_suggested_severity'    => $aiResult['suggested_severity'],
+            'admin_severity'           => $existing?->admin_severity,
+            'priority_score'           => $calculated['priority_score'],
+            'priority_level'           => $calculated['priority_level'],
+            'confidence'               => $aiResult['confidence'],
+            'dimensions'               => $dimensions,
+            'safety_flags'             => $aiResult['safety_flags'],
+            'reasons'                  => $reasons,
+            'needs_review'             => $existing ? $existing->needs_review : true,
+            'admin_notes'              => $existing?->admin_notes,
+            'admin_id'                 => $existing?->admin_id,
+            'reviewed_at'              => $existing?->reviewed_at,
+        ];
+
+        if ($hasTable) {
+            try {
+                return PriorityAssessment::updateOrCreate(
+                    ['id_laporan' => $laporan->id_laporan],
+                    $attributes
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return new PriorityAssessment($attributes);
     }
 
     /**
@@ -235,6 +415,7 @@ class PriorityScoringService
         ?string $adminNotes = null,
         ?int $adminId = null
     ): PriorityAssessment {
+        $this->ensureTablesExist();
         $laporan = Laporan::findOrFail($idLaporan);
         $assessment = PriorityAssessment::firstOrNew(['id_laporan' => $idLaporan]);
 
@@ -264,8 +445,9 @@ class PriorityScoringService
             ];
         }
 
-        $locationWeight    = $this->resolveLocationWeight($laporan->lokasi ?? '');
-        $distinctReporters = $this->countNearbyReporters($laporan);
+        $locationAssessment = $this->assessLocation($laporan->lokasi ?? '');
+        $locationWeight     = $locationAssessment['location_weight'];
+        $distinctReporters  = $this->countNearbyReporters($laporan);
         $createdAt = $laporan->tanggal_buat ? Carbon::parse($laporan->tanggal_buat) : now();
         $daysWaiting = (float) max(0, $createdAt->diffInDays(now()));
 
@@ -292,7 +474,8 @@ class PriorityScoringService
             $adminId,
             $calculated,
             $dimensions,
-            $safetyFlags
+            $safetyFlags,
+            $locationAssessment
         ) {
             // 1. Simpan riwayat koreksi ke priority_feedback
             PriorityFeedback::create([
@@ -304,7 +487,11 @@ class PriorityScoringService
             ]);
 
             // 2. Perbarui priority_assessments
-            $assessment->severity_level  = $newSeverity;
+            $assessment->kategori                 = $laporan->kategori_laporan ?? 'Fasilitas';
+            $assessment->kategori_lokasi          = $locationAssessment['kategori_lokasi'];
+            $assessment->tingkat_keparahan_lokasi = $locationAssessment['tingkat_keparahan'];
+            $assessment->skala_keparahan_lokasi   = $locationAssessment['skala_keparahan'];
+            $assessment->severity_level           = $newSeverity;
             $assessment->severity_source = 'admin';
             $assessment->admin_severity  = $newSeverity;
             $assessment->priority_score  = $calculated['priority_score'];

@@ -22,6 +22,9 @@ return new class extends Migration
                     ->onUpdate('cascade');
 
                 $table->string('kategori', 50)->default('Fasilitas');
+                $table->string('kategori_lokasi', 60)->default('Tidak Diketahui');
+                $table->string('tingkat_keparahan_lokasi', 30)->default('Sedang');
+                $table->unsignedTinyInteger('skala_keparahan_lokasi')->default(2);
                 $table->string('severity_level', 30)->default('sedang'); // 'berat', 'sedang', 'ringan' (efektif)
                 $table->string('severity_source', 30)->default('ai'); // 'ai', 'admin', 'rule_fallback'
                 $table->string('ai_suggested_severity', 30)->default('sedang');

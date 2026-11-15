@@ -37,15 +37,14 @@ class PriorityDashboardController extends Controller
 
             $laporans = $query->get();
 
-            // Pastikan setiap laporan memiliki PriorityAssessment
+            // Pastikan setiap laporan memiliki PriorityAssessment (baik dari DB maupun in-memory)
+            $assessments = collect();
             foreach ($laporans as $laporan) {
-                $this->scoringService->assessAndSave($laporan);
+                $assessments->put(
+                    $laporan->id_laporan,
+                    $this->scoringService->assessAndSave($laporan)
+                );
             }
-
-            // Muat ulang dengan relasi penilaian prioritas
-            $assessments = PriorityAssessment::with('laporan.statuses', 'laporan.pelapor.mahasiswa')
-                ->get()
-                ->keyBy('id_laporan');
 
             // Format dan susun data laporan
             $items = $laporans->map(function ($laporan) use ($assessments) {
@@ -68,6 +67,9 @@ class PriorityDashboardController extends Controller
                     'tanggal_buat'           => $laporan->tanggal_buat,
                     'tanggal_kejadian'       => $laporan->tanggal_kejadian,
                     'lokasi'                 => $laporan->lokasi,
+                    'kategori_lokasi'        => $assessment?->kategori_lokasi ?? $laporan->kategori_lokasi ?? 'Tidak Diketahui',
+                    'tingkat_keparahan_lokasi' => $assessment?->tingkat_keparahan_lokasi ?? $laporan->tingkat_keparahan ?? 'Sedang',
+                    'skala_keparahan_lokasi' => (int) ($assessment?->skala_keparahan_lokasi ?? $laporan->skala_keparahan ?? 2),
                     'foto'                   => $laporan->foto,
                     'status_terkini'         => $statusName,
                     'lama_menunggu'          => $lamaMenunggu,
@@ -180,13 +182,22 @@ class PriorityDashboardController extends Controller
                 $assessment->safety_flags ?? []
             );
 
+            $feedback = [];
+            try {
+                if ($this->scoringService->ensureTablesExist()) {
+                    $feedback = $assessment->feedback()->with('admin')->orderBy('created_at', 'desc')->get();
+                }
+            } catch (\Throwable $e) {
+                $feedback = [];
+            }
+
             return response()->json([
                 'status' => 'success',
                 'data'   => [
                     'laporan'     => $laporan,
                     'assessment'  => $assessment,
                     'breakdown'   => $calculation['breakdown'],
-                    'feedback'    => $assessment->feedback()->with('admin')->orderBy('created_at', 'desc')->get(),
+                    'feedback'    => $feedback,
                 ],
             ]);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
@@ -259,12 +270,11 @@ class PriorityDashboardController extends Controller
         try {
             $laporans = Laporan::with('statuses')->get();
 
-            // Pastikan terdata
+            // Pastikan terdata (baik dari DB maupun in-memory)
+            $assessments = collect();
             foreach ($laporans as $laporan) {
-                $this->scoringService->assessAndSave($laporan);
+                $assessments->push($this->scoringService->assessAndSave($laporan));
             }
-
-            $assessments = PriorityAssessment::all();
 
             $totalActive = 0;
             $countKritis = 0;
