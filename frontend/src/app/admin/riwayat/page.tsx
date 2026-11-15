@@ -21,7 +21,6 @@ import {
   UserCheck,
 } from "lucide-react";
 
-
 interface RiwayatStatus {
   id_status?: number;
   status_laporan?: string;
@@ -102,6 +101,7 @@ export default function AdminRiwayatLaporanPage() {
   const [modalError, setModalError] = useState("");
 
   // Pengecekan Hak Akses Admin berdasarkan Wewenang Unit & Kampus
+  // Fasilitas -> BPS | Kebersihan -> BLU
   const checkCanEditStatus = useCallback(
     (laporan: LaporanItem): boolean => {
       const role = (adminUser.role || "").toLowerCase();
@@ -110,8 +110,8 @@ export default function AdminRiwayatLaporanPage() {
         return true;
       }
 
-      const isBLU = laporan.kategori_laporan === "Fasilitas" || laporan.kategori_laporan === "BLU";
-      const isBPS = laporan.kategori_laporan === "Kebersihan" || laporan.kategori_laporan === "BPS";
+      const isBPS = laporan.kategori_laporan === "Fasilitas" || laporan.kategori_laporan === "BPS";
+      const isBLU = laporan.kategori_laporan === "Kebersihan" || laporan.kategori_laporan === "BLU";
 
       if (role.includes("kepala biro layanan umum") || role.includes("kepala blu")) {
         return isBLU;
@@ -329,7 +329,6 @@ export default function AdminRiwayatLaporanPage() {
 
       <main className="flex-1 overflow-y-auto px-4 py-5 sm:p-6 md:p-8">
         <div className="mx-auto max-w-6xl space-y-5">
-          
           {/* Banner Informasi Hak Akses Admin */}
           <div className="bg-gradient-to-r from-[#7A0C0C] to-[#9E1B1B] rounded-2xl p-4 sm:p-5 text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
@@ -456,8 +455,8 @@ export default function AdminRiwayatLaporanPage() {
                 className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none cursor-pointer"
               >
                 <option value="Semua">Unit: Semua Unit</option>
-                <option value="Fasilitas">Fasilitas (BLU)</option>
-                <option value="Kebersihan">Kebersihan (BPS)</option>
+                <option value="Fasilitas">Fasilitas (BPS)</option>
+                <option value="Kebersihan">Kebersihan (BLU)</option>
               </select>
             </div>
           </div>
@@ -516,7 +515,7 @@ export default function AdminRiwayatLaporanPage() {
                                   : "bg-emerald-50 text-emerald-700 border-emerald-200"
                               }`}
                             >
-                              {lap.kategori_laporan} ({lap.kategori_laporan === "Fasilitas" ? "BLU" : "BPS"})
+                              {lap.kategori_laporan} ({lap.kategori_laporan === "Fasilitas" ? "BPS" : "BLU"})
                             </span>
                           </td>
                           <td className="px-4 py-3.5 align-middle text-center whitespace-nowrap">
@@ -594,7 +593,6 @@ export default function AdminRiwayatLaporanPage() {
               </div>
             </div>
           </div>
-
         </div>
       </main>
 
@@ -602,7 +600,6 @@ export default function AdminRiwayatLaporanPage() {
       {selectedDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
           <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden my-8 max-h-[90vh] flex flex-col border border-slate-100">
-            
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
@@ -643,7 +640,7 @@ export default function AdminRiwayatLaporanPage() {
                     <Edit3 className="w-4 h-4 text-amber-700" />
                     <span>Panel Pengubahan Status & Tanggapan Admin</span>
                   </div>
-                  
+
                   <div className="space-y-3">
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">Status Baru</label>
@@ -701,12 +698,14 @@ export default function AdminRiwayatLaporanPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                 <div>
                   <p className="text-xs text-slate-400 font-medium mb-0.5">NIM / Nama Pelapor</p>
-                  <p className="font-bold text-slate-800">{selectedDetail.nim || "-"} {selectedDetail.nama_pelapor ? `(${selectedDetail.nama_pelapor})` : ""}</p>
+                  <p className="font-bold text-slate-800">
+                    {selectedDetail.nim || "-"} {selectedDetail.nama_pelapor ? `(${selectedDetail.nama_pelapor})` : ""}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-400 font-medium mb-0.5">Kategori / Unit Tujuan</p>
                   <p className="font-bold text-slate-800">
-                    {selectedDetail.kategori_laporan} ({selectedDetail.kategori_laporan === "Fasilitas" ? "BLU" : "BPS"})
+                    {selectedDetail.kategori_laporan} ({selectedDetail.kategori_laporan === "Fasilitas" ? "BPS" : "BLU"})
                   </p>
                 </div>
                 <div>
@@ -802,7 +801,6 @@ export default function AdminRiwayatLaporanPage() {
                   })}
                 </div>
               </div>
-
             </div>
 
             <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between shrink-0">
@@ -814,7 +812,6 @@ export default function AdminRiwayatLaporanPage() {
                 Tutup
               </button>
             </div>
-
           </div>
         </div>
       )}
