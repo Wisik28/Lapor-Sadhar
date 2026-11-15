@@ -99,6 +99,9 @@ return [
             'sslmode' => env('DB_SSLMODE', 'require'),
             'options' => extension_loaded('pdo_pgsql') ? [
                 \PDO::ATTR_EMULATE_PREPARES => true,
+                // Koneksi persisten: menghindari handshake TCP+TLS+autentikasi ke database jarak jauh
+                // (Supabase) di setiap request. Matikan dengan DB_PERSISTENT=false bila diperlukan.
+                \PDO::ATTR_PERSISTENT => filter_var(env('DB_PERSISTENT', true), FILTER_VALIDATE_BOOLEAN),
             ] : [],
         ],
 

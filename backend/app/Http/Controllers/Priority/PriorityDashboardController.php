@@ -266,7 +266,8 @@ class PriorityDashboardController extends Controller
     public function summary(): JsonResponse
     {
         try {
-            $laporans = Laporan::with('statuses')->get();
+            // Relasi statuses tidak dipakai pada ringkasan, jadi tidak perlu di-eager-load (hemat 1 query).
+            $laporans = Laporan::all();
 
             // Pastikan terdata secara batch (menghindari N+1 query)
             $assessments = $this->scoringService->assessAndSaveMany($laporans);

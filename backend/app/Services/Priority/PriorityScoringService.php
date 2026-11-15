@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\Laporan;
 use App\Models\Priority\PriorityAssessment;
 use App\Models\Priority\PriorityFeedback;
+use App\Support\SchemaVerification;
 use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -52,6 +53,14 @@ class PriorityScoringService
 
             if (!empty(self::$tablesVerifiedByPdo[$pdoId])) {
                 return true;
+            }
+
+            // Skema sudah pernah diverifikasi pada request sebelumnya: lewati ~8 query skema
+            // (round-trip ke database jarak jauh). Verifikasi penuh tetap berjalan jika marker hilang.
+            if (SchemaVerification::isVerified('priority_schema')) {
+                self::$verifiedLaporanColumnsByPdo[$pdoId] = true;
+
+                return self::$tablesVerifiedByPdo[$pdoId] = true;
             }
 
             $hasAssessments = Schema::hasTable('priority_assessments');
@@ -134,10 +143,27 @@ class PriorityScoringService
 
             self::$tablesVerifiedByPdo[$pdoId] = true;
 
+            SchemaVerification::markVerified('priority_schema');
+            if (!empty(self::$verifiedLaporanColumnsByPdo[$pdoId])) {
+                SchemaVerification::markVerified('laporan_location_columns');
+            }
+
             return true;
         } catch (\Throwable $e) {
             return false;
         }
+    }
+
+    /**
+     * Batalkan status terverifikasi (cache request ini dan marker lintas-request)
+     * agar verifikasi/pembuatan skema dijalankan ulang pada pemanggilan berikutnya.
+     */
+    private function invalidateSchemaVerification(): void
+    {
+        $pdoId = spl_object_id(DB::connection()->getPdo());
+        unset(self::$tablesVerifiedByPdo[$pdoId]);
+
+        SchemaVerification::forget('priority_schema');
     }
 
     /**
@@ -316,8 +342,7 @@ class PriorityScoringService
                         ->keyBy('id_laporan');
                 }
             } catch (\Throwable $e) {
-                $pdoId = spl_object_id(DB::connection()->getPdo());
-                unset(self::$tablesVerifiedByPdo[$pdoId]);
+                $this->invalidateSchemaVerification();
                 $hasTable = false;
             }
         }
@@ -354,8 +379,7 @@ class PriorityScoringService
                     return $existing;
                 }
             } catch (\Throwable $e) {
-                $pdoId = spl_object_id(DB::connection()->getPdo());
-                unset(self::$tablesVerifiedByPdo[$pdoId]);
+                $this->invalidateSchemaVerification();
                 $hasTable = false;
             }
         }
@@ -494,8 +518,7 @@ class PriorityScoringService
                     $attributes
                 );
             } catch (\Throwable $e) {
-                $pdoId = spl_object_id(DB::connection()->getPdo());
-                unset(self::$tablesVerifiedByPdo[$pdoId]);
+                $this->invalidateSchemaVerification();
                 report($e);
             }
         }

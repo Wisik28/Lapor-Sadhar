@@ -6,19 +6,15 @@ import { adminLaporanApi } from "@/lib/api";
 import { getCurrentAuthUser } from "@/lib/auth";
 import {
   Search,
-  FileText,
-  Clock,
   CheckCircle2,
-  ChevronRight,
-  RefreshCw,
+  AlertCircle,
   Loader2,
   X,
   MapPin,
   Edit3,
-  AlertCircle,
-  ShieldCheck,
   Lock,
-  UserCheck,
+  Clock,
+  ChevronDown,
 } from "lucide-react";
 
 interface RiwayatStatus {
@@ -48,6 +44,36 @@ interface LaporanItem {
   riwayat_status?: RiwayatStatus[];
 }
 
+function formatTanggalTicket(dateStr?: string | null): string {
+  if (!dateStr) return "-";
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "Mei",
+      "Jun",
+      "Jul",
+      "Agu",
+      "Sep",
+      "Okt",
+      "Nov",
+      "Des",
+    ];
+    const day = d.getDate();
+    const month = months[d.getMonth()] || "Okt";
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, "0");
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+    return `${day} ${month} ${year}, ${hours}:${minutes}`;
+  } catch {
+    return dateStr;
+  }
+}
+
 function formatTanggalLong(dateStr: string | null | undefined): string {
   if (!dateStr) return "-";
   try {
@@ -61,36 +87,63 @@ function formatTanggalLong(dateStr: string | null | undefined): string {
   }
 }
 
-export default function AdminRiwayatLaporanPage() {
-  const [adminUser, setAdminUser] = useState({
-    nama: "Admin Lapor Sadhar",
-    role: "Administrator",
-  });
+function parseLokasiDanFasilitas(lokasi?: string, deskripsi?: string) {
+  if (!lokasi) {
+    return {
+      kampus: "Kampus Sanata Dharma",
+      detail: deskripsi || "Sarana Prasarana",
+    };
+  }
 
-  useEffect(() => {
-    const currentUser = getCurrentAuthUser();
-    if (currentUser) {
-      setAdminUser({
-        nama: currentUser.nama || currentUser.username || "Admin",
-        role: currentUser.jabatan_label || currentUser.jabatan || "Administrator",
-      });
+  const lower = lokasi.toLowerCase();
+  let kampus = "Kampus USD";
+
+  if (lower.includes("kampus iii") || lower.includes("kampus 3") || lower.includes("paingan")) {
+    kampus = "Kampus III Paingan";
+  } else if (lower.includes("kampus ii") || lower.includes("kampus 2")) {
+    kampus = "Kampus II Mrican";
+  } else if (lower.includes("kampus i") || lower.includes("kampus 1") || lower.includes("mrican")) {
+    kampus = "Kampus I Mrican";
+  } else if (lower.includes("kampus iv") || lower.includes("kampus 4") || lower.includes("kotabaru")) {
+    kampus = "Kampus IV Kotabaru";
+  }
+
+  let detail = lokasi;
+  if (deskripsi) {
+    detail = `${lokasi} (${deskripsi})`;
+  }
+
+  return { kampus, detail };
+}
+
+function formatPelaporRole(lap: LaporanItem): string {
+  if (lap.nim) {
+    if (lap.nim.length >= 12) {
+      return `Dosen / Pegawai • ${lap.nim}`;
     }
-  }, []);
+    return `Mahasiswa • ${lap.nim}`;
+  }
+  return "Civitas USD";
+}
+
+export default function AdminRiwayatLaporanPage() {
+  const [adminUser] = useState(() => {
+    const currentUser = getCurrentAuthUser();
+    return {
+      nama: currentUser?.nama || currentUser?.username || "Admin",
+      role: currentUser?.jabatan_label || currentUser?.jabatan || "Administrator",
+    };
+  });
 
   const [laporanList, setLaporanList] = useState<LaporanItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // State Filter Navbar (Bulan & Tahun)
-  const [selectedMonth, setSelectedMonth] = useState("Semua");
-  const [selectedYear, setSelectedYear] = useState("2026");
-
   // State Filter Tabel
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterKampus, setFilterKampus] = useState("Semua Kampus");
+  const [filterKampus, setFilterKampus] = useState("Semua Lokasi");
   const [filterStatus, setFilterStatus] = useState("Semua");
-  const [filterKategori, setFilterKategori] = useState("Semua");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
+  const itemsPerPage = 10;
 
   // State Modal Detail & Ubah Status
   const [selectedDetail, setSelectedDetail] = useState<LaporanItem | null>(null);
@@ -106,7 +159,11 @@ export default function AdminRiwayatLaporanPage() {
     (laporan: LaporanItem): boolean => {
       const role = (adminUser.role || "").toLowerCase();
 
-      if (role.includes("wakil rektor ii") || role.includes("wr ii") || role.includes("administrator")) {
+      if (
+        role.includes("wakil rektor ii") ||
+        role.includes("wr ii") ||
+        role.includes("administrator")
+      ) {
         return true;
       }
 
@@ -122,9 +179,12 @@ export default function AdminRiwayatLaporanPage() {
       }
 
       const lokasi = (laporan.lokasi || "").toLowerCase();
-      const isKampus1 = lokasi.includes("kampus i ") || lokasi.includes("kampus 1") || lokasi.includes("mrican");
-      const isKampus2 = lokasi.includes("kampus ii") || lokasi.includes("kampus 2") || lokasi.includes("mrican");
-      const isKampus3 = lokasi.includes("kampus iii") || lokasi.includes("kampus 3") || lokasi.includes("paingan");
+      const isKampus1 =
+        lokasi.includes("kampus i ") || lokasi.includes("kampus 1") || lokasi.includes("mrican");
+      const isKampus2 =
+        lokasi.includes("kampus ii") || lokasi.includes("kampus 2") || lokasi.includes("mrican");
+      const isKampus3 =
+        lokasi.includes("kampus iii") || lokasi.includes("kampus 3") || lokasi.includes("paingan");
       const isKampus4 = lokasi.includes("kampus iv") || lokasi.includes("kampus 4");
 
       if (role.includes("blu") && role.includes("kampus i") && isBLU && isKampus1) return true;
@@ -139,7 +199,7 @@ export default function AdminRiwayatLaporanPage() {
 
       return false;
     },
-    [adminUser.role]
+    [adminUser.role],
   );
 
   const fetchAllLaporanAdmin = useCallback(async () => {
@@ -154,9 +214,7 @@ export default function AdminRiwayatLaporanPage() {
             ? res.laporan
             : [];
 
-      const sortedData = (data as LaporanItem[]).sort(
-        (a, b) => b.id_laporan - a.id_laporan
-      );
+      const sortedData = (data as LaporanItem[]).sort((a, b) => b.id_laporan - a.id_laporan);
       setLaporanList(sortedData);
     } catch (error) {
       console.error("Gagal mengambil data riwayat laporan admin:", error);
@@ -167,22 +225,59 @@ export default function AdminRiwayatLaporanPage() {
   }, []);
 
   useEffect(() => {
-    fetchAllLaporanAdmin();
-  }, [fetchAllLaporanAdmin]);
+    let active = true;
+    adminLaporanApi
+      .getAll()
+      .then((res) => {
+        if (!active) return;
+        const data = Array.isArray(res)
+          ? res
+          : Array.isArray(res?.data)
+            ? res.data
+            : Array.isArray(res?.laporan)
+              ? res.laporan
+              : [];
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, filterKampus, filterStatus, filterKategori, selectedMonth, selectedYear]);
+        const sortedData = (data as LaporanItem[]).sort((a, b) => b.id_laporan - a.id_laporan);
+        setLaporanList(sortedData);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Gagal mengambil data riwayat laporan admin:", err);
+        if (active) {
+          setLaporanList([]);
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Metrik KPI Dashboard
   const totalLaporan = laporanList.length;
-  const masukCount = laporanList.filter((l) => l.status_terkini === "Terkirim").length;
-  const diprosesCount = laporanList.filter((l) =>
-    ["Sedang Diverifikasi", "Terverifikasi", "Diverifikasi", "Diproses", "Proses"].includes(l.status_terkini)
+  const masukCount = laporanList.filter(
+    (l) => l.status_terkini === "Terkirim" || l.status_terkini === "Menunggu Suku Cadang",
   ).length;
-  const selesaiCount = laporanList.filter((l) => l.status_terkini === "Selesai").length;
+  const diprosesCount = laporanList.filter((l) =>
+    [
+      "Sedang Diverifikasi",
+      "Terverifikasi",
+      "Diverifikasi",
+      "Diproses",
+      "Proses",
+      "Dalam Penanganan",
+    ].includes(l.status_terkini),
+  ).length;
+  const selesaiCount = laporanList.filter(
+    (l) => l.status_terkini === "Selesai" || l.status_terkini === "Selesai Ditangani",
+  ).length;
 
-  // Filter Data Laporan Sesuai Periode Bulan, Tahun & Kriteria Tabel
+  const selesaiPercentage =
+    totalLaporan > 0 ? ((selesaiCount / totalLaporan) * 100).toFixed(1) : "0.0";
+
+  // Filter Data Laporan Sesuai Kriteria
   const filteredList = useMemo(() => {
     return laporanList.filter((item) => {
       const searchLow = searchTerm.toLowerCase();
@@ -191,48 +286,76 @@ export default function AdminRiwayatLaporanPage() {
         (item.deskripsi && item.deskripsi.toLowerCase().includes(searchLow)) ||
         (item.lokasi && item.lokasi.toLowerCase().includes(searchLow)) ||
         (item.nim && item.nim.toLowerCase().includes(searchLow)) ||
+        (item.nama_pelapor && item.nama_pelapor.toLowerCase().includes(searchLow)) ||
         String(item.id_laporan).includes(searchLow);
 
-      const matchesStatus = filterStatus === "Semua" || item.status_terkini === filterStatus;
-      const matchesKategori = filterKategori === "Semua" || item.kategori_laporan === filterKategori;
-
-      let matchesKampus = true;
-      if (filterKampus !== "Semua Kampus" && item.lokasi) {
-        matchesKampus = item.lokasi.toLowerCase().includes(filterKampus.toLowerCase());
-      }
-
-      let matchesMonth = true;
-      let matchesYear = true;
-      const targetDateStr = item.tanggal_buat || item.tanggal_kejadian;
-
-      if (targetDateStr) {
-        const d = new Date(targetDateStr);
-        if (!isNaN(d.getTime())) {
-          const itemMonthNum = String(d.getMonth() + 1).padStart(2, "0");
-          const itemYearStr = String(d.getFullYear());
-
-          matchesMonth = selectedMonth === "Semua" || itemMonthNum === selectedMonth;
-          matchesYear = selectedYear === "Semua" || itemYearStr === selectedYear;
+      let matchesStatus = true;
+      if (filterStatus !== "Semua") {
+        if (filterStatus === "Dalam Penanganan") {
+          matchesStatus = [
+            "Sedang Diverifikasi",
+            "Terverifikasi",
+            "Diverifikasi",
+            "Diproses",
+            "Proses",
+            "Dalam Penanganan",
+          ].includes(item.status_terkini);
+        } else if (filterStatus === "Selesai Ditangani") {
+          matchesStatus =
+            item.status_terkini === "Selesai" || item.status_terkini === "Selesai Ditangani";
+        } else {
+          matchesStatus = item.status_terkini === filterStatus;
         }
       }
 
-      return matchesSearch && matchesStatus && matchesKategori && matchesKampus && matchesMonth && matchesYear;
+      let matchesKampus = true;
+      if (filterKampus !== "Semua Lokasi" && item.lokasi) {
+        const itemLokasi = item.lokasi.toLowerCase();
+        if (filterKampus === "Kampus I Mrican") {
+          matchesKampus =
+            itemLokasi.includes("kampus i") ||
+            itemLokasi.includes("kampus 1") ||
+            itemLokasi.includes("mrican");
+        } else if (filterKampus === "Kampus II Mrican") {
+          matchesKampus = itemLokasi.includes("kampus ii") || itemLokasi.includes("kampus 2");
+        } else if (filterKampus === "Kampus III Paingan") {
+          matchesKampus =
+            itemLokasi.includes("kampus iii") ||
+            itemLokasi.includes("kampus 3") ||
+            itemLokasi.includes("paingan");
+        } else if (filterKampus === "Kampus IV Kotabaru") {
+          matchesKampus =
+            itemLokasi.includes("kampus iv") ||
+            itemLokasi.includes("kampus 4") ||
+            itemLokasi.includes("kotabaru");
+        }
+      }
+
+      return matchesSearch && matchesStatus && matchesKampus;
     });
-  }, [laporanList, searchTerm, filterStatus, filterKategori, filterKampus, selectedMonth, selectedYear]);
+  }, [laporanList, searchTerm, filterStatus, filterKampus]);
 
   const totalPages = Math.ceil(filteredList.length / itemsPerPage) || 1;
   const paginatedData = filteredList.slice(
     (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
+    currentPage * itemsPerPage,
   );
+
+  const handleResetFilter = () => {
+    setSearchTerm("");
+    setFilterKampus("Semua Lokasi");
+    setFilterStatus("Semua");
+    setCurrentPage(1);
+  };
 
   const renderStatusBadge = (status: string) => {
     switch (status) {
-      case "Terkirim":
+      case "Selesai":
+      case "Selesai Ditangani":
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-            Terkirim
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#E8F8F0] text-[#127A45] border border-emerald-200/60 whitespace-nowrap shadow-2xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+            Selesai Ditangani
           </span>
         );
       case "Sedang Diverifikasi":
@@ -240,29 +363,38 @@ export default function AdminRiwayatLaporanPage() {
       case "Diverifikasi":
       case "Diproses":
       case "Proses":
+      case "Dalam Penanganan":
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-            {status}
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#EAF2FF] text-[#1E56B0] border border-blue-200/60 whitespace-nowrap shadow-2xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+            Dalam Penanganan
           </span>
         );
-      case "Selesai":
+      case "Menunggu Suku Cadang":
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-            Selesai
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#FEF7E6] text-[#A26207] border border-amber-200/60 whitespace-nowrap shadow-2xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+            Menunggu Suku Cadang
+          </span>
+        );
+      case "Terkirim":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#FEF7E6] text-[#A26207] border border-amber-200/60 whitespace-nowrap shadow-2xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+            Menunggu Tindakan
           </span>
         );
       case "Ditolak":
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200 whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[#FEECEC] text-[#B02323] border border-rose-200/60 whitespace-nowrap shadow-2xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
             Ditolak
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap shadow-2xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
             {status}
           </span>
         );
@@ -284,7 +416,7 @@ export default function AdminRiwayatLaporanPage() {
       await adminLaporanApi.updateStatus(
         selectedDetail.id_laporan,
         statusBaru,
-        pesanTanggapan.trim()
+        pesanTanggapan.trim(),
       );
 
       setModalSuccess("Status laporan berhasil diperbarui!");
@@ -295,13 +427,13 @@ export default function AdminRiwayatLaporanPage() {
               status_terkini: statusBaru,
               pesan_tanggapan: pesanTanggapan.trim() || prev.pesan_tanggapan,
             }
-          : null
+          : null,
       );
       fetchAllLaporanAdmin();
     } catch (err) {
       console.error(err);
       setModalError(
-        err instanceof Error ? err.message : "Gagal memperbarui status laporan."
+        err instanceof Error ? err.message : "Gagal memperbarui status laporan.",
       );
     } finally {
       setUpdateLoading(false);
@@ -317,223 +449,225 @@ export default function AdminRiwayatLaporanPage() {
   ];
 
   return (
-    <div className="min-h-screen w-full bg-[#F3F4F6] font-sans text-slate-800 flex flex-col">
-      <AdminNavbar
-        adminName={adminUser.nama}
-        adminRole={adminUser.role}
-        selectedMonth={selectedMonth}
-        selectedYear={selectedYear}
-        onMonthChange={(m) => setSelectedMonth(m)}
-        onYearChange={(y) => setSelectedYear(y)}
-      />
+    <div className="min-h-screen w-full bg-[#F8F9FA] font-sans text-slate-800 flex flex-col">
+      <AdminNavbar adminName={adminUser.nama} adminRole={adminUser.role} />
 
-      <main className="flex-1 overflow-y-auto px-4 py-5 sm:p-6 md:p-8">
-        <div className="mx-auto max-w-6xl space-y-5">
-          {/* Banner Informasi Hak Akses Admin */}
-          <div className="bg-gradient-to-r from-[#7A0C0C] to-[#9E1B1B] rounded-2xl p-4 sm:p-5 text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="p-2.5 rounded-xl bg-white/10 backdrop-blur-xs border border-white/20 shrink-0">
-                <ShieldCheck className="w-6 h-6 text-amber-300" />
-              </div>
-              <div>
-                <h2 className="font-extrabold text-sm sm:text-base flex items-center gap-2">
-                  <span>Riwayat Pelaporan Admin: {adminUser.role}</span>
-                </h2>
-                <p className="text-xs text-red-100 mt-0.5 leading-relaxed">
-                  Pantau riwayat penanganan laporan di lingkungan USD. Perubahan status disesuaikan dengan hak akses unit & wilayah kerja Anda.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={fetchAllLaporanAdmin}
-              disabled={loading}
-              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-semibold flex items-center gap-1.5 transition-all shrink-0 cursor-pointer"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-              <span>Sinkronkan Data</span>
-            </button>
-          </div>
-
-          {/* Stat Cards */}
+      <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl space-y-5">
+          {/* Top 4 Stat Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">TOTAL KESELURUHAN</p>
-                <h3 className="text-2xl font-extrabold text-slate-900 mt-1">{totalLaporan}</h3>
-                <p className="text-[11px] text-slate-400 mt-1">Laporan terdaftar</p>
+            {/* Card 1: Total Laporan */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-2xs">
+              <p className="text-xs font-medium text-slate-500">Total Laporan</p>
+              <div className="mt-2.5 flex items-baseline gap-1.5">
+                <span className="text-3xl font-extrabold tracking-tight text-slate-900">
+                  {totalLaporan}
+                </span>
+                <span className="text-xs text-slate-400">tiket</span>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-red-50 text-[#7A0C0C] flex items-center justify-center border border-red-100 shrink-0">
-                <FileText className="w-5 h-5" />
-              </div>
+              <p className="mt-2 text-xs text-slate-400">Semua kampus USD</p>
             </div>
 
-            <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">LAPORAN MASUK</p>
-                <h3 className="text-2xl font-extrabold text-blue-600 mt-1">{masukCount}</h3>
-                <p className="text-[11px] text-blue-600/80 mt-1">Status: Terkirim</p>
+            {/* Card 2: Selesai */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-2xs">
+              <p className="text-xs font-medium text-slate-500">Selesai</p>
+              <div className="mt-2.5 flex items-center gap-2">
+                <span className="text-3xl font-extrabold tracking-tight text-emerald-600">
+                  {selesaiCount}
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100">
+                  {selesaiPercentage}%
+                </span>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </div>
+              <p className="mt-2 text-xs text-slate-400">Selesai & terverifikasi</p>
             </div>
 
-            <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">SEDANG DITANGANI</p>
-                <h3 className="text-2xl font-extrabold text-amber-600 mt-1">{diprosesCount}</h3>
-                <p className="text-[11px] text-amber-600/80 mt-1">Verifikasi & Teknisi</p>
+            {/* Card 3: Dalam Pengerjaan */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-2xs">
+              <p className="text-xs font-medium text-slate-500">Dalam Pengerjaan</p>
+              <div className="mt-2.5 flex items-baseline gap-1.5">
+                <span className="text-3xl font-extrabold tracking-tight text-amber-600">
+                  {diprosesCount}
+                </span>
+                <span className="text-xs text-slate-500 font-normal">aktif</span>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100 shrink-0">
-                <Clock className="w-5 h-5" />
-              </div>
+              <p className="mt-2 text-xs text-slate-400">Sedang ditangani teknisi</p>
             </div>
 
-            <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">SELESAI DITANGANI</p>
-                <h3 className="text-2xl font-extrabold text-emerald-600 mt-1">{selesaiCount}</h3>
-                <p className="text-[11px] text-emerald-600/80 mt-1">Masalah Tuntas</p>
+            {/* Card 4: Menunggu Tindakan */}
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-2xs">
+              <p className="text-xs font-medium text-slate-500">Menunggu Tindakan</p>
+              <div className="mt-2.5 flex items-center gap-2">
+                <span className="text-3xl font-extrabold tracking-tight text-[#7A0C0C]">
+                  {masukCount}
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-100">
+                  Perlu Atensi
+                </span>
               </div>
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shrink-0">
-                <CheckCircle2 className="w-5 h-5" />
-              </div>
+              <p className="mt-2 text-xs text-slate-400">Suku cadang / penugasan</p>
             </div>
           </div>
 
-          {/* Panel Pencarian & Filter */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+          {/* Search & Filter Bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            {/* Search Input */}
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Cari NIM, deskripsi, lokasi, atau ID Laporan..."
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm outline-none focus:border-[#7A0C0C] transition-colors"
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
+                placeholder="Cari ID tiket, pelapor, atau sarana..."
+                className="w-full h-11 pl-10 pr-9 bg-white border border-slate-200/90 rounded-xl text-xs sm:text-sm text-slate-800 placeholder-slate-400 outline-none focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10 shadow-2xs transition-all"
               />
               {searchTerm && (
                 <button
-                  onClick={() => setSearchTerm("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm("");
+                    setCurrentPage(1);
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               )}
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
+            {/* Dropdown Lokasi */}
+            <div className="relative">
               <select
                 value={filterKampus}
-                onChange={(e) => setFilterKampus(e.target.value)}
-                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none cursor-pointer"
+                onChange={(e) => {
+                  setFilterKampus(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-11 pl-4 pr-9 bg-white border border-slate-200/90 rounded-xl text-xs sm:text-sm font-medium text-slate-700 outline-none focus:border-[#7A0C0C] shadow-2xs cursor-pointer appearance-none w-full sm:w-auto"
               >
-                <option value="Semua Kampus">Kampus: Semua Kampus</option>
-                <option value="Kampus I">Kampus I (Mrican)</option>
-                <option value="Kampus II">Kampus II (Mrican)</option>
-                <option value="Kampus III">Kampus III (Paingan)</option>
-                <option value="Kampus IV">Kampus IV</option>
+                <option value="Semua Lokasi">Semua Lokasi</option>
+                <option value="Kampus I Mrican">Kampus I Mrican</option>
+                <option value="Kampus II Mrican">Kampus II Mrican</option>
+                <option value="Kampus III Paingan">Kampus III Paingan</option>
+                <option value="Kampus IV Kotabaru">Kampus IV Kotabaru</option>
               </select>
+              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
 
+            {/* Dropdown Status */}
+            <div className="relative">
               <select
                 value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none cursor-pointer"
+                onChange={(e) => {
+                  setFilterStatus(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="h-11 pl-4 pr-9 bg-white border border-slate-200/90 rounded-xl text-xs sm:text-sm font-medium text-slate-700 outline-none focus:border-[#7A0C0C] shadow-2xs cursor-pointer appearance-none w-full sm:w-auto"
               >
-                <option value="Semua">Status: Semua</option>
+                <option value="Semua">Semua Status</option>
                 <option value="Terkirim">Terkirim</option>
-                <option value="Sedang Diverifikasi">Sedang Diverifikasi</option>
-                <option value="Terverifikasi">Terverifikasi</option>
-                <option value="Diproses">Diproses</option>
-                <option value="Selesai">Selesai</option>
+                <option value="Dalam Penanganan">Dalam Penanganan</option>
+                <option value="Selesai Ditangani">Selesai Ditangani</option>
                 <option value="Ditolak">Ditolak</option>
               </select>
-
-              <select
-                value={filterKategori}
-                onChange={(e) => setFilterKategori(e.target.value)}
-                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none cursor-pointer"
-              >
-                <option value="Semua">Unit: Semua Unit</option>
-                <option value="Fasilitas">Fasilitas (BPS)</option>
-                <option value="Kebersihan">Kebersihan (BLU)</option>
-              </select>
+              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
+
+            {/* Tombol Reset */}
+            <button
+              type="button"
+              onClick={handleResetFilter}
+              className="h-11 px-4 text-xs sm:text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors cursor-pointer flex items-center justify-center self-end sm:self-auto"
+            >
+              Reset
+            </button>
           </div>
 
-          {/* Tabel Data Admin */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden w-full">
-            <div className="overflow-x-auto w-full">
-              <table className="w-full text-left text-xs sm:text-sm border-collapse">
-                <thead className="bg-slate-50/90 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+          {/* Table Container */}
+          <div className="rounded-2xl border border-slate-200/80 bg-white shadow-2xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                <thead className="bg-white border-b border-slate-100 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                   <tr>
-                    <th className="px-4 py-3.5 whitespace-nowrap">Pelapor & ID</th>
-                    <th className="px-4 py-3.5">Judul & Lokasi Kejadian</th>
-                    <th className="px-4 py-3.5 whitespace-nowrap text-center">Unit/Kategori</th>
-                    <th className="px-4 py-3.5 whitespace-nowrap text-center">Status saat ini</th>
-                    <th className="px-4 py-3.5 whitespace-nowrap text-center">Akses Kelola</th>
-                    <th className="px-4 py-3.5 text-right whitespace-nowrap">Aksi Admin</th>
+                    <th className="py-4 px-6 whitespace-nowrap">TIKET & TANGGAL</th>
+                    <th className="py-4 px-6 whitespace-nowrap">PELAPOR</th>
+                    <th className="py-4 px-6 whitespace-nowrap">LOKASI & FASILITAS</th>
+                    <th className="py-4 px-6 whitespace-nowrap">STATUS</th>
+                    <th className="py-4 px-6 whitespace-nowrap text-right">AKSI</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center text-slate-400">
+                      <td colSpan={5} className="py-16 text-center text-slate-400">
                         <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-[#7A0C0C]" />
-                        Memuat data riwayat laporan seluruh kampus...
+                        Memuat data riwayat laporan...
                       </td>
                     </tr>
                   ) : paginatedData.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center text-slate-400">
-                        Tidak ditemukan data laporan yang sesuai filter.
+                      <td colSpan={5} className="py-16 text-center text-slate-400">
+                        Tidak ada laporan yang sesuai dengan filter.
                       </td>
                     </tr>
                   ) : (
                     paginatedData.map((lap) => {
-                      const canEdit = checkCanEditStatus(lap);
+                      const { kampus, detail } = parseLokasiDanFasilitas(
+                        lap.lokasi,
+                        lap.deskripsi,
+                      );
+                      const year = lap.tanggal_buat
+                        ? new Date(lap.tanggal_buat).getFullYear()
+                        : 2024;
+                      const ticketId = `#TK-${year}-${lap.id_laporan}`;
+
                       return (
-                        <tr key={lap.id_laporan} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="px-4 py-3.5 align-middle whitespace-nowrap text-xs text-slate-500">
-                            <span className="font-bold text-slate-900 block">NIM: {lap.nim || "-"}</span>
-                            <span className="text-[11px] text-slate-400">ID Laporan #{lap.id_laporan}</span>
-                          </td>
-                          <td className="px-4 py-3.5 align-middle">
-                            <p className="font-bold text-slate-900 line-clamp-1 text-xs sm:text-sm">
-                              {lap.deskripsi}
-                            </p>
-                            <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
-                              <span className="shrink-0 text-red-500">📍</span>
-                              <span className="truncate">{lap.lokasi}</span>
-                            </p>
-                          </td>
-                          <td className="px-4 py-3.5 align-middle text-center whitespace-nowrap">
-                            <span
-                              className={`inline-block px-2.5 py-1 rounded-md text-[11px] font-semibold border ${
-                                lap.kategori_laporan === "Fasilitas"
-                                  ? "bg-blue-50 text-blue-700 border-blue-200"
-                                  : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              }`}
-                            >
-                              {lap.kategori_laporan} ({lap.kategori_laporan === "Fasilitas" ? "BPS" : "BLU"})
+                        <tr
+                          key={lap.id_laporan}
+                          className="hover:bg-slate-50/70 transition-colors"
+                        >
+                          {/* Tiket & Tanggal */}
+                          <td className="py-4 px-6 align-middle whitespace-nowrap">
+                            <span className="font-bold text-[#7A0C0C] text-xs sm:text-sm block">
+                              {ticketId}
+                            </span>
+                            <span className="text-xs text-slate-500 block mt-0.5">
+                              {formatTanggalTicket(lap.tanggal_buat)}
                             </span>
                           </td>
-                          <td className="px-4 py-3.5 align-middle text-center whitespace-nowrap">
+
+                          {/* Pelapor */}
+                          <td className="py-4 px-6 align-middle whitespace-nowrap">
+                            <span className="font-bold text-slate-900 text-xs sm:text-sm block">
+                              {lap.nama_pelapor || "Civitas USD"}
+                            </span>
+                            <span className="text-xs text-slate-500 block mt-0.5">
+                              {formatPelaporRole(lap)}
+                            </span>
+                          </td>
+
+                          {/* Lokasi & Fasilitas */}
+                          <td className="py-4 px-6 align-middle">
+                            <span className="font-bold text-slate-900 text-xs sm:text-sm block">
+                              {kampus}
+                            </span>
+                            <span className="text-xs text-slate-500 block mt-0.5 line-clamp-1 max-w-xs sm:max-w-md">
+                              {detail}
+                            </span>
+                          </td>
+
+                          {/* Status */}
+                          <td className="py-4 px-6 align-middle whitespace-nowrap">
                             {renderStatusBadge(lap.status_terkini)}
                           </td>
-                          <td className="px-4 py-3.5 align-middle text-center whitespace-nowrap">
-                            {canEdit ? (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                <UserCheck className="w-3 h-3 shrink-0" /> Bisa Diubah
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
-                                <Lock className="w-3 h-3 shrink-0" /> Lihat Saja
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap">
+
+                          {/* Aksi */}
+                          <td className="py-4 px-6 align-middle text-right whitespace-nowrap">
                             <button
+                              type="button"
                               onClick={() => {
                                 setSelectedDetail(lap);
                                 setStatusBaru(lap.status_terkini);
@@ -541,10 +675,10 @@ export default function AdminRiwayatLaporanPage() {
                                 setModalError("");
                                 setModalSuccess("");
                               }}
-                              className="px-3.5 py-1.5 rounded-lg bg-[#7A0C0C] hover:bg-[#9E1B1B] text-white text-xs font-semibold shadow-2xs transition-all inline-flex items-center gap-1 cursor-pointer"
+                              className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer"
                             >
-                              <span>Detail / Kelola</span>
-                              <ChevronRight className="w-3.5 h-3.5" />
+                              <span>Detail</span>
+                              <span>→</span>
                             </button>
                           </td>
                         </tr>
@@ -555,40 +689,65 @@ export default function AdminRiwayatLaporanPage() {
               </table>
             </div>
 
-            {/* Pagination */}
-            <div className="px-4 py-3 bg-slate-50/50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+            {/* Pagination Footer */}
+            <div className="px-6 py-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 bg-white">
               <p>
-                Menampilkan {paginatedData.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0} -{" "}
-                {Math.min(currentPage * itemsPerPage, filteredList.length)} dari {filteredList.length} total laporan admin
+                Menampilkan{" "}
+                {filteredList.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}–
+                {Math.min(currentPage * itemsPerPage, filteredList.length)} dari{" "}
+                {filteredList.length} laporan
               </p>
 
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 <button
+                  type="button"
                   onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
                   disabled={currentPage === 1}
-                  className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer text-xs"
                 >
                   Sebelumnya
                 </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setCurrentPage(p)}
-                    className={`w-7 h-7 rounded-lg font-bold transition-colors cursor-pointer ${
-                      currentPage === p
-                        ? "bg-[#7A0C0C] text-white"
-                        : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => {
+                  if (
+                    totalPages > 5 &&
+                    p !== 1 &&
+                    p !== totalPages &&
+                    Math.abs(p - currentPage) > 1
+                  ) {
+                    if (p === 2 || p === totalPages - 1) {
+                      return (
+                        <span key={p} className="px-1 text-slate-400">
+                          ...
+                        </span>
+                      );
+                    }
+                    return null;
+                  }
+
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setCurrentPage(p)}
+                      className={`w-7 h-7 rounded-md font-bold text-xs transition-colors cursor-pointer flex items-center justify-center ${
+                        currentPage === p
+                          ? "bg-[#7A0C0C] text-white"
+                          : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+
                 <button
+                  type="button"
                   onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
                   disabled={currentPage === totalPages}
-                  className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer text-xs"
                 >
-                  Berikutnya
+                  Selanjutnya
                 </button>
               </div>
             </div>
@@ -598,12 +757,17 @@ export default function AdminRiwayatLaporanPage() {
 
       {/* Modal Detail & Kelola Status */}
       {selectedDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto">
           <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden my-8 max-h-[90vh] flex flex-col border border-slate-100">
+            {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  KELOLA LAPORAN #{selectedDetail.id_laporan}
+                  TIKET #TK-
+                  {selectedDetail.tanggal_buat
+                    ? new Date(selectedDetail.tanggal_buat).getFullYear()
+                    : 2024}
+                  -{selectedDetail.id_laporan}
                 </p>
                 <h2 className="text-base font-extrabold text-slate-900 mt-0.5">
                   Informasi Detail & Akses Status
@@ -612,6 +776,7 @@ export default function AdminRiwayatLaporanPage() {
               <div className="flex items-center gap-2">
                 {renderStatusBadge(selectedDetail.status_terkini)}
                 <button
+                  type="button"
                   onClick={() => setSelectedDetail(null)}
                   className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors cursor-pointer"
                 >
@@ -620,6 +785,7 @@ export default function AdminRiwayatLaporanPage() {
               </div>
             </div>
 
+            {/* Modal Content */}
             <div className="p-6 overflow-y-auto space-y-6 text-xs sm:text-sm">
               {modalSuccess && (
                 <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-2">
@@ -643,16 +809,18 @@ export default function AdminRiwayatLaporanPage() {
 
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">Status Baru</label>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Status Baru
+                      </label>
                       <select
                         value={statusBaru}
                         onChange={(e) => setStatusBaru(e.target.value)}
                         className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-semibold text-slate-800 outline-none focus:border-[#7A0C0C]"
                       >
-                        <option value="Terkirim">1. Terkirim (Baru Masuk)</option>
+                        <option value="Terkirim">1. Terkirim (Menunggu Tindakan)</option>
                         <option value="Sedang Diverifikasi">2. Sedang Diverifikasi Sarpras</option>
                         <option value="Terverifikasi">3. Terverifikasi</option>
-                        <option value="Diproses">4. Diproses Teknisi</option>
+                        <option value="Diproses">4. Diproses (Dalam Penanganan)</option>
                         <option value="Selesai">5. Selesai Ditangani</option>
                         <option value="Ditolak">6. Ditolak (Tidak Valid / Duplikat)</option>
                       </select>
@@ -660,7 +828,8 @@ export default function AdminRiwayatLaporanPage() {
 
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Pesan Tanggapan Admin {statusBaru === "Ditolak" && <span className="text-red-500">*</span>}
+                        Pesan Tanggapan Admin{" "}
+                        {statusBaru === "Ditolak" && <span className="text-red-500">*</span>}
                       </label>
                       <textarea
                         rows={3}
@@ -673,8 +842,14 @@ export default function AdminRiwayatLaporanPage() {
 
                     <div className="flex justify-end">
                       <button
+                        type="button"
                         onClick={handleUpdateStatus}
-                        disabled={updateLoading || (statusBaru === selectedDetail.status_terkini && pesanTanggapan.trim() === (selectedDetail.pesan_tanggapan || ""))}
+                        disabled={
+                          updateLoading ||
+                          (statusBaru === selectedDetail.status_terkini &&
+                            pesanTanggapan.trim() ===
+                              (selectedDetail.pesan_tanggapan || ""))
+                        }
                         className="px-5 py-2.5 rounded-xl bg-[#7A0C0C] hover:bg-[#9E1B1B] text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
                       >
                         {updateLoading ? (
@@ -690,7 +865,8 @@ export default function AdminRiwayatLaporanPage() {
                 <div className="bg-slate-100 p-3.5 rounded-2xl border border-slate-200 flex items-center gap-2.5 text-slate-600 text-xs">
                   <Lock className="w-4 h-4 text-slate-400 shrink-0" />
                   <span>
-                    Role Anda (<strong>{adminUser.role}</strong>) hanya memiliki hak akses untuk <strong>melihat laporan ini</strong> dan tidak dapat mengubah statusnya.
+                    Role Anda (<strong>{adminUser.role}</strong>) hanya memiliki hak akses untuk{" "}
+                    <strong>melihat laporan ini</strong> dan tidak dapat mengubah statusnya.
                   </span>
                 </div>
               )}
@@ -699,22 +875,32 @@ export default function AdminRiwayatLaporanPage() {
                 <div>
                   <p className="text-xs text-slate-400 font-medium mb-0.5">NIM / Nama Pelapor</p>
                   <p className="font-bold text-slate-800">
-                    {selectedDetail.nim || "-"} {selectedDetail.nama_pelapor ? `(${selectedDetail.nama_pelapor})` : ""}
+                    {selectedDetail.nim || "-"}{" "}
+                    {selectedDetail.nama_pelapor
+                      ? `(${selectedDetail.nama_pelapor})`
+                      : ""}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400 font-medium mb-0.5">Kategori / Unit Tujuan</p>
+                  <p className="text-xs text-slate-400 font-medium mb-0.5">
+                    Kategori / Unit Tujuan
+                  </p>
                   <p className="font-bold text-slate-800">
-                    {selectedDetail.kategori_laporan} ({selectedDetail.kategori_laporan === "Fasilitas" ? "BPS" : "BLU"})
+                    {selectedDetail.kategori_laporan} (
+                    {selectedDetail.kategori_laporan === "Fasilitas" ? "BLU" : "BPS"})
                   </p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-400 font-medium mb-0.5">Tanggal Kejadian</p>
-                  <p className="font-bold text-slate-800">{formatTanggalLong(selectedDetail.tanggal_kejadian)}</p>
+                  <p className="font-bold text-slate-800">
+                    {formatTanggalLong(selectedDetail.tanggal_kejadian)}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-400 font-medium mb-0.5">Tanggal Dibuat</p>
-                  <p className="font-bold text-slate-800">{formatTanggalLong(selectedDetail.tanggal_buat)}</p>
+                  <p className="font-bold text-slate-800">
+                    {formatTanggalLong(selectedDetail.tanggal_buat)}
+                  </p>
                 </div>
                 <div className="sm:col-span-2">
                   <p className="text-xs text-slate-400 font-medium mb-0.5">Lokasi Kejadian</p>
@@ -735,7 +921,9 @@ export default function AdminRiwayatLaporanPage() {
               {/* Tanggapan Admin jika ada */}
               {selectedDetail.pesan_tanggapan && (
                 <div>
-                  <p className="text-xs text-slate-400 font-medium mb-1.5">Catatan / Tanggapan Admin</p>
+                  <p className="text-xs text-slate-400 font-medium mb-1.5">
+                    Catatan / Tanggapan Admin
+                  </p>
                   <div className="bg-purple-50 p-3.5 rounded-2xl border border-purple-100 text-purple-900 text-xs sm:text-sm leading-relaxed">
                     {selectedDetail.pesan_tanggapan}
                   </div>
@@ -747,8 +935,15 @@ export default function AdminRiwayatLaporanPage() {
                 <p className="text-xs text-slate-400 font-medium mb-1.5">Foto Bukti Pendukung</p>
                 {selectedDetail.foto ? (
                   <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center p-1">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={typeof selectedDetail.foto === "string" ? selectedDetail.foto : (Array.isArray(selectedDetail.foto) ? selectedDetail.foto[0] : "")}
+                      src={
+                        typeof selectedDetail.foto === "string"
+                          ? selectedDetail.foto
+                          : Array.isArray(selectedDetail.foto)
+                            ? selectedDetail.foto[0]
+                            : ""
+                      }
                       alt="Foto pendukung laporan"
                       className="w-full max-h-60 object-contain rounded-xl"
                     />
@@ -764,7 +959,9 @@ export default function AdminRiwayatLaporanPage() {
               <div className="pt-2 border-t border-slate-100 space-y-3">
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-[#7A0C0C]" />
-                  <p className="font-bold text-slate-800 text-xs sm:text-sm">Progres Penanganan Laporan</p>
+                  <p className="font-bold text-slate-800 text-xs sm:text-sm">
+                    Progres Penanganan Laporan
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
@@ -782,7 +979,9 @@ export default function AdminRiwayatLaporanPage() {
                         <div className="flex items-center gap-1.5 mb-1">
                           <span
                             className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 ${
-                              isCurrent ? "bg-red-700 text-white" : "bg-slate-200 text-slate-600"
+                              isCurrent
+                                ? "bg-red-700 text-white"
+                                : "bg-slate-200 text-slate-600"
                             }`}
                           >
                             {st.num}
@@ -793,7 +992,11 @@ export default function AdminRiwayatLaporanPage() {
                             </span>
                           )}
                         </div>
-                        <p className={`text-xs font-bold ${isCurrent ? "text-red-900" : "text-slate-600"}`}>
+                        <p
+                          className={`text-xs font-bold ${
+                            isCurrent ? "text-red-900" : "text-slate-600"
+                          }`}
+                        >
                           {st.label}
                         </p>
                       </div>
@@ -806,6 +1009,7 @@ export default function AdminRiwayatLaporanPage() {
             <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between shrink-0">
               <p className="text-xs text-slate-400">Portal Admin USD</p>
               <button
+                type="button"
                 onClick={() => setSelectedDetail(null)}
                 className="px-5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold transition-all cursor-pointer"
               >
@@ -815,12 +1019,6 @@ export default function AdminRiwayatLaporanPage() {
           </div>
         </div>
       )}
-
-      <footer className="border-t border-slate-200 bg-white py-4 text-center mt-auto">
-        <p className="text-xs text-slate-500">
-          © {new Date().getFullYear()} Lapor Sadhar — Universitas Sanata Dharma. Hak cipta dilindungi.
-        </p>
-      </footer>
     </div>
   );
 }

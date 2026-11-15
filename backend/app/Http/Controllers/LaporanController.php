@@ -277,9 +277,10 @@ class LaporanController extends Controller
             $bulan = $request->query('bulan'); // format: "2026-10"
             $tahun = $request->query('tahun'); // format: "2026"
 
+            // Rekap hanya memakai status terbaru; relasi pelapor tidak dipakai sehingga tidak di-eager-load.
             $query = Laporan::with(['statuses' => function ($q) {
                 $q->orderBy('tanggal_merubah', 'desc');
-            }, 'pelapor.mahasiswa']);
+            }]);
 
             // Filter periode jika ada
             if ($bulan) {
