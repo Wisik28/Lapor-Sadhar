@@ -31,6 +31,7 @@ class PriorityDashboardController extends Controller
             $query = Laporan::with([
                 'statuses' => function ($q) {
                     $q->orderBy('tanggal_merubah', 'desc');
+                    $q->orderBy('id_status', 'desc');
                 },
                 'pelapor.mahasiswa',
             ]);

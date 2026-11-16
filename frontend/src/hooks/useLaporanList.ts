@@ -5,6 +5,7 @@
 
 import { useState, useCallback } from 'react';
 import { laporanApi, LaporanItem } from '@/lib/api';
+import { normalizeLaporanStatus } from '@/lib/laporanStatus';
 
 export interface LaporanListState {
   allLaporan: LaporanItem[];
@@ -72,11 +73,18 @@ export function useLaporanList() {
   }, [state.allLaporan]);
 
   const getHistoryLaporan = useCallback(() => {
-    return state.allLaporan.filter((l) => l.status_terkini === 'Selesai' || l.status_terkini === 'Ditolak');
+    return state.allLaporan.filter((l) => {
+      const status = normalizeLaporanStatus(l.status_terkini);
+      return status === 'Selesai' || status === 'Ditolak';
+    });
   }, [state.allLaporan]);
 
   const getActiveLaporan = useCallback(() => {
-    return state.allLaporan.filter((l) => ['Terkirim', 'Diverifikasi', 'Diproses'].includes(l.status_terkini));
+    return state.allLaporan.filter((l) =>
+      ['Terkirim', 'Sedang Diverifikasi', 'Terverifikasi', 'Diproses'].includes(
+        normalizeLaporanStatus(l.status_terkini)
+      )
+    );
   }, [state.allLaporan]);
 
   return {

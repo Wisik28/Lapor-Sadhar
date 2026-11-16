@@ -6,6 +6,8 @@ import Navbar from "@/components/Navbar";
 import { laporanApi, type LaporanItem } from "@/lib/api";
 import { useAuthProtection } from "@/lib/useAuth";
 import { useRouter } from "next/navigation";
+import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
+import { normalizeLaporanStatus } from "@/lib/laporanStatus";
 import {
   Search,
   FileText,
@@ -91,10 +93,11 @@ export default function UserRiwayatLaporanPage() {
 
   // State Modal Detail
   const [selectedDetail, setSelectedDetail] = useState<LaporanItem | null>(null);
+  const selectedDetailPhotos = getFotoList(selectedDetail?.foto);
 
   // ── Ambil Data Backend ──
-  const fetchLaporan = useCallback(async () => {
-    setLoading(true);
+  const fetchLaporan = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       if (!nim) {
         setLaporanList([]);
@@ -106,35 +109,63 @@ export default function UserRiwayatLaporanPage() {
           (a, b) => b.id_laporan - a.id_laporan
         );
         setLaporanList(sortedData);
+        setSelectedDetail((current) =>
+          current
+            ? sortedData.find((laporan) => laporan.id_laporan === current.id_laporan) ?? null
+            : null
+        );
       } else {
-        setLaporanList([]);
+        if (!silent) setLaporanList([]);
       }
     } catch (error) {
       console.error("Gagal mengambil riwayat laporan:", error);
-      setLaporanList([]);
+      if (!silent) setLaporanList([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [nim]);
 
   useEffect(() => {
-    if (!authLoading) {
-      fetchLaporan();
-    }
+    if (authLoading) return;
+
+    const timeoutId = window.setTimeout(() => {
+      void fetchLaporan();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [authLoading, fetchLaporan]);
 
-  // Reset ke halaman 1 jika filter berubah
   useEffect(() => {
-    setCurrentPage(1);
+    if (authLoading || !nim) return;
+
+    const refreshVisiblePage = () => {
+      if (document.visibilityState === "visible") {
+        void fetchLaporan(true);
+      }
+    };
+    const intervalId = window.setInterval(refreshVisiblePage, 15000);
+    document.addEventListener("visibilitychange", refreshVisiblePage);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshVisiblePage);
+    };
+  }, [authLoading, nim, fetchLaporan]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => setCurrentPage(1), 0);
+    return () => window.clearTimeout(timeoutId);
   }, [searchTerm, filterStatus, filterKategori, filterWaktu]);
 
   // ── Hitung KPI ──
   const totalLaporan = laporanList.length;
   const sedangDiproses = laporanList.filter((l) =>
-    ["Terkirim", "Sedang Diverifikasi", "Terverifikasi", "Diproses"].includes(l.status_terkini)
+    ["Terkirim", "Sedang Diverifikasi", "Terverifikasi", "Diproses"].includes(
+      normalizeLaporanStatus(l.status_terkini)
+    )
   ).length;
-  const selesaiCount = laporanList.filter((l) => l.status_terkini === "Selesai").length;
-  const ditolakCount = laporanList.filter((l) => l.status_terkini === "Ditolak").length;
+  const selesaiCount = laporanList.filter((l) => normalizeLaporanStatus(l.status_terkini) === "Selesai").length;
+  const ditolakCount = laporanList.filter((l) => normalizeLaporanStatus(l.status_terkini) === "Ditolak").length;
   const tingkatResolusi = totalLaporan > 0 ? Math.round((selesaiCount / totalLaporan) * 100) : 0;
 
   // ── Filter Data ──
@@ -146,7 +177,9 @@ export default function UserRiwayatLaporanPage() {
       (item.lokasi && item.lokasi.toLowerCase().includes(searchLow)) ||
       String(item.id_laporan).includes(searchLow);
 
-    const matchesStatus = filterStatus === "Semua" || item.status_terkini === filterStatus;
+    const matchesStatus =
+      filterStatus === "Semua" ||
+      normalizeLaporanStatus(item.status_terkini) === normalizeLaporanStatus(filterStatus);
     const matchesKategori = filterKategori === "Semua" || item.kategori_laporan === filterKategori;
 
     // Filter Rentang Waktu / Bulan
@@ -175,15 +208,21 @@ export default function UserRiwayatLaporanPage() {
   );
 
   const renderStatusBadge = (status: string) => {
-    switch (status) {
+    switch (normalizeLaporanStatus(status)) {
       case "Terkirim":
       case "Sedang Diverifikasi":
       case "Terverifikasi":
-      case "Diproses":
         return (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-            Sedang Dikerjakan
+            {normalizeLaporanStatus(status)}
+          </span>
+        );
+      case "Diproses":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200 whitespace-nowrap">
+            <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
+            Diproses
           </span>
         );
       case "Selesai":
@@ -342,6 +381,8 @@ export default function UserRiwayatLaporanPage() {
                 >
                   <option value="Semua">Status: Semua</option>
                   <option value="Terkirim">Terkirim</option>
+                  <option value="Sedang Diverifikasi">Sedang Diverifikasi</option>
+                  <option value="Terverifikasi">Terverifikasi</option>
                   <option value="Diproses">Diproses</option>
                   <option value="Selesai">Selesai</option>
                   <option value="Ditolak">Ditolak</option>
@@ -359,7 +400,7 @@ export default function UserRiwayatLaporanPage() {
                 </select>
 
                 <button
-                  onClick={fetchLaporan}
+                  onClick={() => void fetchLaporan()}
                   disabled={loading}
                   className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-600 transition-colors cursor-pointer"
                   title="Muat ulang data"
@@ -509,7 +550,7 @@ export default function UserRiwayatLaporanPage() {
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                  {selectedDetail.status_terkini}
+                  {normalizeLaporanStatus(selectedDetail.status_terkini)}
                 </span>
                 <button
                   onClick={() => setSelectedDetail(null)}
@@ -552,34 +593,33 @@ export default function UserRiwayatLaporanPage() {
               {/* Foto Pendukung */}
               <div>
                 <p className="text-xs text-slate-400 font-medium mb-1.5">Foto Pendukung</p>
-                {selectedDetail.foto ? (
-                  <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center p-1">
-                    <img
-                      src={selectedDetail.foto}
-                      alt="Foto pendukung laporan"
-                      className="w-full max-h-60 object-contain rounded-xl"
-                      onError={(e) => {
-                        e.currentTarget.style.display = "none";
-                        const fallbackElem = e.currentTarget.nextElementSibling as HTMLElement;
-                        if (fallbackElem) fallbackElem.style.display = "flex";
-                      }}
-                    />
-                    <div
-                      className="hidden flex-col items-center justify-center py-6 px-4 text-center w-full bg-slate-50 text-slate-400 gap-2 rounded-xl"
-                    >
-                      <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200">
-                        <Paperclip className="w-5 h-5 text-slate-400" />
-                      </div>
-                      <p className="text-xs font-semibold text-slate-600">Gambar tidak dapat dimuat</p>
+                {selectedDetailPhotos.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {selectedDetailPhotos.map((foto, index) => (
                       <a
-                        href={selectedDetail.foto}
+                        key={`${foto}-${index}`}
+                        href={getFotoUrl(foto)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[11px] text-[#7A0C0C] font-bold hover:underline"
+                        className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
                       >
-                        Buka Tautan Foto Asli ↗
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={getFotoUrl(foto)}
+                          alt={`Foto pendukung laporan ${index + 1}`}
+                          className="h-40 w-full object-contain"
+                          onError={(event) => {
+                            event.currentTarget.style.display = "none";
+                            const fallback = event.currentTarget.nextElementSibling;
+                            if (fallback instanceof HTMLElement) fallback.style.display = "block";
+                          }}
+                        />
+                        <p className="hidden p-4 text-center text-xs text-red-700">
+                          Foto tidak dapat dimuat dari tautan tersimpan.
+                        </p>
+                        <p className="p-2 text-center text-xs font-semibold text-[#7A0C0C]">Buka foto</p>
                       </a>
-                    </div>
+                    ))}
                   </div>
                 ) : (
                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-400 text-xs italic">
@@ -609,7 +649,7 @@ export default function UserRiwayatLaporanPage() {
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
                   {stepsProgres.map((st) => {
-                    const isCurrent = selectedDetail.status_terkini === st.key;
+                    const isCurrent = normalizeLaporanStatus(selectedDetail.status_terkini) === st.key;
                     return (
                       <div
                         key={st.key}
@@ -656,7 +696,7 @@ export default function UserRiwayatLaporanPage() {
                         <div className="flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-blue-500" />
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                            {rs.status_laporan}
+                            {normalizeLaporanStatus(rs.status_laporan)}
                           </span>
                         </div>
                         <span className="text-xs text-slate-400 font-medium">
@@ -683,9 +723,15 @@ export default function UserRiwayatLaporanPage() {
               {/* Tanggapan Admin */}
               <div className="pt-2 border-t border-slate-100 space-y-2">
                 <p className="font-bold text-slate-800 text-xs sm:text-sm">Tanggapan Admin</p>
-                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/60 text-slate-500 text-xs leading-relaxed">
-                  Belum ada tanggapan dari admin untuk laporan ini.
-                </div>
+                {selectedDetail.pesan_tanggapan?.trim() ? (
+                  <div className="bg-amber-50 p-3.5 rounded-2xl border border-amber-200 text-amber-900 text-xs leading-relaxed whitespace-pre-wrap">
+                    {selectedDetail.pesan_tanggapan}
+                  </div>
+                ) : (
+                  <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/60 text-slate-500 text-xs leading-relaxed">
+                    Belum ada tanggapan dari admin untuk laporan ini.
+                  </div>
+                )}
               </div>
             </div>
 

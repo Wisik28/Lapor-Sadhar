@@ -7,12 +7,11 @@ import Navbar from "@/components/Navbar";
 import { laporanApi, type LaporanItem, type StatusLaporan } from "@/lib/api";
 import { clearAuthSession } from "@/lib/auth";
 import { useAuthProtection } from "@/lib/useAuth";
+import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
 import {
   AlertCircle,
   CalendarDays,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   Clock3,
   Eye,
   FileText,
@@ -163,14 +162,6 @@ function formatTanggalWaktu(value?: string | null): string {
   });
 }
 
-function getFotoUrl(foto?: string | null): string | null {
-  if (!foto) return null;
-  if (/^(https?:|data:image\/)/i.test(foto)) return foto;
-  const base = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api").replace(/\/api\/?$/, "");
-  const cleanPath = foto.startsWith("/") ? foto : `/${foto}`;
-  return `${base}${cleanPath}`;
-}
-
 function StatusBadge({ status }: { status: string }) {
   const config = STATUS_CONFIG[normalisasiStatus(status)];
   return (
@@ -279,7 +270,7 @@ export default function LihatStatusPage() {
 
   const identifier = user?.nim || user?.nomor_identitas || "";
 
-  const muatLaporan = useCallback(async (showRefresh = false) => {
+  const muatLaporan = useCallback(async (showRefresh = false, silent = false) => {
     if (!identifier) {
       setLoading(false);
       setError("Nomor identitas akun tidak ditemukan. Silakan login kembali.");
@@ -287,7 +278,7 @@ export default function LihatStatusPage() {
     }
 
     if (showRefresh) setRefreshing(true);
-    else setLoading(true);
+    else if (!silent) setLoading(true);
     setError("");
 
     try {
@@ -304,24 +295,37 @@ export default function LihatStatusPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan saat mengambil data laporan.");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!silent) setLoading(false);
+      if (showRefresh) setRefreshing(false);
     }
   }, [identifier]);
 
   useEffect(() => {
-  if (authLoading || !user) return;
+    if (authLoading || !user) return;
 
-  // Halaman Lihat Status hanya mengambil laporan berdasarkan
-  // identitas pengguna yang sedang login.
-  if (!identifier) {
-    setLoading(false);
-    setError("Nomor identitas akun tidak ditemukan. Silakan login kembali.");
-    return;
-  }
+    const timeoutId = window.setTimeout(() => {
+      void muatLaporan();
+    }, 0);
 
-  void muatLaporan();
-}, [authLoading, user, identifier, muatLaporan]);
+    return () => window.clearTimeout(timeoutId);
+  }, [authLoading, user, muatLaporan]);
+
+  useEffect(() => {
+    if (authLoading || !user || !identifier) return;
+
+    const refreshVisiblePage = () => {
+      if (document.visibilityState === "visible") {
+        void muatLaporan(false, true);
+      }
+    };
+    const intervalId = window.setInterval(refreshVisiblePage, 15000);
+    document.addEventListener("visibilitychange", refreshVisiblePage);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshVisiblePage);
+    };
+  }, [authLoading, user, identifier, muatLaporan]);
 
   const laporanTersaring = useMemo(() => {
     const q = keyword.trim().toLowerCase();
@@ -341,6 +345,7 @@ export default function LihatStatusPage() {
   }, [laporan, keyword, filterStatus, filterKategori]);
 
   const laporanAktif = laporan.find((item) => item.id_laporan === laporanTerpilih) ?? null;
+  const fotoLaporanAktif = getFotoList(laporanAktif?.foto);
   const statistik = useMemo(() => ({
   total: laporan.length,
 
@@ -566,11 +571,36 @@ export default function LihatStatusPage() {
                       <div><p className="text-xs text-slate-400">Tanggal Kejadian</p><p className="mt-1 text-sm font-semibold text-slate-700">{formatTanggal(laporanAktif.tanggal_kejadian)}</p></div>
                       <div className="sm:col-span-2"><p className="text-xs text-slate-400">Lokasi</p><p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-slate-700"><MapPin className="h-4 w-4 text-[#7A0C0C]" />{laporanAktif.lokasi}</p></div>
                       <div className="sm:col-span-2"><p className="text-xs text-slate-400">Deskripsi</p><p className="mt-1 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm leading-relaxed text-slate-700">{laporanAktif.deskripsi}</p></div>
-                      {getFotoUrl(laporanAktif.foto) && (
+                      {fotoLaporanAktif.length > 0 && (
                         <div className="sm:col-span-2">
                           <p className="mb-2 text-xs text-slate-400">Foto Pendukung</p>
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={getFotoUrl(laporanAktif.foto) as string} alt="Foto pendukung laporan" className="max-h-64 w-full rounded-xl border border-slate-200 object-contain" />
+                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                            {fotoLaporanAktif.map((foto, index) => (
+                              <a
+                                key={`${foto}-${index}`}
+                                href={getFotoUrl(foto)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={getFotoUrl(foto)}
+                                  alt={`Foto pendukung laporan ${index + 1}`}
+                                  className="max-h-64 w-full object-contain"
+                                  onError={(event) => {
+                                    event.currentTarget.style.display = "none";
+                                    const fallback = event.currentTarget.nextElementSibling;
+                                    if (fallback instanceof HTMLElement) fallback.style.display = "block";
+                                  }}
+                                />
+                                <p className="hidden p-3 text-center text-xs text-red-700">
+                                  Foto tidak dapat dimuat dari penyimpanan.
+                                </p>
+                                <p className="p-2 text-center text-xs text-[#7A0C0C]">Buka foto</p>
+                              </a>
+                            ))}
+                          </div>
                         </div>
                       )}
                       <div><p className="text-xs text-slate-400">Tanggal Dibuat</p><p className="mt-1 text-sm font-semibold text-slate-700">{formatTanggal(laporanAktif.tanggal_buat)}</p></div>

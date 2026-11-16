@@ -7,6 +7,21 @@ import { useState, useCallback } from 'react';
 import { laporanApi } from '@/lib/api/laporan';
 import { type LaporanItem, type Attachment } from '@/lib/api/types';
 
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Foto gagal dibaca. Silakan pilih ulang foto.'));
+      }
+    };
+    reader.onerror = () => reject(new Error('Foto gagal dibaca. Silakan pilih ulang foto.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 export interface BuatLaporanState {
   kategori: string;
   tanggal: string;
@@ -67,6 +82,7 @@ export function useBuatLaporan(today: string) {
           id: Date.now().toString(),
           name: file.name,
           url: URL.createObjectURL(file),
+          file,
         },
       ],
     }));
@@ -104,10 +120,13 @@ export function useBuatLaporan(today: string) {
 
       try {
         // Use state directly within the async function
+        const fotoData = await Promise.all(
+          state.attachments.map((attachment) => fileToDataUrl(attachment.file))
+        );
         const fotoPayload =
-          state.attachments.length > 1
-            ? JSON.stringify(state.attachments.map((a) => a.url))
-            : (state.attachments[0]?.url ?? undefined);
+          fotoData.length > 1
+            ? JSON.stringify(fotoData)
+            : (fotoData[0] ?? undefined);
 
         const res = await laporanApi.create({
           nim,
@@ -119,6 +138,7 @@ export function useBuatLaporan(today: string) {
         });
 
         if (res.status === 'success') {
+          state.attachments.forEach((attachment) => URL.revokeObjectURL(attachment.url));
           setState({
             kategori: '',
             tanggal: today,
@@ -139,11 +159,11 @@ export function useBuatLaporan(today: string) {
             error: res.message || 'Gagal mengirim laporan.',
           }));
         }
-      } catch {
+      } catch (error) {
         setState((prev) => ({
           ...prev,
           loading: false,
-          error: 'Terjadi kesalahan. Coba lagi.',
+          error: error instanceof Error ? error.message : 'Terjadi kesalahan. Coba lagi.',
         }));
       }
     },

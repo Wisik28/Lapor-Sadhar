@@ -8,11 +8,13 @@
 import React from 'react';
 import { ChevronDown, ChevronUp, Clock } from 'lucide-react';
 import { LaporanItem } from '@/lib/api';
+import { normalizeLaporanStatus } from '@/lib/laporanStatus';
 
 // Status Config - reusable di semua tempat
 export const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; dot: string }> = {
   Terkirim: { label: 'Terkirim', color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200', dot: 'bg-blue-500' },
-  Diverifikasi: { label: 'Diverifikasi', color: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-200', dot: 'bg-indigo-500' },
+  'Sedang Diverifikasi': { label: 'Sedang Diverifikasi', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200', dot: 'bg-amber-500' },
+  Terverifikasi: { label: 'Terverifikasi', color: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-200', dot: 'bg-indigo-500' },
   Diproses: { label: 'Diproses', color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200', dot: 'bg-amber-500' },
   Selesai: { label: 'Selesai', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', dot: 'bg-emerald-500' },
   Ditolak: { label: 'Ditolak', color: 'text-red-700', bg: 'bg-red-50 border-red-200', dot: 'bg-red-500' },
@@ -36,7 +38,8 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status }: StatusBadgeProps) {
-  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG['Terkirim'];
+  const normalizedStatus = normalizeLaporanStatus(status);
+  const cfg = STATUS_CONFIG[normalizedStatus] ?? STATUS_CONFIG['Terkirim'];
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${cfg.bg} ${cfg.color}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
@@ -93,11 +96,12 @@ export function LaporanCard({ lap, expandedId, setExpandedId }: LaporanCardProps
               <p className="text-xs text-slate-500 font-semibold uppercase tracking-wide mb-2">Riwayat Status</p>
               <div className="space-y-1.5">
                 {lap.riwayat_status.map((s) => {
-                  const cfg = STATUS_CONFIG[s.status_laporan] ?? STATUS_CONFIG['Terkirim'];
+                  const normalizedStatus = normalizeLaporanStatus(s.status_laporan);
+                  const cfg = STATUS_CONFIG[normalizedStatus] ?? STATUS_CONFIG['Terkirim'];
                   return (
                     <div key={s.id_status} className="flex items-center gap-2.5">
                       <span className={`w-2 h-2 rounded-full shrink-0 ${cfg.dot}`} />
-                      <span className={`text-xs font-semibold ${cfg.color}`}>{s.status_laporan}</span>
+                      <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
                       <span className="text-xs text-slate-400">{formatTanggal(s.tanggal_merubah)}</span>
                     </div>
                   );
