@@ -16,6 +16,16 @@ php artisan migrate
 php artisan db:seed --class=AdminSeeder
 ```
 
+## Foto laporan
+
+Jalankan perintah berikut dari folder `backend` agar foto yang diunggah dapat diakses melalui aplikasi:
+
+```powershell
+php artisan storage:link
+```
+
+`storage:link` diperlukan agar foto laporan yang disimpan pada disk publik dapat dibuka melalui aplikasi.
+
 Seeder memetakan 11 jabatan admin ke username yang ditetapkan di `Admin::USERNAMES`. Seeder tidak mereset kata sandi akun yang sudah ada.
 
 Untuk mengganti username sekaligus membuat password acak baru bagi seluruh 11 akun admin, jalankan perintah berikut dari folder `backend`:

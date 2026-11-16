@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminNavbar from "@/components/AdminNavbar";
 import { adminLaporanApi } from "@/lib/api";
 import { getCurrentAuthUser } from "@/lib/auth";
+import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
 
 type StatusValue =
   | "Terkirim"
@@ -185,27 +186,6 @@ function getAllowedStatuses(current: StatusValue): StatusValue[] {
 
   allowed.push("Ditolak");
   return allowed;
-}
-
-function getFotoList(foto?: string | string[] | null): string[] {
-  if (!foto) return [];
-
-  if (Array.isArray(foto)) {
-    return foto.filter((item) => typeof item === "string" && item.trim());
-  }
-
-  try {
-    const parsed = JSON.parse(foto);
-    if (Array.isArray(parsed)) {
-      return parsed.filter(
-        (item) => typeof item === "string" && item.trim()
-      );
-    }
-  } catch {
-    // Foto berupa satu alamat/path, bukan JSON.
-  }
-
-  return foto.trim() ? [foto] : [];
 }
 
 function getRiwayatStatus(item: RiwayatStatus): string {
@@ -871,17 +851,25 @@ export default function UbahStatusLaporanPage() {
                         {fotoList.map((foto, index) => (
                           <a
                             key={`${foto}-${index}`}
-                            href={foto}
+                            href={getFotoUrl(foto)}
                             target="_blank"
                             rel="noreferrer"
                             className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
-                              src={foto}
+                              src={getFotoUrl(foto)}
                               alt={`Bukti laporan ${index + 1}`}
                               className="h-36 w-full object-cover transition group-hover:scale-105"
+                              onError={(event) => {
+                                event.currentTarget.style.display = "none";
+                                const fallback = event.currentTarget.nextElementSibling;
+                                if (fallback instanceof HTMLElement) fallback.style.display = "block";
+                              }}
                             />
+                            <p className="hidden p-3 text-center text-xs text-red-700">
+                              Foto tidak dapat dimuat dari penyimpanan.
+                            </p>
                             <p className="p-2 text-center text-xs text-[#7A0C0C]">
                               Lihat foto
                             </p>

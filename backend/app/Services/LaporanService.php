@@ -10,6 +10,8 @@ use App\Support\SchemaVerification;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Carbon\Carbon;
 
 /**
@@ -98,7 +100,7 @@ class LaporanService
                 'deskripsi'        => $data['deskripsi'],
                 'tanggal_kejadian' => $data['tanggal_kejadian'],
                 'lokasi'           => $data['lokasi'],
-                'foto'             => $data['foto'] ?? null,
+                'foto'             => $this->persistFotoPayload($data['foto'] ?? null),
                 'tanggal_buat'     => now(),
             ];
 
@@ -133,6 +135,7 @@ class LaporanService
     {
         $laporans = Laporan::with(['statuses' => function ($q) {
             $q->orderBy('tanggal_merubah', 'desc');
+            $q->orderBy('id_status', 'desc');
         }])
             ->where('nim', $nim)
             ->orderBy('tanggal_buat', 'desc')
@@ -152,6 +155,7 @@ class LaporanService
         $laporan = Laporan::with([
             'statuses' => function ($q) {
                 $q->orderBy('tanggal_merubah', 'desc');
+                $q->orderBy('id_status', 'desc');
             },
             'pelapor.mahasiswa',
             'pelapor.pegawai'
@@ -170,6 +174,7 @@ class LaporanService
         return DB::transaction(function () use ($id, $data, $hasLocationColumns) {
             $laporan = Laporan::with(['statuses' => function ($q) {
                 $q->orderBy('tanggal_merubah', 'desc');
+                $q->orderBy('id_status', 'desc');
             }])->findOrFail($id);
 
             // Cek apakah laporan masih bisa diubah (hanya jika status "Terkirim")
@@ -191,7 +196,9 @@ class LaporanService
                 'deskripsi'        => $data['deskripsi'] ?? $laporan->deskripsi,
                 'tanggal_kejadian' => $data['tanggal_kejadian'] ?? $laporan->tanggal_kejadian,
                 'lokasi'           => $newLokasi,
-                'foto'             => $data['foto'] ?? $laporan->foto,
+                'foto'             => isset($data['foto'])
+                    ? $this->persistFotoPayload($data['foto'])
+                    : $laporan->foto,
                 'tanggal_rubah'    => now(),
             ];
 
@@ -220,6 +227,7 @@ class LaporanService
         return DB::transaction(function () use ($id) {
             $laporan = Laporan::with(['statuses' => function ($q) {
                 $q->orderBy('tanggal_merubah', 'desc');
+                $q->orderBy('id_status', 'desc');
             }])->findOrFail($id);
 
             $latestStatus = $laporan->statuses->first()?->status_laporan ?? 'Terkirim';
@@ -243,6 +251,7 @@ class LaporanService
         $laporans = Laporan::with([
             'statuses' => function ($query) {
                 $query->orderBy('tanggal_merubah', 'desc');
+                $query->orderBy('id_status', 'desc');
             },
             'pelapor.mahasiswa',
         ])
@@ -289,6 +298,7 @@ class LaporanService
     {
         $laporans = Laporan::with(['statuses' => function ($q) {
             $q->orderBy('tanggal_merubah', 'desc');
+            $q->orderBy('id_status', 'desc');
         }])->where('nim', $nim)->get();
 
         $statusCounts = [
@@ -345,6 +355,56 @@ class LaporanService
             'laporan_selesai'  => $statusCounts['Selesai'],
             'laporan_ditolak'  => $statusCounts['Ditolak'],
         ];
+    }
+
+    private function persistFotoPayload(?string $foto): ?string
+    {
+        if ($foto === null || trim($foto) === '') {
+            return null;
+        }
+
+        $decoded = json_decode($foto, true);
+        $photos = is_array($decoded) && array_is_list($decoded) ? $decoded : [$foto];
+        $storedPhotos = [];
+        $extensions = [
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/gif' => 'gif',
+            'image/webp' => 'webp',
+        ];
+
+        foreach ($photos as $photo) {
+            if (!is_string($photo)) {
+                throw new \InvalidArgumentException('Format foto laporan tidak valid.');
+            }
+
+            if (!preg_match('/^data:image\/[^;]+;base64,(.+)$/s', $photo, $matches)) {
+                $storedPhotos[] = $photo;
+                continue;
+            }
+
+            $contents = base64_decode($matches[1], true);
+            if ($contents === false) {
+                throw new \InvalidArgumentException('Data foto laporan tidak valid.');
+            }
+
+            $mimeType = (new \finfo(FILEINFO_MIME_TYPE))->buffer($contents);
+            $extension = $extensions[$mimeType] ?? null;
+            if ($extension === null) {
+                throw new \InvalidArgumentException('Format foto harus berupa JPG, PNG, GIF, atau WebP.');
+            }
+
+            $path = 'laporan/' . Str::uuid() . '.' . $extension;
+            if (!Storage::disk('public')->put($path, $contents)) {
+                throw new \RuntimeException('Foto laporan gagal disimpan.');
+            }
+
+            $storedPhotos[] = 'storage/' . $path;
+        }
+
+        return count($storedPhotos) > 1
+            ? json_encode($storedPhotos, JSON_THROW_ON_ERROR)
+            : ($storedPhotos[0] ?? null);
     }
 
     /**

@@ -29,7 +29,7 @@ interface MenuItem {
 
 const MENU_ITEMS: MenuItem[] = [
   { id: "buat-laporan", label: "Buat Laporan", icon: FilePlus, route: "/buat-laporan" },
-  { id: "lihat-status", label: "Lihat Status", icon: Eye, route: "/status-laporan" },
+  { id: "lihat-status", label: "Lihat Status", icon: Eye, route: "/lihat-status" },
   { id: "riwayat-laporan", label: "Riwayat Laporan", icon: History, route: "/riwayat-laporan" },
   { id: "ubah-pengajuan", label: "Ubah Pengajuan", icon: FileEdit, route: "/ubah-pengajuan" },
 ];

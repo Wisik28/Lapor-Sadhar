@@ -5,7 +5,7 @@
 export interface StatusLaporan {
   id_status: number;
   id_laporan: number;
-  status_laporan: 'Terkirim' | 'Diverifikasi' | 'Diproses' | 'Selesai' | 'Ditolak';
+  status_laporan: 'Terkirim' | 'Diverifikasi' | 'Sedang Diverifikasi' | 'Terverifikasi' | 'Proses' | 'Diproses' | 'Selesai' | 'Ditolak';
   tanggal_merubah: string;
 }
 
@@ -20,8 +20,9 @@ export interface LaporanItem {
   tanggal_rubah?: string | null;
   lokasi: string;
   foto?: string | null;
-  status_terkini: 'Terkirim' | 'Diverifikasi' | 'Diproses' | 'Selesai' | 'Ditolak';
+  status_terkini: 'Terkirim' | 'Diverifikasi' | 'Sedang Diverifikasi' | 'Terverifikasi' | 'Proses' | 'Diproses' | 'Selesai' | 'Ditolak';
   riwayat_status: StatusLaporan[];
+  pesan_tanggapan?: string | null;
 }
 
 export interface LaporanResponse {
@@ -42,4 +43,5 @@ export interface Attachment {
   id: string;
   url: string;
   name: string;
+  file: File;
 }

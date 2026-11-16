@@ -66,6 +66,7 @@ class LaporanController extends Controller
             $laporans = Laporan::with([
                 'statuses' => function ($query) {
                     $query->orderBy('tanggal_merubah', 'desc');
+                    $query->orderBy('id_status', 'desc');
                 }
             ])
                 ->where('nim', $identifier)
@@ -226,6 +227,7 @@ class LaporanController extends Controller
             $laporans = Laporan::with([
                 'statuses' => function ($query) {
                     $query->orderBy('tanggal_merubah', 'desc');
+                    $query->orderBy('id_status', 'desc');
                 },
                 'pelapor.mahasiswa',
             ])
@@ -280,6 +282,7 @@ class LaporanController extends Controller
             // Rekap hanya memakai status terbaru; relasi pelapor tidak dipakai sehingga tidak di-eager-load.
             $query = Laporan::with(['statuses' => function ($q) {
                 $q->orderBy('tanggal_merubah', 'desc');
+                $q->orderBy('id_status', 'desc');
             }]);
 
             // Filter periode jika ada
@@ -483,7 +486,7 @@ class LaporanController extends Controller
             $hasil = $this->laporanService->updateStatusLaporan(
                 $id,
                 $request->input('status_laporan'),
-                $request->input('pesan_tanggapan', '')
+                $request->input('pesan_tanggapan') ?? ''
             );
 
             return response()->json([
