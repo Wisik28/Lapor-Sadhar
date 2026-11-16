@@ -90,7 +90,7 @@ export default function AdminNavbar({
     <header className="sticky top-0 z-30 w-full bg-white border-b border-slate-200/80 shadow-2xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Sisi Kiri: Logo SiLapor */}
+          {/* Sisi Kiri: Logo Lapor Sadhar */}
           <div className="flex items-center gap-3">
             <Link
               href="/admin/dashboard"
@@ -107,7 +107,7 @@ export default function AdminNavbar({
               </div>
               <div className="flex flex-col">
                 <span className="text-base font-extrabold tracking-tight text-slate-900 group-hover:text-[#7A0C0C] transition-colors leading-tight">
-                  SiLapor
+                  Lapor Sadhar
                 </span>
                 <span className="text-[10px] text-slate-400 font-medium leading-none hidden sm:block">
                   Admin Portal USD
