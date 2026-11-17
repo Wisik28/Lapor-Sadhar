@@ -348,20 +348,201 @@ class PriorityScoringService
         }
 
         $results = collect();
+        $toCompute = [];
+
         foreach ($collection as $laporan) {
             $existing = $existingMap->get($laporan->id_laporan);
             if ($existing && !$force) {
                 $results->put($laporan->id_laporan, $existing);
                 continue;
             }
+            $toCompute[] = [$laporan, $existing];
+        }
 
-            $results->put(
-                $laporan->id_laporan,
-                $this->computeAndPersistAssessment($laporan, $existing, $hasTable, $force)
-            );
+        if (empty($toCompute)) {
+            return $results;
+        }
+
+        // Untuk > 1 laporan yang perlu dihitung, pra-ambil data pelapor 30 hari terakhir sekali saja
+        // dan lakukan batch update/upsert agar tidak memicu 4N round-trip query ke DB jarak jauh.
+        $recentLaporans = null;
+        $driverName = null;
+        if (count($toCompute) > 1 && DB::transactionLevel() === 0) {
+            try {
+                $driverName = DB::connection()->getDriverName();
+                $recentLaporans = Laporan::query()
+                    ->select(['id_laporan', 'nim', 'kategori_laporan', 'lokasi'])
+                    ->where('tanggal_buat', '>=', now()->subDays(30))
+                    ->get();
+            } catch (\Throwable $e) {
+                $recentLaporans = null;
+            }
+        }
+
+        $pdoId = spl_object_id(DB::connection()->getPdo());
+        $canSyncLaporan = DB::transactionLevel() === 0 && !empty(self::$verifiedLaporanColumnsByPdo[$pdoId]);
+        $laporanSyncGroups = [];
+        $computedPayloads = [];
+        $fallbackModels = [];
+
+        foreach ($toCompute as [$laporan, $existing]) {
+            $distinctReporters = null;
+            if ($recentLaporans !== null) {
+                $distinctReporters = $this->countNearbyReportersFromCollection($laporan, $recentLaporans, $driverName);
+            }
+
+            $prepared = $this->buildAssessmentPayload($laporan, $existing, $distinctReporters);
+            $attributes = $prepared['attributes'];
+            $syncData = $prepared['sync'];
+
+            if ($syncData !== null) {
+                $laporan->kategori_lokasi   = $syncData['kategori_lokasi'];
+                $laporan->tingkat_keparahan = $syncData['tingkat_keparahan'];
+                $laporan->skala_keparahan   = $syncData['skala_keparahan'];
+
+                if ($canSyncLaporan && $laporan->exists) {
+                    $groupKey = $syncData['kategori_lokasi'] . "\0" . $syncData['tingkat_keparahan'] . "\0" . $syncData['skala_keparahan'];
+                    if (!isset($laporanSyncGroups[$groupKey])) {
+                        $laporanSyncGroups[$groupKey] = ['values' => $syncData, 'ids' => []];
+                    }
+                    $laporanSyncGroups[$groupKey]['ids'][] = $laporan->id_laporan;
+                }
+            }
+
+            $computedPayloads[$laporan->id_laporan] = $attributes;
+            if ($existing) {
+                $existing->fill($attributes);
+                $fallbackModels[$laporan->id_laporan] = $existing;
+            } else {
+                $fallbackModels[$laporan->id_laporan] = new PriorityAssessment($attributes);
+            }
+        }
+
+        if (!empty($laporanSyncGroups)) {
+            foreach ($laporanSyncGroups as $group) {
+                try {
+                    Laporan::whereIn('id_laporan', $group['ids'])->update($group['values']);
+                } catch (\Throwable $e) {
+                    // Jangan gagalkan alur apabila update kolom tambahan gagal
+                }
+            }
+        }
+
+        $persistedMap = collect();
+        if ($hasTable && !empty($computedPayloads)) {
+            try {
+                $nowStr = now()->toDateTimeString();
+                $upsertRows = [];
+                foreach ($computedPayloads as $attributes) {
+                    $upsertRows[] = [
+                        'id_laporan'               => $attributes['id_laporan'],
+                        'kategori'                 => $attributes['kategori'],
+                        'kategori_lokasi'          => $attributes['kategori_lokasi'],
+                        'tingkat_keparahan_lokasi' => $attributes['tingkat_keparahan_lokasi'],
+                        'skala_keparahan_lokasi'   => $attributes['skala_keparahan_lokasi'],
+                        'severity_level'           => $attributes['severity_level'],
+                        'severity_source'          => $attributes['severity_source'],
+                        'ai_suggested_severity'    => $attributes['ai_suggested_severity'],
+                        'admin_severity'           => $attributes['admin_severity'],
+                        'priority_score'           => $attributes['priority_score'],
+                        'priority_level'           => $attributes['priority_level'],
+                        'confidence'               => $attributes['confidence'],
+                        'dimensions'               => json_encode($attributes['dimensions'], JSON_THROW_ON_ERROR),
+                        'safety_flags'             => json_encode($attributes['safety_flags'], JSON_THROW_ON_ERROR),
+                        'reasons'                  => json_encode($attributes['reasons'], JSON_THROW_ON_ERROR),
+                        'needs_review'             => (bool) $attributes['needs_review'],
+                        'admin_notes'              => $attributes['admin_notes'],
+                        'admin_id'                 => $attributes['admin_id'],
+                        'reviewed_at'              => $attributes['reviewed_at'] instanceof \DateTimeInterface
+                            ? $attributes['reviewed_at']->format('Y-m-d H:i:s')
+                            : $attributes['reviewed_at'],
+                        'created_at'               => $nowStr,
+                        'updated_at'               => $nowStr,
+                    ];
+                }
+
+                $updateColumns = [
+                    'kategori',
+                    'kategori_lokasi',
+                    'tingkat_keparahan_lokasi',
+                    'skala_keparahan_lokasi',
+                    'severity_level',
+                    'severity_source',
+                    'ai_suggested_severity',
+                    'admin_severity',
+                    'priority_score',
+                    'priority_level',
+                    'confidence',
+                    'dimensions',
+                    'safety_flags',
+                    'reasons',
+                    'needs_review',
+                    'admin_notes',
+                    'admin_id',
+                    'reviewed_at',
+                    'updated_at',
+                ];
+
+                foreach (array_chunk($upsertRows, 40) as $chunk) {
+                    PriorityAssessment::upsert($chunk, ['id_laporan'], $updateColumns);
+                }
+
+                $persistedMap = PriorityAssessment::whereIn('id_laporan', array_keys($computedPayloads))
+                    ->get()
+                    ->keyBy('id_laporan');
+            } catch (\Throwable $e) {
+                $this->invalidateSchemaVerification();
+                report($e);
+            }
+        }
+
+        foreach ($computedPayloads as $idLaporan => $_) {
+            $results->put($idLaporan, $persistedMap->get($idLaporan) ?? $fallbackModels[$idLaporan]);
         }
 
         return $results;
+    }
+
+    /**
+     * Hitung jumlah pelapor serupa dalam 30 hari dari koleksi yang sudah di-load (menghindari N+1 query).
+     */
+    private function countNearbyReportersFromCollection(
+        Laporan $laporan,
+        \Illuminate\Support\Collection $recentLaporans,
+        ?string $driverName
+    ): int {
+        $prefix = trim(explode(',', (string) $laporan->lokasi)[0]);
+        if ($prefix === '') {
+            return 1;
+        }
+
+        // Jika mengandung wildcard SQL LIKE, fallback ke query SQL persis agar perilaku 100% identik
+        if (str_contains($prefix, '%') || str_contains($prefix, '_')) {
+            return $this->countNearbyReporters($laporan);
+        }
+
+        $isCaseSensitive = $driverName === 'pgsql';
+        $uniqueNims = [];
+
+        foreach ($recentLaporans as $row) {
+            if ((string) $row->kategori_laporan !== (string) $laporan->kategori_laporan) {
+                continue;
+            }
+            if ((int) $row->id_laporan === (int) $laporan->id_laporan) {
+                continue;
+            }
+
+            $lokasi = (string) ($row->lokasi ?? '');
+            $matched = $isCaseSensitive
+                ? str_contains($lokasi, $prefix)
+                : (mb_stripos($lokasi, $prefix, 0, 'UTF-8') !== false);
+
+            if ($matched && $row->nim !== null && $row->nim !== '') {
+                $uniqueNims[(string) $row->nim] = true;
+            }
+        }
+
+        return 1 + count($uniqueNims);
     }
 
     /**
@@ -388,18 +569,21 @@ class PriorityScoringService
     }
 
     /**
-     * Inti komputasi skor prioritas dan penyimpanan ke database
+     * Susun atribut penilaian prioritas dan perubahan atribut lokasi laporan tanpa mengeksekusi query tulis.
+     *
+     * @return array{attributes: array<string, mixed>, sync: array<string, mixed>|null}
      */
-    private function computeAndPersistAssessment(
+    private function buildAssessmentPayload(
         Laporan $laporan,
         ?PriorityAssessment $existing,
-        bool $hasTable,
-        bool $force = false
-    ): PriorityAssessment {
+        ?int $precomputedDistinctReporters = null
+    ): array {
         $kategori = $laporan->kategori_laporan ?? 'Fasilitas';
         $deskripsi = $laporan->deskripsi ?? '';
         $lokasi = $laporan->lokasi ?? '';
-        $hasPhoto = !empty($laporan->foto);
+        $hasPhoto = array_key_exists('has_foto', $laporan->getAttributes())
+            ? (bool) $laporan->getAttribute('has_foto')
+            : !empty($laporan->foto);
 
         // 1. Kategorisasi lokasi & penentuan tingkat keparahan awal berdasarkan lokasi
         $locationAssessment = $this->assessLocation($lokasi);
@@ -413,24 +597,11 @@ class PriorityScoringService
             || $laporan->tingkat_keparahan !== $tingkatKeparahan
             || (int) $laporan->skala_keparahan !== $skalaKeparahan;
 
-        if ($needsLaporanSync) {
-            $laporan->kategori_lokasi   = $kategoriLokasi;
-            $laporan->tingkat_keparahan = $tingkatKeparahan;
-            $laporan->skala_keparahan   = $skalaKeparahan;
-
-            $pdoId = spl_object_id(DB::connection()->getPdo());
-            if (DB::transactionLevel() === 0 && $laporan->exists && !empty(self::$verifiedLaporanColumnsByPdo[$pdoId])) {
-                try {
-                    Laporan::where('id_laporan', $laporan->id_laporan)->update([
-                        'kategori_lokasi'   => $kategoriLokasi,
-                        'tingkat_keparahan' => $tingkatKeparahan,
-                        'skala_keparahan'   => $skalaKeparahan,
-                    ]);
-                } catch (\Throwable $e) {
-                    // Jangan gagalkan alur apabila update kolom tambahan gagal
-                }
-            }
-        }
+        $syncData = $needsLaporanSync ? [
+            'kategori_lokasi'   => $kategoriLokasi,
+            'tingkat_keparahan' => $tingkatKeparahan,
+            'skala_keparahan'   => $skalaKeparahan,
+        ] : null;
 
         // 2. Dapatkan usulan AI dari teks deskripsi
         $aiResult = $this->aiAssessor->assess($kategori, $deskripsi, $lokasi, $hasPhoto);
@@ -466,7 +637,11 @@ class PriorityScoringService
         );
 
         // 3. Hitung faktor lingkungan
-        $distinctReporters = DB::transactionLevel() === 0 ? $this->countNearbyReporters($laporan) : 1;
+        if ($precomputedDistinctReporters !== null) {
+            $distinctReporters = $precomputedDistinctReporters;
+        } else {
+            $distinctReporters = DB::transactionLevel() === 0 ? $this->countNearbyReporters($laporan) : 1;
+        }
 
         $createdAt = $laporan->tanggal_buat ? Carbon::parse($laporan->tanggal_buat) : now();
         $daysWaiting = (float) max(0, $createdAt->diffInDays(now()));
@@ -483,27 +658,59 @@ class PriorityScoringService
 
         $effectiveSeverity = $existing?->admin_severity ?: $aiResult['suggested_severity'];
 
-        $attributes = [
-            'id_laporan'               => $laporan->id_laporan,
-            'kategori'                 => $kategori,
-            'kategori_lokasi'          => $kategoriLokasi,
-            'tingkat_keparahan_lokasi' => $tingkatKeparahan,
-            'skala_keparahan_lokasi'   => $skalaKeparahan,
-            'severity_level'           => $effectiveSeverity,
-            'severity_source'          => $existing?->admin_severity ? 'admin' : 'ai',
-            'ai_suggested_severity'    => $aiResult['suggested_severity'],
-            'admin_severity'           => $existing?->admin_severity,
-            'priority_score'           => $calculated['priority_score'],
-            'priority_level'           => $calculated['priority_level'],
-            'confidence'               => $aiResult['confidence'],
-            'dimensions'               => $dimensions,
-            'safety_flags'             => $aiResult['safety_flags'],
-            'reasons'                  => $reasons,
-            'needs_review'             => $existing ? $existing->needs_review : true,
-            'admin_notes'              => $existing?->admin_notes,
-            'admin_id'                 => $existing?->admin_id,
-            'reviewed_at'              => $existing?->reviewed_at,
+        return [
+            'sync'       => $syncData,
+            'attributes' => [
+                'id_laporan'               => $laporan->id_laporan,
+                'kategori'                 => $kategori,
+                'kategori_lokasi'          => $kategoriLokasi,
+                'tingkat_keparahan_lokasi' => $tingkatKeparahan,
+                'skala_keparahan_lokasi'   => $skalaKeparahan,
+                'severity_level'           => $effectiveSeverity,
+                'severity_source'          => $existing?->admin_severity ? 'admin' : 'ai',
+                'ai_suggested_severity'    => $aiResult['suggested_severity'],
+                'admin_severity'           => $existing?->admin_severity,
+                'priority_score'           => $calculated['priority_score'],
+                'priority_level'           => $calculated['priority_level'],
+                'confidence'               => $aiResult['confidence'],
+                'dimensions'               => $dimensions,
+                'safety_flags'             => $aiResult['safety_flags'],
+                'reasons'                  => $reasons,
+                'needs_review'             => $existing ? $existing->needs_review : true,
+                'admin_notes'              => $existing?->admin_notes,
+                'admin_id'                 => $existing?->admin_id,
+                'reviewed_at'              => $existing?->reviewed_at,
+            ],
         ];
+    }
+
+    /**
+     * Inti komputasi skor prioritas dan penyimpanan ke database
+     */
+    private function computeAndPersistAssessment(
+        Laporan $laporan,
+        ?PriorityAssessment $existing,
+        bool $hasTable,
+        bool $force = false
+    ): PriorityAssessment {
+        $prepared = $this->buildAssessmentPayload($laporan, $existing);
+        $attributes = $prepared['attributes'];
+        $syncData = $prepared['sync'];
+
+        if ($syncData !== null) {
+            $laporan->kategori_lokasi   = $syncData['kategori_lokasi'];
+            $laporan->tingkat_keparahan = $syncData['tingkat_keparahan'];
+            $laporan->skala_keparahan   = $syncData['skala_keparahan'];
+
+            $pdoId = spl_object_id(DB::connection()->getPdo());
+            if (DB::transactionLevel() === 0 && $laporan->exists && !empty(self::$verifiedLaporanColumnsByPdo[$pdoId])) {
+                try {
+                    Laporan::where('id_laporan', $laporan->id_laporan)->update($syncData);
+                } catch (\Throwable $e) {
+                    // Jangan gagalkan alur apabila update kolom tambahan gagal
+                }
+            }
+        }
 
         if ($hasTable) {
             try {

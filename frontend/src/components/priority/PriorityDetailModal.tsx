@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import Image from "next/image";
 import {
   X,
   Sparkles,
@@ -26,7 +25,6 @@ import {
   PriorityDetailData,
   SeverityLevel
 } from "@/lib/priorityApi";
-import { PriorityScoreBadge, SeverityBadge } from "./PriorityScoreBadge";
 
 interface PriorityDetailModalProps {
   report: PriorityReportItem | null;
@@ -38,14 +36,17 @@ interface PriorityDetailModalProps {
   hideHandlingInfo?: boolean;
 }
 
-function getFotoList(fotoSource: any): string[] {
+function getFotoList(fotoSource: unknown): string[] {
   if (!fotoSource) return [];
 
   if (Array.isArray(fotoSource)) {
     return fotoSource
       .map((item) => {
         if (typeof item === "string") return item.trim();
-        if (item && typeof item === "object") return (item.url || item.path || "").trim();
+        if (item && typeof item === "object") {
+          const obj = item as Record<string, unknown>;
+          return (typeof obj.url === "string" ? obj.url : typeof obj.path === "string" ? obj.path : "").trim();
+        }
         return "";
       })
       .filter((url) => url.length > 0);
@@ -62,7 +63,10 @@ function getFotoList(fotoSource: any): string[] {
           return parsed
             .map((item) => {
               if (typeof item === "string") return item.trim();
-              if (item && typeof item === "object") return (item.url || item.path || "").trim();
+              if (item && typeof item === "object") {
+                const obj = item as Record<string, unknown>;
+                return (typeof obj.url === "string" ? obj.url : typeof obj.path === "string" ? obj.path : "").trim();
+              }
               return "";
             })
             .filter((url) => url.length > 0);
@@ -105,37 +109,54 @@ export function PriorityDetailModal({
 
   const rawFoto =
     detailData?.laporan?.foto ||
-    (report as any)?.fotos ||
-    (report as any)?.attachments ||
+    report?.fotos ||
+    report?.attachments ||
     report?.foto;
 
   const fotoList = useMemo(() => getFotoList(rawFoto), [rawFoto]);
 
+  const loadDetail = async (id: number, signal?: AbortSignal) => {
+    try {
+      setLoading(true);
+      const data = await priorityApi.getReportDetail(id, signal);
+      if (!signal?.aborted) {
+        setDetailData(data);
+      }
+    } catch (err: unknown) {
+      if (!(err instanceof Error && err.name === "AbortError")) {
+        console.error(err);
+      }
+    } finally {
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
+    }
+  };
+
   useEffect(() => {
-    if (isOpen && report) {
+    if (!isOpen || !report) {
+      Promise.resolve().then(() => {
+        setDetailData(null);
+        setActivePhotoIndex(null);
+      });
+      return;
+    }
+
+    const controller = new AbortController();
+    Promise.resolve().then(() => {
+      if (controller.signal.aborted) return;
       setSelectedSeverity(report.admin_severity || report.severity_level || "sedang");
       setAdminNotes(report.admin_notes || "");
       setSaveSuccess(false);
       setErrorMessage(null);
       setActivePhotoIndex(null);
-      loadDetail(report.id_laporan);
-    } else {
-      setDetailData(null);
-      setActivePhotoIndex(null);
-    }
-  }, [isOpen, report]);
+      void loadDetail(report.id_laporan, controller.signal);
+    });
 
-  const loadDetail = async (id: number) => {
-    try {
-      setLoading(true);
-      const data = await priorityApi.getReportDetail(id);
-      setDetailData(data);
-    } catch (err: any) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    return () => {
+      controller.abort();
+    };
+  }, [isOpen, report]);
 
   if (!isOpen || !report) return null;
 
@@ -149,8 +170,9 @@ export function PriorityDetailModal({
       setTimeout(() => {
         onClose();
       }, 1200);
-    } catch (err: any) {
-      setErrorMessage(err.message || "Gagal menyimpan penetapan prioritas.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Gagal menyimpan penetapan prioritas.";
+      setErrorMessage(message);
     } finally {
       setIsSaving(false);
     }
@@ -278,10 +300,17 @@ export function PriorityDetailModal({
             </div>
 
             {fotoList.length === 0 ? (
-              <div className="flex items-center gap-2.5 p-4 rounded-2xl bg-gray-50 border border-gray-200/80 text-gray-400 text-xs">
-                <FileText className="w-5 h-5 opacity-60 shrink-0" />
-                <span>Tidak ada foto terlampir pada laporan ini.</span>
-              </div>
+              loading && report.has_foto ? (
+                <div className="flex items-center gap-2.5 p-4 rounded-2xl bg-gray-50 border border-gray-200/80 text-gray-500 text-xs">
+                  <div className="w-4 h-4 border-2 border-[#8C1515]/25 border-t-[#8C1515] rounded-full animate-spin shrink-0" />
+                  <span>Memuat foto bukti...</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2.5 p-4 rounded-2xl bg-gray-50 border border-gray-200/80 text-gray-400 text-xs">
+                  <FileText className="w-5 h-5 opacity-60 shrink-0" />
+                  <span>Tidak ada foto terlampir pada laporan ini.</span>
+                </div>
+              )
             ) : (
               <div
                 className={`grid gap-3.5 ${
@@ -511,7 +540,7 @@ export function PriorityDetailModal({
                         {new Date(item.created_at).toLocaleDateString("id-ID")}
                       </span>
                     </div>
-                    {item.note && <p className="text-gray-600 italic text-[11px]">"{item.note}"</p>}
+                    {item.note && <p className="text-gray-600 italic text-[11px]">&quot;{item.note}&quot;</p>}
                   </div>
                 ))}
               </div>
