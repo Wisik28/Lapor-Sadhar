@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import AdminNavbar from "@/components/AdminNavbar";
 import { adminLaporanApi } from "@/lib/api";
 import { getCurrentAuthUser } from "@/lib/auth";
+import { useDebounce } from "@/hooks/useDebounce";
 import {
   Search,
   CheckCircle2,
@@ -140,10 +141,16 @@ export default function AdminRiwayatLaporanPage() {
 
   // State Filter Tabel
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [filterKampus, setFilterKampus] = useState("Semua Lokasi");
   const [filterStatus, setFilterStatus] = useState("Semua");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setCurrentPage(1), 0);
+    return () => window.clearTimeout(timer);
+  }, [debouncedSearchTerm, filterKampus, filterStatus]);
 
   // State Modal Detail & Ubah Status
   const [selectedDetail, setSelectedDetail] = useState<LaporanItem | null>(null);
@@ -280,9 +287,9 @@ export default function AdminRiwayatLaporanPage() {
   // Filter Data Laporan Sesuai Kriteria
   const filteredList = useMemo(() => {
     return laporanList.filter((item) => {
-      const searchLow = searchTerm.toLowerCase();
+      const searchLow = debouncedSearchTerm.toLowerCase();
       const matchesSearch =
-        searchTerm === "" ||
+        debouncedSearchTerm === "" ||
         (item.deskripsi && item.deskripsi.toLowerCase().includes(searchLow)) ||
         (item.lokasi && item.lokasi.toLowerCase().includes(searchLow)) ||
         (item.nim && item.nim.toLowerCase().includes(searchLow)) ||
@@ -333,7 +340,7 @@ export default function AdminRiwayatLaporanPage() {
 
       return matchesSearch && matchesStatus && matchesKampus;
     });
-  }, [laporanList, searchTerm, filterStatus, filterKampus]);
+  }, [laporanList, debouncedSearchTerm, filterStatus, filterKampus]);
 
   const totalPages = Math.ceil(filteredList.length / itemsPerPage) || 1;
   const paginatedData = filteredList.slice(

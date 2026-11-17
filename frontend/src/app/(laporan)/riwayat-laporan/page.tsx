@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
 import { laporanApi, type LaporanItem } from "@/lib/api";
@@ -8,6 +8,7 @@ import { useAuthProtection } from "@/lib/useAuth";
 import { useRouter } from "next/navigation";
 import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
 import { normalizeLaporanStatus } from "@/lib/laporanStatus";
+import { useDebounce } from "@/hooks/useDebounce";
 import {
   Search,
   FileText,
@@ -85,11 +86,12 @@ export default function UserRiwayatLaporanPage() {
   const [laporanList, setLaporanList] = useState<LaporanItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [filterStatus, setFilterStatus] = useState("Semua");
   const [filterKategori, setFilterKategori] = useState("Semua");
   const [filterWaktu, setFilterWaktu] = useState("Semua Waktu");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
+  const itemsPerPage = 10;
 
   // State Modal Detail
   const [selectedDetail, setSelectedDetail] = useState<LaporanItem | null>(null);
@@ -155,7 +157,7 @@ export default function UserRiwayatLaporanPage() {
   useEffect(() => {
     const timeoutId = window.setTimeout(() => setCurrentPage(1), 0);
     return () => window.clearTimeout(timeoutId);
-  }, [searchTerm, filterStatus, filterKategori, filterWaktu]);
+  }, [debouncedSearchTerm, filterStatus, filterKategori, filterWaktu]);
 
   // ── Hitung KPI ──
   const totalLaporan = laporanList.length;
@@ -169,37 +171,39 @@ export default function UserRiwayatLaporanPage() {
   const tingkatResolusi = totalLaporan > 0 ? Math.round((selesaiCount / totalLaporan) * 100) : 0;
 
   // ── Filter Data ──
-  const filteredList = laporanList.filter((item) => {
-    const searchLow = searchTerm.toLowerCase();
-    const matchesSearch =
-      searchTerm === "" ||
-      (item.deskripsi && item.deskripsi.toLowerCase().includes(searchLow)) ||
-      (item.lokasi && item.lokasi.toLowerCase().includes(searchLow)) ||
-      String(item.id_laporan).includes(searchLow);
+  const filteredList = useMemo(() => {
+    return laporanList.filter((item) => {
+      const searchLow = debouncedSearchTerm.toLowerCase();
+      const matchesSearch =
+        debouncedSearchTerm === "" ||
+        (item.deskripsi && item.deskripsi.toLowerCase().includes(searchLow)) ||
+        (item.lokasi && item.lokasi.toLowerCase().includes(searchLow)) ||
+        String(item.id_laporan).includes(searchLow);
 
-    const matchesStatus =
-      filterStatus === "Semua" ||
-      normalizeLaporanStatus(item.status_terkini) === normalizeLaporanStatus(filterStatus);
-    const matchesKategori = filterKategori === "Semua" || item.kategori_laporan === filterKategori;
+      const matchesStatus =
+        filterStatus === "Semua" ||
+        normalizeLaporanStatus(item.status_terkini) === normalizeLaporanStatus(filterStatus);
+      const matchesKategori = filterKategori === "Semua" || item.kategori_laporan === filterKategori;
 
-    // Filter Rentang Waktu / Bulan
-    let matchesWaktu = true;
-    const targetDateStr = item.tanggal_buat || item.tanggal_kejadian;
+      // Filter Rentang Waktu / Bulan
+      let matchesWaktu = true;
+      const targetDateStr = item.tanggal_buat || item.tanggal_kejadian;
 
-    if (targetDateStr && filterWaktu !== "Semua Waktu") {
-      const itemDate = new Date(targetDateStr);
-      if (filterWaktu === "Bulan Ini") {
-        const now = new Date();
-        matchesWaktu =
-          itemDate.getMonth() === now.getMonth() &&
-          itemDate.getFullYear() === now.getFullYear();
-      } else {
-        matchesWaktu = itemDate.getMonth() === Number(filterWaktu);
+      if (targetDateStr && filterWaktu !== "Semua Waktu") {
+        const itemDate = new Date(targetDateStr);
+        if (filterWaktu === "Bulan Ini") {
+          const now = new Date();
+          matchesWaktu =
+            itemDate.getMonth() === now.getMonth() &&
+            itemDate.getFullYear() === now.getFullYear();
+        } else {
+          matchesWaktu = itemDate.getMonth() === Number(filterWaktu);
+        }
       }
-    }
 
-    return matchesSearch && matchesStatus && matchesKategori && matchesWaktu;
-  });
+      return matchesSearch && matchesStatus && matchesKategori && matchesWaktu;
+    });
+  }, [laporanList, debouncedSearchTerm, filterStatus, filterKategori, filterWaktu]);
 
   const totalPages = Math.ceil(filteredList.length / itemsPerPage) || 1;
   const paginatedData = filteredList.slice(
@@ -504,19 +508,37 @@ export default function UserRiwayatLaporanPage() {
                   >
                     Sebelumnya
                   </button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setCurrentPage(p)}
-                      className={`w-7 h-7 rounded-lg font-bold transition-colors cursor-pointer ${
-                        currentPage === p
-                          ? "bg-[#7A0C0C] text-white"
-                          : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ))}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => {
+                    if (
+                      totalPages > 5 &&
+                      p !== 1 &&
+                      p !== totalPages &&
+                      Math.abs(p - currentPage) > 1
+                    ) {
+                      if (p === 2 || p === totalPages - 1) {
+                        return (
+                          <span key={p} className="px-1 text-slate-400">
+                            ...
+                          </span>
+                        );
+                      }
+                      return null;
+                    }
+
+                    return (
+                      <button
+                        key={p}
+                        onClick={() => setCurrentPage(p)}
+                        className={`w-7 h-7 rounded-lg font-bold transition-colors cursor-pointer ${
+                          currentPage === p
+                            ? "bg-[#7A0C0C] text-white"
+                            : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    );
+                  })}
                   <button
                     onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
                     disabled={currentPage === totalPages}

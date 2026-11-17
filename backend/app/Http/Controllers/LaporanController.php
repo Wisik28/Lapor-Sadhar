@@ -63,49 +63,65 @@ class LaporanController extends Controller
             }
 
             // Ambil laporan berdasarkan identitas pengguna
-            $laporans = Laporan::with([
+            $query = Laporan::with([
                 'statuses' => function ($query) {
                     $query->orderBy('tanggal_merubah', 'desc');
                     $query->orderBy('id_status', 'desc');
                 }
             ])
                 ->where('nim', $identifier)
-                ->orderBy('tanggal_buat', 'desc')
-                ->get()
-                ->map(function ($laporan) {
-                    $latestStatus = $laporan->statuses->first();
+                ->orderBy('tanggal_buat', 'desc');
 
-                    return [
-                        'id_laporan'        => $laporan->id_laporan,
-                        'nim'               => $laporan->nim,
-                        'kategori_laporan'  => $laporan->kategori_laporan,
-                        'deskripsi'         => $laporan->deskripsi,
-                        'tanggal_kejadian'  => $laporan->tanggal_kejadian,
-                        'tanggal_buat'      => $laporan->tanggal_buat,
-                        'tanggal_rubah'     => $laporan->tanggal_rubah,
-                        'lokasi'            => $laporan->lokasi,
-                        'kategori_lokasi'   => $laporan->kategori_lokasi ?? 'Tidak Diketahui',
-                        'tingkat_keparahan' => $laporan->tingkat_keparahan ?? 'Sedang',
-                        'skala_keparahan'   => (int) ($laporan->skala_keparahan ?? 2),
-                        'foto'              => $laporan->foto,
+            $total = $query->count();
+            $perPage = (int) $request->input('per_page', 10);
+            $perPage = $perPage > 0 ? $perPage : 10;
+            $page = (int) $request->input('page', 1);
+            $page = $page > 0 ? $page : 1;
+            $lastPage = (int) max(1, ceil($total / $perPage));
 
-                        // Status terbaru laporan
-                        'status_terkini' => $latestStatus?->status_laporan ?? 'Terkirim',
+            if ($request->has('page')) {
+                $rawLaporans = $query->forPage($page, $perPage)->get();
+            } else {
+                $rawLaporans = $query->get();
+            }
 
-                        // Seluruh riwayat perubahan status
-                        'riwayat_status' => $laporan->statuses,
+            $laporans = $rawLaporans->map(function ($laporan) {
+                $latestStatus = $laporan->statuses->first();
 
-                        // Tanggapan admin
-                        'pesan_tanggapan' => $laporan->pesan_tanggapan ?? '',
-                    ];
-                })
-                ->values();
+                return [
+                    'id_laporan'        => $laporan->id_laporan,
+                    'nim'               => $laporan->nim,
+                    'kategori_laporan'  => $laporan->kategori_laporan,
+                    'deskripsi'         => $laporan->deskripsi,
+                    'tanggal_kejadian'  => $laporan->tanggal_kejadian,
+                    'tanggal_buat'      => $laporan->tanggal_buat,
+                    'tanggal_rubah'     => $laporan->tanggal_rubah,
+                    'lokasi'            => $laporan->lokasi,
+                    'kategori_lokasi'   => $laporan->kategori_lokasi ?? 'Tidak Diketahui',
+                    'tingkat_keparahan' => $laporan->tingkat_keparahan ?? 'Sedang',
+                    'skala_keparahan'   => (int) ($laporan->skala_keparahan ?? 2),
+                    'foto'              => $laporan->foto,
+
+                    // Status terbaru laporan
+                    'status_terkini' => $latestStatus?->status_laporan ?? 'Terkirim',
+
+                    // Seluruh riwayat perubahan status
+                    'riwayat_status' => $laporan->statuses,
+
+                    // Tanggapan admin
+                    'pesan_tanggapan' => $laporan->pesan_tanggapan ?? '',
+                ];
+            })
+            ->values();
 
             return response()->json([
-                'status'  => 'success',
-                'message' => 'Data laporan berhasil dimuat.',
-                'total'   => $laporans->count(),
-                'data'    => $laporans,
+                'status'       => 'success',
+                'message'      => 'Data laporan berhasil dimuat.',
+                'total'        => $total,
+                'per_page'     => $perPage,
+                'current_page' => $page,
+                'last_page'    => $lastPage,
+                'data'         => $laporans,
             ], 200);
 
         } catch (\Throwable $e) {
@@ -221,44 +237,64 @@ class LaporanController extends Controller
      * GET /api/admin/laporan
      * Admin: Ambil semua laporan
      */
-    public function adminIndex(): JsonResponse
+    public function adminIndex(Request $request): JsonResponse
     {
         try {
-            $laporans = Laporan::with([
+            $query = Laporan::with([
                 'statuses' => function ($query) {
                     $query->orderBy('tanggal_merubah', 'desc');
                     $query->orderBy('id_status', 'desc');
                 },
                 'pelapor.mahasiswa',
+                'pelapor.pegawai',
             ])
-                ->orderBy('tanggal_buat', 'desc')
-                ->get()
-                ->map(function ($laporan) {
-                    $statusTerbaru = $laporan->statuses->first();
+                ->orderBy('tanggal_buat', 'desc');
 
-                    return [
-                        'id_laporan'        => $laporan->id_laporan,
-                        'nim'               => $laporan->nim,
-                        'nama_pelapor'      => $laporan->pelapor?->mahasiswa?->nama ?? '-',
-                        'kategori_laporan'  => $laporan->kategori_laporan,
-                        'deskripsi'         => $laporan->deskripsi,
-                        'tanggal_kejadian'  => $laporan->tanggal_kejadian,
-                        'tanggal_buat'      => $laporan->tanggal_buat,
-                        'tanggal_rubah'     => $laporan->tanggal_rubah,
-                        'lokasi'            => $laporan->lokasi,
-                        'kategori_lokasi'   => $laporan->kategori_lokasi ?? 'Tidak Diketahui',
-                        'tingkat_keparahan' => $laporan->tingkat_keparahan ?? 'Sedang',
-                        'skala_keparahan'   => (int) ($laporan->skala_keparahan ?? 2),
-                        'foto'              => $laporan->foto,
-                        'pesan_tanggapan'  => $laporan->pesan_tanggapan ?? '',
-                        'status_terkini'   => $statusTerbaru?->status_laporan ?? 'Terkirim',
-                        'riwayat_status'   => $laporan->statuses,
-                    ];
-                });
+            $total = $query->count();
+            $perPage = (int) $request->input('per_page', 10);
+            $perPage = $perPage > 0 ? $perPage : 10;
+            $page = (int) $request->input('page', 1);
+            $page = $page > 0 ? $page : 1;
+            $lastPage = (int) max(1, ceil($total / $perPage));
+
+            if ($request->has('page')) {
+                $rawLaporans = $query->forPage($page, $perPage)->get();
+            } else {
+                $rawLaporans = $query->get();
+            }
+
+            $laporans = $rawLaporans->map(function ($laporan) {
+                $statusTerbaru = $laporan->statuses->first();
+
+                return [
+                    'id_laporan'        => $laporan->id_laporan,
+                    'nim'               => $laporan->nim,
+                    'nama_pelapor'      => $laporan->nama_pelapor ?? $laporan->pelapor?->mahasiswa?->nama ?? $laporan->pelapor?->pegawai?->nama ?? '-',
+                    'tipe_user'         => $laporan->pelapor?->tipe_user ?? 'Mahasiswa',
+                    'kategori_laporan'  => $laporan->kategori_laporan,
+                    'deskripsi'         => $laporan->deskripsi,
+                    'tanggal_kejadian'  => $laporan->tanggal_kejadian,
+                    'tanggal_buat'      => $laporan->tanggal_buat,
+                    'tanggal_rubah'     => $laporan->tanggal_rubah,
+                    'lokasi'            => $laporan->lokasi,
+                    'kategori_lokasi'   => $laporan->kategori_lokasi ?? 'Tidak Diketahui',
+                    'tingkat_keparahan' => $laporan->tingkat_keparahan ?? 'Sedang',
+                    'skala_keparahan'   => (int) ($laporan->skala_keparahan ?? 2),
+                    'foto'              => $laporan->foto,
+                    'pesan_tanggapan'  => $laporan->pesan_tanggapan ?? '',
+                    'status_terkini'   => $statusTerbaru?->status_laporan ?? 'Terkirim',
+                    'riwayat_status'   => $laporan->statuses,
+                ];
+            });
 
             return response()->json([
-                'status' => 'success',
-                'data'   => $laporans,
+                'status'       => 'success',
+                'message'      => 'Data laporan admin berhasil dimuat.',
+                'total'        => $total,
+                'per_page'     => $perPage,
+                'current_page' => $page,
+                'last_page'    => $lastPage,
+                'data'         => $laporans,
             ]);
         } catch (\Throwable $e) {
             report($e);

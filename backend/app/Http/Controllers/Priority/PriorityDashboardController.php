@@ -4,11 +4,12 @@ namespace App\Http\Controllers\Priority;
 
 use App\Http\Controllers\Controller;
 use App\Models\Laporan;
-use App\Models\Priority\PriorityAssessment;
 use App\Services\Priority\PriorityScoringService;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class PriorityDashboardController extends Controller
@@ -21,32 +22,103 @@ class PriorityDashboardController extends Controller
     }
 
     /**
+     * Kolom ringan tabel laporan tanpa kolom longText `foto` agar tidak menarik
+     * payload gambar base64 berukuran megabyte dari database jarak jauh.
+     *
+     * @return array<int, mixed>
+     */
+    private function lightweightLaporanColumns(): array
+    {
+        return [
+            'laporan.id_laporan',
+            'laporan.nim',
+            'laporan.kategori_laporan',
+            'laporan.deskripsi',
+            'laporan.tanggal_buat',
+            'laporan.tanggal_kejadian',
+            'laporan.lokasi',
+            'laporan.kategori_lokasi',
+            'laporan.tingkat_keparahan',
+            'laporan.skala_keparahan',
+            DB::raw("CASE WHEN laporan.foto IS NOT NULL AND laporan.foto <> '' THEN 1 ELSE 0 END AS has_foto"),
+        ];
+    }
+
+    /**
+     * Hitung metrik kartu ringkasan dari kumpulan penilaian prioritas.
+     *
+     * @param  iterable<int|string, mixed>  $assessments
+     * @return array<string, int|float>
+     */
+    private function buildSummaryFromAssessments(iterable $assessments): array
+    {
+        $countKritis = 0;
+        $countTinggi = 0;
+        $countSedang = 0;
+        $countRendah = 0;
+        $countNeedsReview = 0;
+        $totalScores = 0;
+        $total = 0;
+
+        foreach ($assessments as $item) {
+            $total++;
+            if ($item->needs_review) {
+                $countNeedsReview++;
+            }
+
+            $totalScores += (int) $item->priority_score;
+
+            if ($item->severity_level === 'berat' || $item->priority_level === 'kritis') {
+                $countKritis++;
+            } elseif ($item->priority_level === 'tinggi') {
+                $countTinggi++;
+            } elseif ($item->priority_level === 'sedang') {
+                $countSedang++;
+            } else {
+                $countRendah++;
+            }
+        }
+
+        return [
+            'total_laporan'       => $total,
+            'kritis_berat'        => $countKritis,
+            'tinggi'              => $countTinggi,
+            'sedang'              => $countSedang,
+            'rendah'              => $countRendah,
+            'perlu_konfirmasi'    => $countNeedsReview,
+            'rata_skor_prioritas' => $total > 0 ? round($totalScores / $total, 1) : 0,
+        ];
+    }
+
+    /**
      * GET /api/admin/priority/reports
      * Mengambil daftar laporan terurut skor prioritas (hanya untuk admin)
      */
     public function index(Request $request): JsonResponse
     {
         try {
-            // Ambil semua laporan beserta status dan pelapor
-            $query = Laporan::with([
-                'statuses' => function ($q) {
-                    $q->orderBy('tanggal_merubah', 'desc');
-                    $q->orderBy('id_status', 'desc');
-                },
-                'pelapor.mahasiswa',
-            ]);
+            $this->scoringService->ensureTablesExist();
 
-            $laporans = $query->get();
+            // Ambil kolom laporan yang dibutuhkan daftar + nama pelapor + status terbaru
+            // dalam satu query tanpa mengunduh kolom longText `foto` (foto dimuat di endpoint show).
+            $laporans = Laporan::query()
+                ->select(array_merge($this->lightweightLaporanColumns(), [
+                    'user_mahasiswa.nama AS pelapor_nama',
+                    DB::raw('(SELECT s.status_laporan FROM status s WHERE s.id_laporan = laporan.id_laporan ORDER BY s.tanggal_merubah DESC, s.id_status DESC LIMIT 1) AS latest_status'),
+                ]))
+                ->leftJoin('pelapor', 'pelapor.nomor_identitas', '=', 'laporan.nim')
+                ->leftJoin('user_mahasiswa', 'user_mahasiswa.nim', '=', 'pelapor.nomor_identitas')
+                ->get();
 
             // Pastikan setiap laporan memiliki PriorityAssessment secara batch (menghindari N+1 query)
             $assessments = $this->scoringService->assessAndSaveMany($laporans);
+            $summaryData = $this->buildSummaryFromAssessments($assessments);
             $now = now();
 
             // Format dan susun data laporan
             $items = $laporans->map(function ($laporan) use ($assessments, $now) {
                 $assessment = $assessments->get($laporan->id_laporan);
-                $latestStatus = $laporan->statuses->first();
-                $statusName = $latestStatus?->status_laporan ?? 'Terkirim';
+                $statusName = $laporan->latest_status ?? 'Terkirim';
 
                 $createdAt = $laporan->tanggal_buat ? Carbon::parse($laporan->tanggal_buat) : $now;
                 $diffDays = (int) $createdAt->diffInDays($now);
@@ -57,7 +129,7 @@ class PriorityDashboardController extends Controller
                 return [
                     'id_laporan'               => $laporan->id_laporan,
                     'nim'                      => $laporan->nim,
-                    'nama_pelapor'             => $laporan->pelapor?->mahasiswa?->nama ?? 'Civitas USD',
+                    'nama_pelapor'             => $laporan->pelapor_nama ?? 'Civitas USD',
                     'kategori_laporan'         => $laporan->kategori_laporan,
                     'deskripsi'                => $laporan->deskripsi,
                     'tanggal_buat'             => $laporan->tanggal_buat,
@@ -66,7 +138,8 @@ class PriorityDashboardController extends Controller
                     'kategori_lokasi'          => $assessment?->kategori_lokasi ?? $laporan->kategori_lokasi ?? 'Tidak Diketahui',
                     'tingkat_keparahan_lokasi' => $assessment?->tingkat_keparahan_lokasi ?? $laporan->tingkat_keparahan ?? 'Sedang',
                     'skala_keparahan_lokasi'   => (int) ($assessment?->skala_keparahan_lokasi ?? $laporan->skala_keparahan ?? 2),
-                    'foto'                     => $laporan->foto,
+                    'foto'                     => null,
+                    'has_foto'                 => (bool) ($laporan->has_foto ?? false),
                     'status_terkini'           => $statusName,
                     'lama_menunggu'            => $lamaMenunggu,
                     'lama_menunggu_hari'       => $diffDays,
@@ -81,7 +154,7 @@ class PriorityDashboardController extends Controller
                     'confidence'               => $assessment?->confidence ?? 0.8,
                     'needs_review'             => $assessment?->needs_review ?? true,
                     'reasons'                  => $assessment?->reasons ?? [],
-                    'ringkasan_alasan'         => !empty($assessment?->reasons) ? $assessment->reasons[0] : '-',
+                    'ringkasan_alasan'         => ! empty($assessment?->reasons) ? $assessment->reasons[0] : '-',
                     'safety_flags'             => $assessment?->safety_flags ?? [],
                     'admin_notes'              => $assessment?->admin_notes,
                     'reviewed_at'              => $assessment?->reviewed_at?->toIso8601String(),
@@ -127,6 +200,7 @@ class PriorityDashboardController extends Controller
                             || str_contains(strtolower($it['nama_pelapor']), $searchQuery)
                             || str_contains((string) $it['id_laporan'], $searchQuery);
                     }
+
                     return true;
                 });
             }
@@ -136,22 +210,41 @@ class PriorityDashboardController extends Controller
             // 2. Tanggal Buat Menaik (laporan lebih lama didahulukan jika skor sama)
             $sortedItems = $items->sort(function ($a, $b) {
                 if ($a['priority_score'] === $b['priority_score']) {
-                    return strcmp($a['tanggal_buat'], $b['tanggal_buat']);
+                    return strcmp((string) $a['tanggal_buat'], (string) $b['tanggal_buat']);
                 }
+
                 return $b['priority_score'] <=> $a['priority_score'];
             })->values();
 
+            $total = $sortedItems->count();
+            $perPage = (int) $request->input('per_page', 10);
+            $perPage = $perPage > 0 ? $perPage : 10;
+            $page = (int) $request->input('page', 1);
+            $page = $page > 0 ? $page : 1;
+            $lastPage = (int) max(1, ceil($total / $perPage));
+
+            if ($request->has('page')) {
+                $pagedItems = $sortedItems->forPage($page, $perPage)->values();
+            } else {
+                $pagedItems = $sortedItems;
+            }
+
             return response()->json([
-                'status'  => 'success',
-                'message' => 'Data dashboard prioritas berhasil dimuat.',
-                'total'   => $sortedItems->count(),
-                'data'    => $sortedItems,
+                'status'       => 'success',
+                'message'      => 'Data dashboard prioritas berhasil dimuat.',
+                'total'        => $total,
+                'per_page'     => $perPage,
+                'current_page' => $page,
+                'last_page'    => $lastPage,
+                'data'         => $pagedItems,
+                'summary'      => $summaryData,
             ]);
         } catch (\Throwable $e) {
             report($e);
+
             return response()->json([
                 'status'  => 'error',
-                'message' => 'Gagal mengambil data dashboard prioritas: ' . $e->getMessage(),
+                'message' => 'Gagal mengambil data dashboard prioritas: '.$e->getMessage(),
                 'data'    => [],
             ], 500);
         }
@@ -164,7 +257,7 @@ class PriorityDashboardController extends Controller
     public function show($id): JsonResponse
     {
         try {
-            $laporan = Laporan::with(['statuses', 'pelapor.mahasiswa'])->findOrFail($id);
+            $laporan = Laporan::with(['statuses', 'pelapor.mahasiswa', 'pelapor.pegawai'])->findOrFail($id);
             $assessment = $this->scoringService->assessAndSave($laporan);
 
             $locWeight = $this->scoringService->resolveLocationWeight($laporan->lokasi ?? '');
@@ -193,13 +286,13 @@ class PriorityDashboardController extends Controller
             return response()->json([
                 'status' => 'success',
                 'data'   => [
-                    'laporan'     => $laporan,
-                    'assessment'  => $assessment,
-                    'breakdown'   => $calculation['breakdown'],
-                    'feedback'    => $feedback,
+                    'laporan'    => $laporan,
+                    'assessment' => $assessment,
+                    'breakdown'  => $calculation['breakdown'],
+                    'feedback'   => $feedback,
                 ],
             ]);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json([
                 'status'  => 'error',
                 'message' => 'Laporan tidak ditemukan.',
@@ -207,7 +300,7 @@ class PriorityDashboardController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'status'  => 'error',
-                'message' => 'Gagal mengambil detail prioritas: ' . $e->getMessage(),
+                'message' => 'Gagal mengambil detail prioritas: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -247,7 +340,7 @@ class PriorityDashboardController extends Controller
                 'message' => 'Tingkat kerusakan dan skor prioritas berhasil diperbarui oleh admin.',
                 'data'    => $updated,
             ]);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json([
                 'status'  => 'error',
                 'message' => 'Laporan tidak ditemukan.',
@@ -255,7 +348,7 @@ class PriorityDashboardController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'status'  => 'error',
-                'message' => 'Gagal memperbarui prioritas: ' . $e->getMessage(),
+                'message' => 'Gagal memperbarui prioritas: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -267,57 +360,66 @@ class PriorityDashboardController extends Controller
     public function summary(): JsonResponse
     {
         try {
-            // Relasi statuses tidak dipakai pada ringkasan, jadi tidak perlu di-eager-load (hemat 1 query).
-            $laporans = Laporan::all();
+            $hasTable = $this->scoringService->ensureTablesExist();
 
-            // Pastikan terdata secara batch (menghindari N+1 query)
-            $assessments = $this->scoringService->assessAndSaveMany($laporans);
+            if ($hasTable) {
+                $rows = DB::table('laporan')
+                    ->leftJoin('priority_assessments', 'priority_assessments.id_laporan', '=', 'laporan.id_laporan')
+                    ->select([
+                        'laporan.id_laporan',
+                        'priority_assessments.id AS assessment_id',
+                        'priority_assessments.priority_score',
+                        'priority_assessments.priority_level',
+                        'priority_assessments.severity_level',
+                        'priority_assessments.needs_review',
+                    ])
+                    ->get();
 
-            $totalActive = 0;
-            $countKritis = 0;
-            $countTinggi = 0;
-            $countSedang = 0;
-            $countRendah = 0;
-            $countNeedsReview = 0;
-            $totalScores = 0;
-
-            foreach ($assessments as $item) {
-                if ($item->needs_review) {
-                    $countNeedsReview++;
+                $missingIds = [];
+                foreach ($rows as $row) {
+                    if ($row->assessment_id === null) {
+                        $missingIds[] = $row->id_laporan;
+                    }
                 }
 
-                $totalScores += $item->priority_score;
+                if (! empty($missingIds)) {
+                    $missingLaporans = Laporan::query()
+                        ->select($this->lightweightLaporanColumns())
+                        ->whereIn('laporan.id_laporan', $missingIds)
+                        ->get();
+                    $assessed = $this->scoringService->assessAndSaveMany($missingLaporans);
 
-                if ($item->severity_level === 'berat' || $item->priority_level === 'kritis') {
-                    $countKritis++;
-                } elseif ($item->priority_level === 'tinggi') {
-                    $countTinggi++;
-                } elseif ($item->priority_level === 'sedang') {
-                    $countSedang++;
-                } else {
-                    $countRendah++;
+                    $items = $rows->map(function ($row) use ($assessed) {
+                        return $row->assessment_id !== null
+                            ? $row
+                            : ($assessed->get($row->id_laporan) ?? $row);
+                    });
+
+                    return response()->json([
+                        'status' => 'success',
+                        'data'   => $this->buildSummaryFromAssessments($items),
+                    ]);
                 }
+
+                return response()->json([
+                    'status' => 'success',
+                    'data'   => $this->buildSummaryFromAssessments($rows),
+                ]);
             }
 
-            $total = $assessments->count();
-            $avgScore = $total > 0 ? round($totalScores / $total, 1) : 0;
+            $laporans = Laporan::query()
+                ->select($this->lightweightLaporanColumns())
+                ->get();
+            $assessments = $this->scoringService->assessAndSaveMany($laporans);
 
             return response()->json([
                 'status' => 'success',
-                'data'   => [
-                    'total_laporan'       => $total,
-                    'kritis_berat'        => $countKritis,
-                    'tinggi'              => $countTinggi,
-                    'sedang'              => $countSedang,
-                    'rendah'              => $countRendah,
-                    'perlu_konfirmasi'    => $countNeedsReview,
-                    'rata_skor_prioritas' => $avgScore,
-                ],
+                'data'   => $this->buildSummaryFromAssessments($assessments),
             ]);
         } catch (\Throwable $e) {
             return response()->json([
                 'status'  => 'error',
-                'message' => 'Gagal memuat ringkasan prioritas: ' . $e->getMessage(),
+                'message' => 'Gagal memuat ringkasan prioritas: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -329,7 +431,10 @@ class PriorityDashboardController extends Controller
     public function recalculateAll(): JsonResponse
     {
         try {
-            $laporans = Laporan::all();
+            $this->scoringService->ensureTablesExist();
+            $laporans = Laporan::query()
+                ->select($this->lightweightLaporanColumns())
+                ->get();
             $assessments = $this->scoringService->assessAndSaveMany($laporans, true);
             $count = $assessments->count();
 
@@ -341,9 +446,8 @@ class PriorityDashboardController extends Controller
         } catch (\Throwable $e) {
             return response()->json([
                 'status'  => 'error',
-                'message' => 'Gagal menghitung ulang: ' . $e->getMessage(),
+                'message' => 'Gagal menghitung ulang: '.$e->getMessage(),
             ], 500);
         }
     }
 }
-

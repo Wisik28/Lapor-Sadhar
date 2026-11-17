@@ -62,6 +62,9 @@ export interface LaporanResponse {
   message?: string;
   data?: LaporanItem | LaporanItem[];
   total?: number;
+  current_page?: number;
+  last_page?: number;
+  per_page?: number;
   errors?: Record<string, string[]>;
 }
 
@@ -421,17 +424,25 @@ function getAuthHeaders(isAdmin = false) {
 }
 
 export const laporanApi = {
-  /** Ambil semua laporan milik user berdasarkan NIM */
-  async getAll(nim: string): Promise<LaporanResponse> {
-  try {
-    const res = await fetch(
-      `${API_BASE_URL}/laporan?nim=${encodeURIComponent(nim)}`,
-      {
-        method: "GET",
-        headers: getAuthHeaders(),
-        cache: "no-store",
-      }
-    );
+  /** Ambil semua laporan milik user berdasarkan NIM dengan opsi pagination */
+  async getAll(
+    nim: string,
+    params?: { page?: number; per_page?: number }
+  ): Promise<LaporanResponse> {
+    try {
+      const searchParams = new URLSearchParams();
+      searchParams.set("nim", nim);
+      if (params?.page) searchParams.set("page", String(params.page));
+      if (params?.per_page) searchParams.set("per_page", String(params.per_page));
+
+      const res = await fetch(
+        `${API_BASE_URL}/laporan?${searchParams.toString()}`,
+        {
+          method: "GET",
+          headers: getAuthHeaders(),
+          cache: "no-store",
+        }
+      );
 
     const result = await res.json().catch(() => null);
 
@@ -536,9 +547,14 @@ export const laporanApi = {
 // ─── Admin Laporan API ──────────────────────────────────────────────────────
 
 export const adminLaporanApi = {
-  /** Mengambil seluruh laporan untuk halaman admin */
-  async getAll() {
-    const response = await fetch(`${API_BASE_URL}/admin/laporan`, {
+  /** Mengambil seluruh laporan untuk halaman admin dengan opsi pagination */
+  async getAll(params?: { page?: number; per_page?: number }) {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set("page", String(params.page));
+    if (params?.per_page) searchParams.set("per_page", String(params.per_page));
+
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    const response = await fetch(`${API_BASE_URL}/admin/laporan${query}`, {
       method: "GET",
       headers: getAuthHeaders(true),
       cache: "no-store",
@@ -556,6 +572,38 @@ export const adminLaporanApi = {
     // Mendukung respons Laravel berbentuk { data: [...] }
     // maupun array laporan secara langsung.
     return Array.isArray(result) ? result : result?.data ?? [];
+  },
+
+  /** Mengambil laporan untuk halaman admin beserta metadata pagination */
+  async getAllWithPagination(params?: { page?: number; per_page?: number }) {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set("page", String(params.page));
+    if (params?.per_page) searchParams.set("per_page", String(params.per_page));
+
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    const response = await fetch(`${API_BASE_URL}/admin/laporan${query}`, {
+      method: "GET",
+      headers: getAuthHeaders(true),
+      cache: "no-store",
+    });
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        result?.message ||
+          `Gagal mengambil laporan. HTTP ${response.status}`
+      );
+    }
+
+    const items = Array.isArray(result) ? result : result?.data ?? [];
+    return {
+      data: items as LaporanItem[],
+      total: result?.total ?? items.length,
+      current_page: result?.current_page ?? (params?.page || 1),
+      last_page: result?.last_page ?? 1,
+      per_page: result?.per_page ?? (params?.per_page || 10),
+    };
   },
 
   /** Mengubah status laporan dan menyimpan tanggapan admin */

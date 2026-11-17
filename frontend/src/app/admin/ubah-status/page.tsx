@@ -5,6 +5,7 @@ import AdminNavbar from "@/components/AdminNavbar";
 import { adminLaporanApi } from "@/lib/api";
 import { getCurrentAuthUser } from "@/lib/auth";
 import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
+import { useDebounce } from "@/hooks/useDebounce";
 
 type StatusValue =
   | "Terkirim"
@@ -211,12 +212,21 @@ export default function UbahStatusLaporanPage() {
   });
 
   const [pencarian, setPencarian] = useState("");
+  const debouncedPencarian = useDebounce(pencarian, 500);
   const [filterStatus, setFilterStatus] = useState("Semua");
 
   // TAMBAHAN: State filter kategori, bulan, dan tahun.
   const [filterKategori, setFilterKategori] = useState("Semua");
   const [filterBulan, setFilterBulan] = useState("Semua");
   const [filterTahun, setFilterTahun] = useState("Semua");
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setCurrentPage(1), 0);
+    return () => window.clearTimeout(timer);
+  }, [debouncedPencarian, filterStatus, filterKategori, filterBulan, filterTahun]);
 
   const [statusBaru, setStatusBaru] = useState<StatusValue>("Terkirim");
   const [pesanTanggapan, setPesanTanggapan] = useState("");
@@ -343,7 +353,7 @@ export default function UbahStatusLaporanPage() {
   }, [laporan]);
 
   const laporanTersaring = useMemo(() => {
-    const keyword = pencarian.trim().toLowerCase();
+    const keyword = debouncedPencarian.trim().toLowerCase();
 
     return laporan.filter((item) => {
       const status = normalizeStatus(
@@ -399,12 +409,21 @@ export default function UbahStatusLaporanPage() {
     });
   }, [
     laporan,
-    pencarian,
+    debouncedPencarian,
     filterStatus,
     filterKategori,
     filterBulan,
     filterTahun,
   ]);
+
+  const totalPages = Math.ceil(laporanTersaring.length / itemsPerPage) || 1;
+
+  const paginatedLaporan = useMemo(() => {
+    return laporanTersaring.slice(
+      (currentPage - 1) * itemsPerPage,
+      currentPage * itemsPerPage
+    );
+  }, [laporanTersaring, currentPage, itemsPerPage]);
 
   const statistik = useMemo(() => {
     const jumlahStatus = (status: StatusValue) =>
@@ -496,6 +515,7 @@ export default function UbahStatusLaporanPage() {
     setFilterKategori("Semua");
     setFilterBulan("Semua");
     setFilterTahun("Semua");
+    setCurrentPage(1);
   }
 
   const fotoList = getFotoList(laporanTerpilih?.foto);
@@ -583,14 +603,20 @@ export default function UbahStatusLaporanPage() {
                 <input
                   type="search"
                   value={pencarian}
-                  onChange={(event) => setPencarian(event.target.value)}
+                  onChange={(event) => {
+                    setPencarian(event.target.value);
+                    setCurrentPage(1);
+                  }}
                   placeholder="Cari nama, NIM, kategori, lokasi..."
                   className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10"
                 />
 
                 <select
                   value={filterStatus}
-                  onChange={(event) => setFilterStatus(event.target.value)}
+                  onChange={(event) => {
+                    setFilterStatus(event.target.value);
+                    setCurrentPage(1);
+                  }}
                   className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#7A0C0C]"
                 >
                   <option value="Semua">Semua Status</option>
@@ -612,7 +638,10 @@ export default function UbahStatusLaporanPage() {
                   <select
                     id="filterKategori"
                     value={filterKategori}
-                    onChange={(event) => setFilterKategori(event.target.value)}
+                    onChange={(event) => {
+                      setFilterKategori(event.target.value);
+                      setCurrentPage(1);
+                    }}
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10"
                   >
                     <option value="Semua">Semua Kategori</option>
@@ -633,7 +662,10 @@ export default function UbahStatusLaporanPage() {
                     <select
                       id="filterBulan"
                       value={filterBulan}
-                      onChange={(event) => setFilterBulan(event.target.value)}
+                      onChange={(event) => {
+                        setFilterBulan(event.target.value);
+                        setCurrentPage(1);
+                      }}
                       className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10"
                     >
                       <option value="Semua">Semua Bulan</option>
@@ -655,7 +687,10 @@ export default function UbahStatusLaporanPage() {
                     <select
                       id="filterTahun"
                       value={filterTahun}
-                      onChange={(event) => setFilterTahun(event.target.value)}
+                      onChange={(event) => {
+                        setFilterTahun(event.target.value);
+                        setCurrentPage(1);
+                      }}
                       className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10"
                     >
                       <option value="Semua">Semua Tahun</option>
@@ -704,7 +739,7 @@ export default function UbahStatusLaporanPage() {
                   </p>
                 </div>
               ) : (
-                laporanTersaring.map((item) => {
+                paginatedLaporan.map((item) => {
                   const status = normalizeStatus(
                     item.status_terkini ?? item.status_laporan
                   );
@@ -755,6 +790,70 @@ export default function UbahStatusLaporanPage() {
                 })
               )}
             </div>
+
+            {/* Kontrol Pagination */}
+            {laporanTersaring.length > 0 && (
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+                <p>
+                  Menampilkan {(currentPage - 1) * itemsPerPage + 1}–
+                  {Math.min(currentPage * itemsPerPage, laporanTersaring.length)} dari{" "}
+                  {laporanTersaring.length} laporan
+                </p>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer text-xs"
+                  >
+                    Sebelumnya
+                  </button>
+
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => {
+                    if (
+                      totalPages > 5 &&
+                      p !== 1 &&
+                      p !== totalPages &&
+                      Math.abs(p - currentPage) > 1
+                    ) {
+                      if (p === 2 || p === totalPages - 1) {
+                        return (
+                          <span key={p} className="px-1 text-slate-400">
+                            ...
+                          </span>
+                        );
+                      }
+                      return null;
+                    }
+
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setCurrentPage(p)}
+                        className={`w-7 h-7 rounded-md font-bold text-xs transition-colors cursor-pointer flex items-center justify-center ${
+                          currentPage === p
+                            ? "bg-[#7A0C0C] text-white"
+                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    );
+                  })}
+
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer text-xs"
+                  >
+                    Selanjutnya
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="space-y-6 lg:col-span-7">
