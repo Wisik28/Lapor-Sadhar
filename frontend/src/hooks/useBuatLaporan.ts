@@ -25,6 +25,7 @@ function fileToDataUrl(file: File): Promise<string> {
 export interface BuatLaporanState {
   kategori: string;
   tanggal: string;
+  lokasiKampus: string;
   lokasi: string;
   deskripsi: string;
   attachments: Attachment[];
@@ -38,6 +39,7 @@ export function useBuatLaporan(today: string) {
   const [state, setState] = useState<BuatLaporanState>(() => ({
     kategori: '',
     tanggal: today,
+    lokasiKampus: '',
     lokasi: '',
     deskripsi: '',
     attachments: [],
@@ -52,6 +54,7 @@ export function useBuatLaporan(today: string) {
     setState({
       kategori: '',
       tanggal: today,
+      lokasiKampus: '',
       lokasi: '',
       deskripsi: '',
       attachments: [],
@@ -97,26 +100,22 @@ export function useBuatLaporan(today: string) {
 
   const submit = useCallback(
     async (nim: string, onSuccess?: (data: LaporanItem) => void) => {
-      setState((prev) => {
-        // Validate inline to avoid stale state
-        if (!prev.kategori || !prev.lokasi || !prev.deskripsi) {
-          setState((s) => ({ ...s, error: 'Mohon lengkapi seluruh kolom formulir!' }));
-          return prev;
-        }
+      if (!state.kategori || !state.lokasiKampus || !state.lokasi || !state.deskripsi) {
+        setState((prev) => ({ ...prev, error: 'Mohon lengkapi seluruh kolom formulir!' }));
+        return;
+      }
 
-        if (prev.tanggal > today) {
-          setState((s) => ({ ...s, error: 'Tanggal kejadian tidak boleh melebihi hari ini!' }));
-          return prev;
-        }
+      if (state.tanggal > today) {
+        setState((prev) => ({ ...prev, error: 'Tanggal kejadian tidak boleh melebihi hari ini!' }));
+        return;
+      }
 
-        if (!nim) {
-          setState((s) => ({ ...s, error: 'Sesi login tidak ditemukan. Silakan login ulang.' }));
-          return prev;
-        }
+      if (!nim) {
+        setState((prev) => ({ ...prev, error: 'Sesi login tidak ditemukan. Silakan login ulang.' }));
+        return;
+      }
 
-        // Clear errors and start loading
-        return { ...prev, loading: true, error: '', success: '' };
-      });
+      setState((prev) => ({ ...prev, loading: true, error: '', success: '' }));
 
       try {
         // Use state directly within the async function
@@ -133,6 +132,7 @@ export function useBuatLaporan(today: string) {
           kategori_laporan: state.kategori,
           deskripsi: state.deskripsi,
           tanggal_kejadian: state.tanggal,
+          lokasi_kampus: state.lokasiKampus,
           lokasi: state.lokasi,
           foto: fotoPayload,
         });
@@ -142,6 +142,7 @@ export function useBuatLaporan(today: string) {
           setState({
             kategori: '',
             tanggal: today,
+            lokasiKampus: '',
             lokasi: '',
             deskripsi: '',
             attachments: [],

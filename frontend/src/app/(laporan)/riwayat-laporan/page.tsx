@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
+import ImagePreviewModal from "@/components/ImagePreviewModal";
 import { laporanApi, type LaporanItem } from "@/lib/api";
 import { useAuthProtection } from "@/lib/useAuth";
 import { useRouter } from "next/navigation";
@@ -95,6 +96,7 @@ export default function UserRiwayatLaporanPage() {
 
   // State Modal Detail
   const [selectedDetail, setSelectedDetail] = useState<LaporanItem | null>(null);
+  const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null);
   const selectedDetailPhotos = getFotoList(selectedDetail?.foto);
 
   // ── Ambil Data Backend ──
@@ -456,7 +458,9 @@ export default function UserRiwayatLaporanPage() {
                             </p>
                             <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
                               <span className="shrink-0 text-red-500">📍</span>
-                              <span className="truncate">{lap.lokasi}</span>
+                              <span className="truncate">
+                                {lap.lokasi_kampus ? `${lap.lokasi_kampus} • ` : ""}{lap.lokasi}
+                              </span>
                             </p>
                           </td>
                           <td className="px-4 py-3.5 align-middle text-center whitespace-nowrap">
@@ -575,7 +579,10 @@ export default function UserRiwayatLaporanPage() {
                   {normalizeLaporanStatus(selectedDetail.status_terkini)}
                 </span>
                 <button
-                  onClick={() => setSelectedDetail(null)}
+                  onClick={() => {
+                    setActivePhotoIndex(null);
+                    setSelectedDetail(null);
+                  }}
                   className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
@@ -599,7 +606,10 @@ export default function UserRiwayatLaporanPage() {
                   <p className="text-xs text-slate-400 font-medium mb-1">Lokasi</p>
                   <p className="font-bold text-slate-800 flex items-center gap-1">
                     <MapPin className="w-4 h-4 text-red-600 shrink-0" />
-                    <span>{selectedDetail.lokasi || "-"}</span>
+                    <span>
+                      {selectedDetail.lokasi_kampus ? `${selectedDetail.lokasi_kampus} — ` : ""}
+                      {selectedDetail.lokasi || "-"}
+                    </span>
                   </p>
                 </div>
               </div>
@@ -618,12 +628,11 @@ export default function UserRiwayatLaporanPage() {
                 {selectedDetailPhotos.length > 0 ? (
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     {selectedDetailPhotos.map((foto, index) => (
-                      <a
+                      <button
+                        type="button"
                         key={`${foto}-${index}`}
-                        href={getFotoUrl(foto)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
+                        onClick={() => setActivePhotoIndex(index)}
+                        className="text-left overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 hover:border-[#7A0C0C] transition-colors cursor-pointer"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
@@ -639,8 +648,8 @@ export default function UserRiwayatLaporanPage() {
                         <p className="hidden p-4 text-center text-xs text-red-700">
                           Foto tidak dapat dimuat dari tautan tersimpan.
                         </p>
-                        <p className="p-2 text-center text-xs font-semibold text-[#7A0C0C]">Buka foto</p>
-                      </a>
+                        <p className="p-2 text-center text-xs font-semibold text-[#7A0C0C]">Lihat foto</p>
+                      </button>
                     ))}
                   </div>
                 ) : (
@@ -779,7 +788,10 @@ export default function UserRiwayatLaporanPage() {
                   </button>
                 )}
                 <button
-                  onClick={() => setSelectedDetail(null)}
+                  onClick={() => {
+                    setActivePhotoIndex(null);
+                    setSelectedDetail(null);
+                  }}
                   className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold transition-all cursor-pointer"
                 >
                   Tutup
@@ -789,6 +801,13 @@ export default function UserRiwayatLaporanPage() {
           </div>
         </div>
       )}
+
+      <ImagePreviewModal
+        images={selectedDetailPhotos.map(getFotoUrl)}
+        activeIndex={activePhotoIndex}
+        onClose={() => setActivePhotoIndex(null)}
+        onChangeIndex={setActivePhotoIndex}
+      />
     </div>
   );
 }

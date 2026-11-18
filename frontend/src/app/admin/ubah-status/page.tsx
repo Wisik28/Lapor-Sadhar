@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AdminNavbar from "@/components/AdminNavbar";
+import ImagePreviewModal from "@/components/ImagePreviewModal";
 import { adminLaporanApi } from "@/lib/api";
 import { getCurrentAuthUser } from "@/lib/auth";
 import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
@@ -34,6 +35,7 @@ type Laporan = {
   tanggal_kejadian?: string;
   tanggal_buat?: string;
   tanggal_rubah?: string;
+  lokasi_kampus?: string | null;
   lokasi?: string;
   foto?: string | string[] | null;
   pesan_tanggapan?: string | null;
@@ -230,6 +232,7 @@ export default function UbahStatusLaporanPage() {
 
   const [statusBaru, setStatusBaru] = useState<StatusValue>("Terkirim");
   const [pesanTanggapan, setPesanTanggapan] = useState("");
+  const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [menyimpan, setMenyimpan] = useState(false);
@@ -391,6 +394,7 @@ export default function UbahStatusLaporanPage() {
         item.nim,
         item.nama_pelapor,
         item.kategori_laporan,
+        item.lokasi_kampus,
         item.lokasi,
         item.deskripsi,
       ]
@@ -496,6 +500,7 @@ export default function UbahStatusLaporanPage() {
 
   function pilihLaporan(item: Laporan) {
   setLaporanTerpilih(item);
+  setActivePhotoIndex(null);
 
   setStatusBaru(
     normalizeStatus(
@@ -783,6 +788,7 @@ export default function UbahStatusLaporanPage() {
 
                       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
                         <span>NIM: {item.nim || "-"}</span>
+                        {item.lokasi_kampus && <span>{item.lokasi_kampus}</span>}
                         <span>{formatTanggal(item.tanggal_buat)}</span>
                       </div>
                     </button>
@@ -928,6 +934,7 @@ export default function UbahStatusLaporanPage() {
                       Lokasi Kejadian
                     </p>
                     <p className="mt-1 text-sm leading-6 text-slate-600">
+                      {laporanTerpilih.lokasi_kampus ? `${laporanTerpilih.lokasi_kampus} — ` : ""}
                       {laporanTerpilih.lokasi || "Lokasi tidak dicantumkan."}
                     </p>
                   </div>
@@ -948,12 +955,11 @@ export default function UbahStatusLaporanPage() {
                       </p>
                       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                         {fotoList.map((foto, index) => (
-                          <a
+                          <button
                             key={`${foto}-${index}`}
-                            href={getFotoUrl(foto)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                            type="button"
+                            onClick={() => setActivePhotoIndex(index)}
+                            className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-left hover:border-[#7A0C0C] transition-colors cursor-pointer"
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
@@ -966,13 +972,13 @@ export default function UbahStatusLaporanPage() {
                                 if (fallback instanceof HTMLElement) fallback.style.display = "block";
                               }}
                             />
-                            <p className="hidden p-3 text-center text-xs text-red-700">
+                            <span className="hidden p-3 text-center text-xs text-red-700">
                               Foto tidak dapat dimuat dari penyimpanan.
-                            </p>
-                            <p className="p-2 text-center text-xs text-[#7A0C0C]">
+                            </span>
+                            <span className="block p-2 text-center text-xs font-medium text-[#7A0C0C]">
                               Lihat foto
-                            </p>
-                          </a>
+                            </span>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -1202,6 +1208,14 @@ export default function UbahStatusLaporanPage() {
           </div>
         </section>
       </main>
+
+      <ImagePreviewModal
+        images={fotoList.map(getFotoUrl)}
+        activeIndex={activePhotoIndex}
+        onClose={() => setActivePhotoIndex(null)}
+        onChangeIndex={setActivePhotoIndex}
+        titlePrefix="Foto Bukti"
+      />
     </div>
   );
 }

@@ -85,6 +85,7 @@ class AuthControllerTest extends TestCase
             'kategori_laporan' => 'Fasilitas',
             'deskripsi' => 'Kerusakan fasilitas ruang kerja.',
             'tanggal_kejadian' => now()->toDateString(),
+            'lokasi_kampus' => 'Kampus 1',
             'lokasi' => 'Ruang Kerja',
         ])->assertCreated();
 

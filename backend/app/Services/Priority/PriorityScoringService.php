@@ -302,12 +302,16 @@ class PriorityScoringService
                 return 1;
             }
 
-            $count = Laporan::where('lokasi', 'LIKE', '%' . $prefix . '%')
+            $query = Laporan::where('lokasi', 'LIKE', '%' . $prefix . '%')
                 ->where('kategori_laporan', $laporan->kategori_laporan)
                 ->where('id_laporan', '<>', $laporan->id_laporan)
-                ->where('tanggal_buat', '>=', now()->subDays(30))
-                ->distinct('nim')
-                ->count('nim');
+                ->where('tanggal_buat', '>=', now()->subDays(30));
+
+            if (!empty($laporan->lokasi_kampus)) {
+                $query->where('lokasi_kampus', $laporan->lokasi_kampus);
+            }
+
+            $count = $query->distinct('nim')->count('nim');
 
             return 1 + $count;
         } catch (\Throwable $e) {
@@ -371,7 +375,7 @@ class PriorityScoringService
             try {
                 $driverName = DB::connection()->getDriverName();
                 $recentLaporans = Laporan::query()
-                    ->select(['id_laporan', 'nim', 'kategori_laporan', 'lokasi'])
+                    ->select(['id_laporan', 'nim', 'kategori_laporan', 'lokasi', 'lokasi_kampus'])
                     ->where('tanggal_buat', '>=', now()->subDays(30))
                     ->get();
             } catch (\Throwable $e) {
@@ -529,6 +533,13 @@ class PriorityScoringService
                 continue;
             }
             if ((int) $row->id_laporan === (int) $laporan->id_laporan) {
+                continue;
+            }
+            if (
+                !empty($laporan->lokasi_kampus)
+                && !empty($row->lokasi_kampus)
+                && (string) $row->lokasi_kampus !== (string) $laporan->lokasi_kampus
+            ) {
                 continue;
             }
 

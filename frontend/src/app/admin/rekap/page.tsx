@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import AdminNavbar from "@/components/AdminNavbar";
+import PeriodFilter from "@/components/PeriodFilter";
 import { authApi, adminLaporanApi } from "@/lib/api";
 import {
   Send, Search, X, CheckCircle2, Settings, Flag,
@@ -32,6 +33,7 @@ interface LaporanItem {
   tanggal_kejadian: string;
   tanggal_buat: string;
   tanggal_rubah?: string | null;
+  lokasi_kampus?: string | null;
   lokasi: string;
   foto?: string | null;
   status_terkini: string;
@@ -563,17 +565,22 @@ export default function AdminRekapPage() {
   return (
     <div className="min-h-screen w-full bg-[#F8F9FA] flex flex-col font-sans text-slate-800 antialiased">
       <AdminNavbar
-        adminName={adminUser.nama} adminRole={adminUser.role}
-        selectedMonth={selectedMonth} selectedYear={selectedYear}
-        onMonthChange={setSelectedMonth} onYearChange={setSelectedYear}
+        adminName={adminUser.nama}
+        adminRole={adminUser.role}
       />
 
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 space-y-4">
 
         {/* Period header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <span className="text-sm font-semibold text-gray-700">{periodLabel}</span>
+            <PeriodFilter
+              selectedMonth={selectedMonth}
+              selectedYear={selectedYear}
+              onMonthChange={setSelectedMonth}
+              onYearChange={setSelectedYear}
+            />
             <button onClick={fetchRekap} disabled={loading}
               className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-[#7A0C0C] hover:bg-red-50 transition-colors">
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
@@ -793,7 +800,10 @@ export default function AdminRekapPage() {
                       <KategoriIcon kategori={lap.kategori_laporan} />
                       <div className="flex-1 min-w-0">
                         <p className="text-[11px] font-semibold text-gray-800 truncate group-hover:text-gray-900">{lap.deskripsi}</p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">{lap.lokasi}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          {lap.lokasi_kampus ? `${lap.lokasi_kampus} • ` : ""}
+                          {lap.lokasi}
+                        </p>
                         <div className="flex items-center justify-between mt-1.5">
                           <p className="text-[10px] text-gray-400 tabular-nums">{fmtDate(lap.tanggal_buat)}</p>
                           <StatusBadge status={lap.status_terkini} />

@@ -4,12 +4,15 @@ import React, { useState, useMemo } from 'react';
 import { AlertCircle, CheckCircle2, X, Upload, Send, Loader2 } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
 import Navbar from '@/components/Navbar';
+import ImagePreviewModal from '@/components/ImagePreviewModal';
 import { useAuthProtection } from '@/lib/useAuth';
 import { useBuatLaporan } from '@/hooks/useBuatLaporan';
+import { LOKASI_KAMPUS_OPTIONS } from '@/lib/laporanCampus';
 
 export default function BuatLaporanPage() {
   // ✅ ALL HOOKS AT TOP LEVEL - BEFORE ANY CONDITIONS
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
   // Auth hooks
   const { isLoading: authLoading, user: authUser } = useAuthProtection();
@@ -129,14 +132,40 @@ export default function BuatLaporanPage() {
                     />
                   </div>
 
+                  {/* Lokasi Kampus */}
+                  <div>
+                    <label
+                      htmlFor="lokasi-kampus"
+                      className="block text-sm font-semibold text-slate-700 mb-1.5"
+                    >
+                      Lokasi Kampus <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      id="lokasi-kampus"
+                      value={state.lokasiKampus}
+                      onChange={(e) => updateField('lokasiKampus', e.target.value)}
+                      required
+                      className="w-full min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-slate-50/50 text-sm text-slate-800 transition-all outline-none"
+                    >
+                      <option value="" disabled>
+                        -- Pilih Lokasi Kampus --
+                      </option>
+                      {LOKASI_KAMPUS_OPTIONS.map((kampus) => (
+                        <option key={kampus} value={kampus}>
+                          {kampus}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   {/* Lokasi */}
-                  <div className="md:col-span-2">
+                  <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                      Lokasi Kejadian <span className="text-red-500">*</span>
+                      Detail Lokasi <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
-                      placeholder="Contoh: Kampus III, Ruang Kelas K.205"
+                      placeholder="Contoh: Ruang Kelas K.205"
                       value={state.lokasi}
                       onChange={(e) => updateField('lokasi', e.target.value)}
                       required
@@ -165,18 +194,29 @@ export default function BuatLaporanPage() {
                   <label className="block text-sm font-semibold text-slate-700 mb-1">Foto / Lampiran</label>
                   <p className="text-xs text-slate-500 mb-3">Unggah bukti foto kerusakan (Maksimal 5 foto, format JPG/PNG).</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
-                    {state.attachments.map((item) => (
+                    {state.attachments.map((item, index) => (
                       <div key={item.id} className="relative group rounded-xl overflow-hidden border border-slate-200 bg-slate-100 h-28 sm:h-32">
-                        <img src={item.url} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                        <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity" />
                         <button
                           type="button"
-                          onClick={() => removeAttachment(item.id)}
+                          onClick={() => setPreviewIndex(index)}
+                          className="w-full h-full block cursor-pointer text-left"
+                          aria-label={`Lihat pratinjau ${item.name}`}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={item.url} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                          <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeAttachment(item.id);
+                          }}
                           className="absolute top-1.5 right-1.5 w-8 h-8 rounded-full bg-red-600/90 hover:bg-red-700 text-white flex items-center justify-center shadow-md transition-transform hover:scale-110 active:scale-95"
                         >
                           <X className="w-4 h-4" />
                         </button>
-                        <div className="absolute bottom-0 inset-x-0 p-1 bg-gradient-to-t from-black/70 to-transparent">
+                        <div className="pointer-events-none absolute bottom-0 inset-x-0 p-1 bg-gradient-to-t from-black/70 to-transparent">
                           <span className="block text-[11px] text-white truncate px-1">{item.name}</span>
                         </div>
                       </div>
@@ -226,6 +266,14 @@ export default function BuatLaporanPage() {
           </div>
         </main>
       </div>
+
+      <ImagePreviewModal
+        images={state.attachments.map((item) => item.url)}
+        activeIndex={previewIndex}
+        onClose={() => setPreviewIndex(null)}
+        onChangeIndex={setPreviewIndex}
+        titlePrefix="Pratinjau Foto"
+      />
     </div>
   );
 }

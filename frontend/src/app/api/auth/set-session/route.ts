@@ -24,7 +24,9 @@ export async function POST(request: NextRequest) {
     };
 
     const tokenName = isAdmin ? 'admin_token' : 'auth_token';
+    const otherTokenName = isAdmin ? 'auth_token' : 'admin_token';
     response.cookies.set(tokenName, token, cookieOptions);
+    response.cookies.delete(otherTokenName);
 
     // Juga set user_session cookie (bisa dibaca middleware)
     response.cookies.set('user_session', JSON.stringify(user), {

@@ -223,7 +223,7 @@ class AdminAuthTest extends TestCase
         $this->assertDatabaseCount('admin', 11);
         $admin = Admin::where('username', 'blu.kampus1')->firstOrFail();
         $this->assertSame('kepala_bagian_blu_1', $admin->jabatan);
-        $this->assertNull($admin->campus);
+        $this->assertSame('Kampus 1', $admin->campus);
         $this->assertTrue(Hash::check('Legacy-pass-123', $admin->password));
     }
 

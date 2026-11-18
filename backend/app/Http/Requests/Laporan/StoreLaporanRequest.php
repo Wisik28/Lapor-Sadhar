@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Laporan;
 
+use App\Models\Laporan;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 /**
  * StoreLaporanRequest - Validasi untuk membuat laporan baru
@@ -21,8 +23,9 @@ class StoreLaporanRequest extends FormRequest
             'kategori_laporan' => 'required|string|in:Fasilitas,Kebersihan',
             'deskripsi'        => 'required|string|min:10',
             'tanggal_kejadian' => 'required|date|before_or_equal:today',
+            'lokasi_kampus'    => ['required', 'string', Rule::in(Laporan::CAMPUS_OPTIONS)],
             'lokasi'           => 'required|string|max:255',
-            'foto'             => 'nullable|string',
+            'foto'             => ['nullable', Laporan::fotoValidationRule()],
         ];
     }
 
@@ -37,7 +40,9 @@ class StoreLaporanRequest extends FormRequest
             'deskripsi.min'             => 'Deskripsi minimal 10 karakter.',
             'tanggal_kejadian.required' => 'Tanggal kejadian wajib diisi.',
             'tanggal_kejadian.before_or_equal' => 'Tanggal kejadian tidak boleh melebihi hari ini.',
-            'lokasi.required'           => 'Lokasi kejadian wajib diisi.',
+            'lokasi_kampus.required'    => 'Lokasi kampus wajib dipilih.',
+            'lokasi_kampus.in'          => 'Lokasi kampus harus Kampus 1, Kampus 2, Kampus 3, atau Kampus 4.',
+            'lokasi.required'           => 'Detail lokasi kejadian wajib diisi.',
         ];
     }
 }

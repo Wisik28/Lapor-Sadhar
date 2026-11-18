@@ -50,6 +50,7 @@ export interface LaporanItem {
   tanggal_kejadian: string;
   tanggal_buat: string;
   tanggal_rubah?: string | null;
+  lokasi_kampus?: string | null;
   lokasi: string;
   foto?: string | null;
   status_terkini: "Terkirim" | "Diverifikasi" | "Sedang Diverifikasi" | "Terverifikasi" | "Proses" | "Diproses" | "Selesai" | "Ditolak";
@@ -492,6 +493,7 @@ export const laporanApi = {
     kategori_laporan: string;
     deskripsi: string;
     tanggal_kejadian: string;
+    lokasi_kampus: string;
     lokasi: string;
     foto?: string;
   }): Promise<LaporanResponse> {
@@ -514,6 +516,7 @@ export const laporanApi = {
       kategori_laporan: string;
       deskripsi: string;
       tanggal_kejadian: string;
+      lokasi_kampus: string;
       lokasi: string;
       foto: string;
     }>

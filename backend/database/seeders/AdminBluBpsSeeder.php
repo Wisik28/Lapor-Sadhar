@@ -89,6 +89,7 @@ class AdminBluBpsSeeder extends Seeder
 
         foreach ($accounts as $jabatan => $data) {
             $admin = Admin::where('jabatan', $jabatan)->first();
+            $campus = Admin::POSITIONS[$jabatan]['campus'] ?? null;
 
             if ($admin) {
                 $admin->update([
@@ -96,6 +97,7 @@ class AdminBluBpsSeeder extends Seeder
                     'username'   => $data['username'],
                     'password'   => $password,
                     'role'       => $data['role'],
+                    'campus'     => $campus,
                     'email'      => $data['email'],
                 ]);
                 $admin->sessions()->delete();
@@ -105,6 +107,7 @@ class AdminBluBpsSeeder extends Seeder
                     'username'   => $data['username'],
                     'password'   => $password,
                     'role'       => $data['role'],
+                    'campus'     => $campus,
                     'jabatan'    => $jabatan,
                     'email'      => $data['email'],
                 ]);

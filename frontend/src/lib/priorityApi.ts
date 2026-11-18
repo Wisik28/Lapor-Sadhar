@@ -35,6 +35,7 @@ export interface PriorityReportItem {
   deskripsi: string;
   tanggal_buat: string;
   tanggal_kejadian: string;
+  lokasi_kampus?: string | null;
   lokasi: string;
   kategori_lokasi?: string;
   tingkat_keparahan_lokasi?: string;
@@ -80,6 +81,7 @@ export interface PriorityDetailLaporan {
   deskripsi?: string;
   tanggal_buat?: string;
   tanggal_kejadian?: string;
+  lokasi_kampus?: string | null;
   lokasi?: string;
   kategori_lokasi?: string;
   tingkat_keparahan?: string;
