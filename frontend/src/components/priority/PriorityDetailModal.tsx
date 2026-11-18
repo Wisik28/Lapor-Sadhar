@@ -16,9 +16,10 @@ import {
   History,
   FileText,
   ImageIcon,
-  Eye,
-  ExternalLink
+  Eye
 } from "lucide-react";
+import ImagePreviewModal from "@/components/ImagePreviewModal";
+import { getFotoUrl } from "@/lib/laporanPhoto";
 import {
   priorityApi,
   PriorityReportItem,
@@ -255,6 +256,9 @@ export function PriorityDetailModal({
                 )}
               </div>
               <p className="text-sm font-semibold text-gray-900 break-words leading-snug">
+                {(detailData?.laporan?.lokasi_kampus || report.lokasi_kampus)
+                  ? `${detailData?.laporan?.lokasi_kampus || report.lokasi_kampus} — `
+                  : ""}
                 {detailData?.laporan?.lokasi || report.lokasi || "Lokasi tidak dicantumkan."}
               </p>
             </div>
@@ -329,7 +333,7 @@ export function PriorityDetailModal({
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={fotoUrl}
+                      src={getFotoUrl(fotoUrl)}
                       alt={`Bukti foto ${idx + 1}`}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
@@ -581,90 +585,12 @@ export function PriorityDetailModal({
         </div>
       </div>
 
-      {/* Lightbox / Preview Ukuran Penuh Foto */}
-      {activePhotoIndex !== null && fotoList[activePhotoIndex] && (
-        <div
-          className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-in fade-in duration-150"
-          onClick={() => setActivePhotoIndex(null)}
-        >
-          <div
-            className="relative max-w-4xl w-full max-h-[92vh] flex flex-col items-center justify-center"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-full flex items-center justify-between pb-3 text-white">
-              <span className="text-sm font-bold">
-                Foto Bukti #{activePhotoIndex + 1} dari {fotoList.length}
-              </span>
-              <div className="flex items-center gap-2">
-                <a
-                  href={fotoList[activePhotoIndex]}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-semibold transition-colors"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Buka di Tab Baru</span>
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setActivePhotoIndex(null)}
-                  className="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="relative w-full max-h-[75vh] flex items-center justify-center bg-black/50 rounded-2xl overflow-hidden border border-white/10 p-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={fotoList[activePhotoIndex]}
-                alt={`Preview Foto ${activePhotoIndex + 1}`}
-                className="max-h-[72vh] max-w-full object-contain rounded-lg shadow-2xl"
-              />
-            </div>
-
-            {fotoList.length > 1 && (
-              <div className="flex items-center gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setActivePhotoIndex((prev) =>
-                      prev !== null ? (prev - 1 + fotoList.length) % fotoList.length : 0
-                    )
-                  }
-                  className="px-4 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition-colors cursor-pointer"
-                >
-                  Sebelumnya
-                </button>
-                <div className="flex gap-1.5">
-                  {fotoList.map((_, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setActivePhotoIndex(i)}
-                      className={`h-2.5 rounded-full transition-all cursor-pointer ${
-                        i === activePhotoIndex ? "bg-white w-6" : "bg-white/40 w-2.5"
-                      }`}
-                    />
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setActivePhotoIndex((prev) =>
-                      prev !== null ? (prev + 1) % fotoList.length : 0
-                    )
-                  }
-                  className="px-4 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition-colors cursor-pointer"
-                >
-                  Berikutnya
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <ImagePreviewModal
+        images={fotoList.map(getFotoUrl)}
+        activeIndex={activePhotoIndex}
+        onClose={() => setActivePhotoIndex(null)}
+        onChangeIndex={setActivePhotoIndex}
+      />
     </div>
   );
 }

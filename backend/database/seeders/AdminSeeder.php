@@ -41,7 +41,7 @@ class AdminSeeder extends Seeder
                         ? $definition['label']
                         : $admin->nama_admin,
                     'role' => $definition['role'],
-                    'campus' => null,
+                    'campus' => $definition['campus'],
                     'jabatan' => $position,
                 ];
 
@@ -60,7 +60,7 @@ class AdminSeeder extends Seeder
                 'username' => $username,
                 'password' => Hash::make($initialPassword),
                 'role' => $definition['role'],
-                'campus' => null,
+                'campus' => $definition['campus'],
                 'jabatan' => $position,
                 'email' => $email,
             ]);

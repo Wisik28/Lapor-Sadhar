@@ -2,16 +2,16 @@
 
 namespace App\Services;
 
+use App\Models\Admin;
 use App\Models\Laporan;
 use App\Models\Status;
 use App\Services\Priority\LocationCategorizer;
 use App\Services\Priority\LocationSeverityAssessor;
 use App\Support\SchemaVerification;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Carbon\Carbon;
 
 /**
@@ -22,6 +22,7 @@ class LaporanService
 {
     private LocationCategorizer $locationCategorizer;
     private LocationSeverityAssessor $locationSeverityAssessor;
+    private CloudinaryStorageService $cloudinaryStorage;
 
     /**
      * Cache verifikasi kolom lokasi per koneksi PDO untuk mencegah query skema berulang.
@@ -32,10 +33,12 @@ class LaporanService
 
     public function __construct(
         ?LocationCategorizer $locationCategorizer = null,
-        ?LocationSeverityAssessor $locationSeverityAssessor = null
+        ?LocationSeverityAssessor $locationSeverityAssessor = null,
+        ?CloudinaryStorageService $cloudinaryStorage = null
     ) {
         $this->locationCategorizer = $locationCategorizer ?? new LocationCategorizer();
         $this->locationSeverityAssessor = $locationSeverityAssessor ?? new LocationSeverityAssessor($this->locationCategorizer);
+        $this->cloudinaryStorage = $cloudinaryStorage ?? new CloudinaryStorageService();
     }
 
     /**
@@ -51,12 +54,12 @@ class LaporanService
             }
 
             // Sudah diverifikasi pada request sebelumnya: lewati query skema ke database jarak jauh.
-            if (SchemaVerification::isVerified('laporan_location_columns')) {
+            if (SchemaVerification::isVerified('laporan_location_columns_v2')) {
                 return self::$verifiedColumnsByPdo[$pdoId] = true;
             }
 
-            if (Schema::hasColumns('laporan', ['kategori_lokasi', 'tingkat_keparahan', 'skala_keparahan'])) {
-                SchemaVerification::markVerified('laporan_location_columns');
+            if (Schema::hasColumns('laporan', ['kategori_lokasi', 'tingkat_keparahan', 'skala_keparahan', 'lokasi_kampus'])) {
+                SchemaVerification::markVerified('laporan_location_columns_v2');
 
                 return self::$verifiedColumnsByPdo[$pdoId] = true;
             }
@@ -66,6 +69,9 @@ class LaporanService
             }
 
             Schema::table('laporan', function (Blueprint $table) {
+                if (!Schema::hasColumn('laporan', 'lokasi_kampus')) {
+                    $table->string('lokasi_kampus', 20)->nullable()->after('lokasi');
+                }
                 if (!Schema::hasColumn('laporan', 'kategori_lokasi')) {
                     $table->string('kategori_lokasi', 60)->default('Tidak Diketahui');
                 }
@@ -77,7 +83,7 @@ class LaporanService
                 }
             });
 
-            SchemaVerification::markVerified('laporan_location_columns');
+            SchemaVerification::markVerified('laporan_location_columns_v2');
 
             return self::$verifiedColumnsByPdo[$pdoId] = true;
         } catch (\Throwable $e) {
@@ -92,40 +98,52 @@ class LaporanService
     {
         $locationAssessment = $this->locationSeverityAssessor->assessLocation($data['lokasi'] ?? '');
         $hasLocationColumns = $this->ensureLocationColumnsOnLaporan();
+        $uploadedUrls = [];
 
-        return DB::transaction(function () use ($data, $locationAssessment, $hasLocationColumns) {
-            $payload = [
-                'nim'              => $data['nim'],
-                'kategori_laporan' => $data['kategori_laporan'],
-                'deskripsi'        => $data['deskripsi'],
-                'tanggal_kejadian' => $data['tanggal_kejadian'],
-                'lokasi'           => $data['lokasi'],
-                'foto'             => $this->persistFotoPayload($data['foto'] ?? null),
-                'tanggal_buat'     => now(),
-            ];
+        try {
+            $persistedFoto = $this->persistFotoPayload($data['foto'] ?? null, $uploadedUrls);
 
-            if ($hasLocationColumns) {
-                $payload['kategori_lokasi']   = $locationAssessment['kategori_lokasi'];
-                $payload['tingkat_keparahan'] = $locationAssessment['tingkat_keparahan'];
-                $payload['skala_keparahan']   = $locationAssessment['skala_keparahan'];
+            return DB::transaction(function () use ($data, $locationAssessment, $hasLocationColumns, $persistedFoto) {
+                $payload = [
+                    'nim'              => $data['nim'],
+                    'kategori_laporan' => $data['kategori_laporan'],
+                    'deskripsi'        => $data['deskripsi'],
+                    'tanggal_kejadian' => $data['tanggal_kejadian'],
+                    'lokasi_kampus'    => $data['lokasi_kampus'] ?? Laporan::inferCampusFromLokasi($data['lokasi'] ?? null),
+                    'lokasi'           => $data['lokasi'],
+                    'foto'             => $persistedFoto,
+                    'tanggal_buat'     => now(),
+                ];
+
+                if ($hasLocationColumns) {
+                    $payload['kategori_lokasi']   = $locationAssessment['kategori_lokasi'];
+                    $payload['tingkat_keparahan'] = $locationAssessment['tingkat_keparahan'];
+                    $payload['skala_keparahan']   = $locationAssessment['skala_keparahan'];
+                }
+
+                $laporan = Laporan::create($payload);
+
+                // Buat status awal: Terkirim
+                Status::create([
+                    'id_laporan'      => $laporan->id_laporan,
+                    'status_laporan'  => 'Terkirim',
+                    'tanggal_merubah' => now(),
+                ]);
+
+                $result = $laporan->fresh()->load('statuses');
+                $result->setAttribute('kategori_lokasi', $result->kategori_lokasi ?? $locationAssessment['kategori_lokasi']);
+                $result->setAttribute('tingkat_keparahan', $result->tingkat_keparahan ?? $locationAssessment['tingkat_keparahan']);
+                $result->setAttribute('skala_keparahan', (int) ($result->skala_keparahan ?? $locationAssessment['skala_keparahan']));
+
+                return $result;
+            });
+        } catch (\Throwable $e) {
+            foreach ($uploadedUrls as $url) {
+                $this->cloudinaryStorage->deleteByUrl($url);
             }
 
-            $laporan = Laporan::create($payload);
-
-            // Buat status awal: Terkirim
-            Status::create([
-                'id_laporan'      => $laporan->id_laporan,
-                'status_laporan'  => 'Terkirim',
-                'tanggal_merubah' => now(),
-            ]);
-
-            $result = $laporan->fresh()->load('statuses');
-            $result->setAttribute('kategori_lokasi', $result->kategori_lokasi ?? $locationAssessment['kategori_lokasi']);
-            $result->setAttribute('tingkat_keparahan', $result->tingkat_keparahan ?? $locationAssessment['tingkat_keparahan']);
-            $result->setAttribute('skala_keparahan', (int) ($result->skala_keparahan ?? $locationAssessment['skala_keparahan']));
-
-            return $result;
-        });
+            throw $e;
+        }
     }
 
     /**
@@ -170,53 +188,92 @@ class LaporanService
     public function updateLaporan(int $id, array $data): Laporan
     {
         $hasLocationColumns = $this->ensureLocationColumnsOnLaporan();
+        $existingLaporan = Laporan::with(['statuses' => function ($q) {
+            $q->orderBy('tanggal_merubah', 'desc');
+            $q->orderBy('id_status', 'desc');
+        }])->findOrFail($id);
 
-        return DB::transaction(function () use ($id, $data, $hasLocationColumns) {
-            $laporan = Laporan::with(['statuses' => function ($q) {
-                $q->orderBy('tanggal_merubah', 'desc');
-                $q->orderBy('id_status', 'desc');
-            }])->findOrFail($id);
+        // Cek apakah laporan masih bisa diubah (hanya jika status "Terkirim") sebelum upload ke Cloudinary
+        $latestStatus = $existingLaporan->statuses->first()?->status_laporan ?? 'Terkirim';
 
-            // Cek apakah laporan masih bisa diubah (hanya jika status "Terkirim")
-            $latestStatus = $laporan->statuses->first()?->status_laporan ?? 'Terkirim';
+        if ($latestStatus !== 'Terkirim') {
+            throw new \Exception(
+                "Laporan tidak dapat diubah karena statusnya sudah \"$latestStatus\". "
+                . "Hanya laporan berstatus \"Terkirim\" yang dapat diperbarui.",
+                403
+            );
+        }
 
-            if ($latestStatus !== 'Terkirim') {
-                throw new \Exception(
-                    "Laporan tidak dapat diubah karena statusnya sudah \"$latestStatus\". "
-                    . "Hanya laporan berstatus \"Terkirim\" yang dapat diperbarui.",
-                    403
-                );
+        $oldFoto = $existingLaporan->foto;
+        $hasNewFotoInput = isset($data['foto']);
+        $uploadedUrls = [];
+
+        try {
+            $persistedFoto = $hasNewFotoInput
+                ? $this->persistFotoPayload($data['foto'], $uploadedUrls)
+                : $oldFoto;
+
+            $result = DB::transaction(function () use ($id, $data, $hasLocationColumns, $persistedFoto) {
+                $laporan = Laporan::with(['statuses' => function ($q) {
+                    $q->orderBy('tanggal_merubah', 'desc');
+                    $q->orderBy('id_status', 'desc');
+                }])->findOrFail($id);
+
+                $latestStatus = $laporan->statuses->first()?->status_laporan ?? 'Terkirim';
+                if ($latestStatus !== 'Terkirim') {
+                    throw new \Exception(
+                        "Laporan tidak dapat diubah karena statusnya sudah \"$latestStatus\". "
+                        . "Hanya laporan berstatus \"Terkirim\" yang dapat diperbarui.",
+                        403
+                    );
+                }
+
+                $newLokasi = $data['lokasi'] ?? $laporan->lokasi;
+                $locationAssessment = $this->locationSeverityAssessor->assessLocation($newLokasi);
+
+                $updatePayload = [
+                    'kategori_laporan' => $data['kategori_laporan'] ?? $laporan->kategori_laporan,
+                    'deskripsi'        => $data['deskripsi'] ?? $laporan->deskripsi,
+                    'tanggal_kejadian' => $data['tanggal_kejadian'] ?? $laporan->tanggal_kejadian,
+                    'lokasi_kampus'    => $data['lokasi_kampus'] ?? $laporan->lokasi_kampus,
+                    'lokasi'           => $newLokasi,
+                    'foto'             => $persistedFoto,
+                    'tanggal_rubah'    => now(),
+                ];
+
+                if ($hasLocationColumns) {
+                    $updatePayload['kategori_lokasi']   = $locationAssessment['kategori_lokasi'];
+                    $updatePayload['tingkat_keparahan'] = $locationAssessment['tingkat_keparahan'];
+                    $updatePayload['skala_keparahan']   = $locationAssessment['skala_keparahan'];
+                }
+
+                $laporan->update($updatePayload);
+
+                $result = $laporan->fresh()->load('statuses');
+                $result->setAttribute('kategori_lokasi', $result->kategori_lokasi ?? $locationAssessment['kategori_lokasi']);
+                $result->setAttribute('tingkat_keparahan', $result->tingkat_keparahan ?? $locationAssessment['tingkat_keparahan']);
+                $result->setAttribute('skala_keparahan', (int) ($result->skala_keparahan ?? $locationAssessment['skala_keparahan']));
+
+                return $result;
+            });
+        } catch (\Throwable $e) {
+            foreach ($uploadedUrls as $url) {
+                $this->cloudinaryStorage->deleteByUrl($url);
             }
 
-            $newLokasi = $data['lokasi'] ?? $laporan->lokasi;
-            $locationAssessment = $this->locationSeverityAssessor->assessLocation($newLokasi);
+            throw $e;
+        }
 
-            $updatePayload = [
-                'kategori_laporan' => $data['kategori_laporan'] ?? $laporan->kategori_laporan,
-                'deskripsi'        => $data['deskripsi'] ?? $laporan->deskripsi,
-                'tanggal_kejadian' => $data['tanggal_kejadian'] ?? $laporan->tanggal_kejadian,
-                'lokasi'           => $newLokasi,
-                'foto'             => isset($data['foto'])
-                    ? $this->persistFotoPayload($data['foto'])
-                    : $laporan->foto,
-                'tanggal_rubah'    => now(),
-            ];
-
-            if ($hasLocationColumns) {
-                $updatePayload['kategori_lokasi']   = $locationAssessment['kategori_lokasi'];
-                $updatePayload['tingkat_keparahan'] = $locationAssessment['tingkat_keparahan'];
-                $updatePayload['skala_keparahan']   = $locationAssessment['skala_keparahan'];
+        if ($hasNewFotoInput) {
+            $retainedUrls = $this->extractStoredPhotoItems($persistedFoto);
+            foreach ($this->extractStoredPhotoItems($oldFoto) as $oldUrl) {
+                if (! in_array($oldUrl, $retainedUrls, true)) {
+                    $this->cloudinaryStorage->deleteByUrl($oldUrl);
+                }
             }
+        }
 
-            $laporan->update($updatePayload);
-
-            $result = $laporan->fresh()->load('statuses');
-            $result->setAttribute('kategori_lokasi', $result->kategori_lokasi ?? $locationAssessment['kategori_lokasi']);
-            $result->setAttribute('tingkat_keparahan', $result->tingkat_keparahan ?? $locationAssessment['tingkat_keparahan']);
-            $result->setAttribute('skala_keparahan', (int) ($result->skala_keparahan ?? $locationAssessment['skala_keparahan']));
-
-            return $result;
-        });
+        return $result;
     }
 
     /**
@@ -224,7 +281,9 @@ class LaporanService
      */
     public function deleteLaporan(int $id): bool
     {
-        return DB::transaction(function () use ($id) {
+        $oldFoto = null;
+
+        $deleted = DB::transaction(function () use ($id, &$oldFoto) {
             $laporan = Laporan::with(['statuses' => function ($q) {
                 $q->orderBy('tanggal_merubah', 'desc');
                 $q->orderBy('id_status', 'desc');
@@ -239,14 +298,24 @@ class LaporanService
                 );
             }
 
+            $oldFoto = $laporan->foto;
+
             return $laporan->delete();
         });
+
+        if ($deleted) {
+            foreach ($this->extractStoredPhotoItems($oldFoto) as $url) {
+                $this->cloudinaryStorage->deleteByUrl($url);
+            }
+        }
+
+        return $deleted;
     }
 
     /**
-     * Ambil semua laporan untuk admin
+     * Ambil semua laporan untuk admin sesuai cakupan kampus dan unitnya.
      */
-    public function getAllLaporanForAdmin()
+    public function getAllLaporanForAdmin(?Admin $admin = null)
     {
         $laporans = Laporan::with([
             'statuses' => function ($query) {
@@ -255,6 +324,7 @@ class LaporanService
             },
             'pelapor.mahasiswa',
         ])
+            ->visibleToAdmin($admin)
             ->orderBy('tanggal_buat', 'desc')
             ->get()
             ->map(function ($laporan) {
@@ -357,54 +427,102 @@ class LaporanService
         ];
     }
 
-    private function persistFotoPayload(?string $foto): ?string
+    /**
+     * Unggah gambar baru ke Cloudinary dan kembalikan URL (string tunggal atau JSON array) untuk disimpan di PostgreSQL.
+     *
+     * @param  mixed  $foto
+     * @param  array<int, string>  $uploadedUrls
+     */
+    private function persistFotoPayload(mixed $foto, array &$uploadedUrls = []): ?string
     {
-        if ($foto === null || trim($foto) === '') {
+        if ($foto === null) {
             return null;
         }
 
-        $decoded = json_decode($foto, true);
-        $photos = is_array($decoded) && array_is_list($decoded) ? $decoded : [$foto];
-        $storedPhotos = [];
-        $extensions = [
-            'image/jpeg' => 'jpg',
-            'image/png' => 'png',
-            'image/gif' => 'gif',
-            'image/webp' => 'webp',
-        ];
+        if (is_string($foto)) {
+            $trimmed = trim($foto);
+            if ($trimmed === '') {
+                return null;
+            }
+            $decoded = json_decode($trimmed, true);
+            $photos = is_array($decoded) && array_is_list($decoded) ? $decoded : [$trimmed];
+        } elseif ($foto instanceof UploadedFile) {
+            $photos = [$foto];
+        } elseif (is_array($foto)) {
+            $photos = array_values($foto);
+        } else {
+            throw new \InvalidArgumentException('Format foto laporan tidak valid.');
+        }
+
+        $storedUrls = [];
 
         foreach ($photos as $photo) {
-            if (!is_string($photo)) {
-                throw new \InvalidArgumentException('Format foto laporan tidak valid.');
-            }
-
-            if (!preg_match('/^data:image\/[^;]+;base64,(.+)$/s', $photo, $matches)) {
-                $storedPhotos[] = $photo;
+            if ($photo instanceof UploadedFile) {
+                $url = $this->cloudinaryStorage->uploadUploadedFile($photo);
+                $uploadedUrls[] = $url;
+                $storedUrls[] = $url;
                 continue;
             }
 
-            $contents = base64_decode($matches[1], true);
-            if ($contents === false) {
-                throw new \InvalidArgumentException('Data foto laporan tidak valid.');
+            if (! is_string($photo) || trim($photo) === '') {
+                throw new \InvalidArgumentException('Format foto laporan tidak valid.');
             }
 
-            $mimeType = (new \finfo(FILEINFO_MIME_TYPE))->buffer($contents);
-            $extension = $extensions[$mimeType] ?? null;
-            if ($extension === null) {
-                throw new \InvalidArgumentException('Format foto harus berupa JPG, PNG, GIF, atau WebP.');
+            $trimmedPhoto = trim($photo);
+
+            if (preg_match('/^data:image\/[^;]+;base64,(.+)$/s', $trimmedPhoto, $matches) === 1) {
+                $contents = base64_decode($matches[1], true);
+                if ($contents === false) {
+                    throw new \InvalidArgumentException('Data foto laporan tidak valid.');
+                }
+
+                $extension = $this->cloudinaryStorage->detectSupportedExtension($contents);
+                $url = $this->cloudinaryStorage->uploadImage($contents, $extension);
+                $uploadedUrls[] = $url;
+                $storedUrls[] = $url;
+                continue;
             }
 
-            $path = 'laporan/' . Str::uuid() . '.' . $extension;
-            if (!Storage::disk('public')->put($path, $contents)) {
-                throw new \RuntimeException('Foto laporan gagal disimpan.');
+            if (
+                filter_var($trimmedPhoto, FILTER_VALIDATE_URL) !== false
+                && preg_match('/^https?:\/\//i', $trimmedPhoto) === 1
+            ) {
+                $storedUrls[] = $trimmedPhoto;
+                continue;
             }
 
-            $storedPhotos[] = 'storage/' . $path;
+            if (str_starts_with($trimmedPhoto, 'storage/')) {
+                $storedUrls[] = $trimmedPhoto;
+                continue;
+            }
+
+            throw new \InvalidArgumentException('Format foto laporan tidak valid. Gunakan gambar atau URL yang valid.');
         }
 
-        return count($storedPhotos) > 1
-            ? json_encode($storedPhotos, JSON_THROW_ON_ERROR)
-            : ($storedPhotos[0] ?? null);
+        if ($storedUrls === []) {
+            return null;
+        }
+
+        return count($storedUrls) > 1
+            ? json_encode($storedUrls, JSON_THROW_ON_ERROR)
+            : $storedUrls[0];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function extractStoredPhotoItems(?string $foto): array
+    {
+        if ($foto === null || trim($foto) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($foto, true);
+        if (is_array($decoded) && array_is_list($decoded)) {
+            return array_values(array_filter($decoded, static fn ($item): bool => is_string($item) && trim($item) !== ''));
+        }
+
+        return [trim($foto)];
     }
 
     /**
@@ -424,6 +542,7 @@ class LaporanService
             'tanggal_kejadian'  => $laporan->tanggal_kejadian,
             'tanggal_buat'      => $laporan->tanggal_buat,
             'tanggal_rubah'     => $laporan->tanggal_rubah,
+            'lokasi_kampus'     => $laporan->lokasi_kampus,
             'lokasi'            => $laporan->lokasi,
             'kategori_lokasi'   => $laporan->kategori_lokasi ?: $locationAssessment['kategori_lokasi'],
             'tingkat_keparahan' => $laporan->tingkat_keparahan ?: $locationAssessment['tingkat_keparahan'],

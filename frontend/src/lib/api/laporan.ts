@@ -50,6 +50,7 @@ export const laporanApi = {
     kategori_laporan: string;
     deskripsi: string;
     tanggal_kejadian: string;
+    lokasi_kampus: string;
     lokasi: string;
     foto?: string;
   }): Promise<LaporanResponse> {
@@ -72,6 +73,7 @@ export const laporanApi = {
       kategori_laporan: string;
       deskripsi: string;
       tanggal_kejadian: string;
+      lokasi_kampus: string;
       lokasi: string;
       foto: string;
     }>

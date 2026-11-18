@@ -93,6 +93,7 @@ class SetupAdminBluBpsCommand extends Command
         DB::transaction(function () use ($accounts, $hashedPassword, $defaultPassword, &$tableData) {
             foreach ($accounts as $jabatan => $data) {
                 $admin = Admin::where('jabatan', $jabatan)->first();
+                $campus = Admin::POSITIONS[$jabatan]['campus'] ?? null;
 
                 if ($admin) {
                     $admin->update([
@@ -100,6 +101,7 @@ class SetupAdminBluBpsCommand extends Command
                         'username'   => $data['username'],
                         'password'   => $hashedPassword,
                         'role'       => $data['role'],
+                        'campus'     => $campus,
                     ]);
                     $admin->sessions()->delete();
                 } else {
@@ -108,6 +110,7 @@ class SetupAdminBluBpsCommand extends Command
                         'username'   => $data['username'],
                         'password'   => $hashedPassword,
                         'role'       => $data['role'],
+                        'campus'     => $campus,
                         'jabatan'    => $jabatan,
                         'email'      => $data['email'],
                     ]);

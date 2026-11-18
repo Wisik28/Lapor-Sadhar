@@ -8,6 +8,7 @@ import { useAuthProtection } from '@/lib/useAuth';
 import { useLaporanList } from '@/hooks/useLaporanList';
 import { useUbahPengajuan } from '@/hooks/useUbahPengajuan';
 import { LaporanItem } from '@/lib/api';
+import { LOKASI_KAMPUS_OPTIONS } from '@/lib/laporanCampus';
 
 export default function UbahPengajuanPage() {
   // All hooks at top level
@@ -147,7 +148,7 @@ export default function UbahPengajuanPage() {
                         <p className="text-sm text-slate-600 mt-1">{laporan.deskripsi}</p>
                         <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
                           <MapPin className="w-3 h-3" />
-                          {laporan.lokasi}
+                          {laporan.lokasi_kampus ? `${laporan.lokasi_kampus} — ` : ''}{laporan.lokasi}
                         </p>
                       </div>
                       <button
@@ -227,6 +228,22 @@ export default function UbahPengajuanPage() {
                     >
                       <option value="Fasilitas">Fasilitas</option>
                       <option value="Kebersihan">Kebersihan</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Lokasi Kampus</label>
+                    <select
+                      value={ubahPengajuan.state.editLokasiKampus}
+                      onChange={(e) => ubahPengajuan.updateEditField('editLokasiKampus', e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C]"
+                    >
+                      <option value="" disabled>-- Pilih Lokasi Kampus --</option>
+                      {LOKASI_KAMPUS_OPTIONS.map((kampus) => (
+                        <option key={kampus} value={kampus}>
+                          {kampus}
+                        </option>
+                      ))}
                     </select>
                   </div>
 

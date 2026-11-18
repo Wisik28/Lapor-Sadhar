@@ -96,6 +96,7 @@ class LaporanController extends Controller
                     'tanggal_kejadian'  => $laporan->tanggal_kejadian,
                     'tanggal_buat'      => $laporan->tanggal_buat,
                     'tanggal_rubah'     => $laporan->tanggal_rubah,
+                    'lokasi_kampus'     => $laporan->lokasi_kampus,
                     'lokasi'            => $laporan->lokasi,
                     'kategori_lokasi'   => $laporan->kategori_lokasi ?? 'Tidak Diketahui',
                     'tingkat_keparahan' => $laporan->tingkat_keparahan ?? 'Sedang',
@@ -240,6 +241,8 @@ class LaporanController extends Controller
     public function adminIndex(Request $request): JsonResponse
     {
         try {
+            $admin = $request->attributes->get('admin_session')?->admin;
+
             $query = Laporan::with([
                 'statuses' => function ($query) {
                     $query->orderBy('tanggal_merubah', 'desc');
@@ -248,6 +251,7 @@ class LaporanController extends Controller
                 'pelapor.mahasiswa',
                 'pelapor.pegawai',
             ])
+                ->visibleToAdmin($admin)
                 ->orderBy('tanggal_buat', 'desc');
 
             $total = $query->count();
@@ -276,6 +280,7 @@ class LaporanController extends Controller
                     'tanggal_kejadian'  => $laporan->tanggal_kejadian,
                     'tanggal_buat'      => $laporan->tanggal_buat,
                     'tanggal_rubah'     => $laporan->tanggal_rubah,
+                    'lokasi_kampus'     => $laporan->lokasi_kampus,
                     'lokasi'            => $laporan->lokasi,
                     'kategori_lokasi'   => $laporan->kategori_lokasi ?? 'Tidak Diketahui',
                     'tingkat_keparahan' => $laporan->tingkat_keparahan ?? 'Sedang',
@@ -312,6 +317,7 @@ class LaporanController extends Controller
     public function adminRekap(Request $request): JsonResponse
     {
         try {
+            $admin = $request->attributes->get('admin_session')?->admin;
             $bulan = $request->query('bulan'); // format: "2026-10"
             $tahun = $request->query('tahun'); // format: "2026"
 
@@ -319,7 +325,7 @@ class LaporanController extends Controller
             $query = Laporan::with(['statuses' => function ($q) {
                 $q->orderBy('tanggal_merubah', 'desc');
                 $q->orderBy('id_status', 'desc');
-            }]);
+            }])->visibleToAdmin($admin);
 
             // Filter periode jika ada
             if ($bulan) {
@@ -519,6 +525,16 @@ class LaporanController extends Controller
         }
 
         try {
+            $admin = $request->attributes->get('admin_session')?->admin;
+            $laporan = Laporan::findOrFail($id);
+
+            if ($admin && ! $admin->canAccessLaporan($laporan)) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Anda tidak memiliki wewenang untuk mengubah status laporan dari kampus atau unit lain.',
+                ], 403);
+            }
+
             $hasil = $this->laporanService->updateStatusLaporan(
                 $id,
                 $request->input('status_laporan'),
@@ -566,6 +582,13 @@ class LaporanController extends Controller
      */
     private function handleError(\Throwable $e): JsonResponse
     {
+        if ($e instanceof \InvalidArgumentException) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+
         $msg = $e->getMessage();
 
         if (str_contains($msg, 'could not find driver')) {

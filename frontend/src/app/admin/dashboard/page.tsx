@@ -3,9 +3,19 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import AdminNavbar from "@/components/AdminNavbar";
+import PeriodFilter from "@/components/PeriodFilter";
+import ImagePreviewModal from "@/components/ImagePreviewModal";
 import { useAdminProtection } from "@/lib/useAuth";
 import { adminLaporanApi } from "@/lib/api";
 import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
+import { LOKASI_KAMPUS_OPTIONS, resolveLokasiKampus } from "@/lib/laporanCampus";
+import {
+  KATEGORI_LAPORAN_OPTIONS,
+  getKategoriTextColorClass,
+  isCampusScopedAdmin,
+  isWakilRektorII,
+  normalizeKategoriLaporan,
+} from "@/lib/admin-positions";
 import { useDebounce } from "@/hooks/useDebounce";
 import {
   Inbox,
@@ -48,8 +58,27 @@ const MONTH_NAMES: Record<string, string> = {
   "12": "Desember",
 };
 
+const REPORT_TABLE_COLUMNS = [
+  { label: "ID", alignRight: false },
+  { label: "Tanggal", alignRight: false },
+  { label: "Pelapor", alignRight: false },
+  { label: "Lokasi & Fasilitas", alignRight: false },
+  { label: "Status", alignRight: false },
+  { label: "Aksi", alignRight: true },
+] as const;
+
+const WR2_REPORT_TABLE_COLUMNS = [
+  { label: "ID", alignRight: false },
+  { label: "Tanggal", alignRight: false },
+  { label: "Pelapor", alignRight: false },
+  { label: "Kategori Laporan", alignRight: false },
+  { label: "Lokasi & Fasilitas", alignRight: false },
+  { label: "Status", alignRight: false },
+  { label: "Aksi", alignRight: true },
+] as const;
+
 export interface ReportItem {
-  id: string; // ID Tiket (e.g. "TK-2026-001")
+  id: string; // ID Laporan (e.g. "001")
   idRaw: number;
   tanggal: string; // YYYY-MM-DD
   waktu: string; // HH:mm
@@ -77,6 +106,7 @@ interface RawLaporanApiItem {
   tanggal_kejadian?: string;
   tanggal_buat?: string;
   tanggal_rubah?: string | null;
+  lokasi_kampus?: string | null;
   lokasi?: string;
   kategori_lokasi?: string;
   tingkat_keparahan?: string;
@@ -130,56 +160,14 @@ function parseTanggalDanWaktu(rawDate?: string) {
   };
 }
 
-function formatTicketId(id: number, rawDate?: string): string {
-  let year = 2026;
-  if (rawDate) {
-    const d = new Date(rawDate);
-    if (!Number.isNaN(d.getTime())) {
-      year = d.getFullYear();
-    } else {
-      const match = rawDate.match(/^(\d{4})/);
-      if (match) year = Number(match[1]);
-    }
-  }
-  return `TK-${year}-${String(id).padStart(3, "0")}`;
+function formatReportId(id: number): string {
+  return String(id).padStart(3, "0");
 }
 
-function parseLokasi(lokasi?: string) {
-  if (!lokasi) {
-    return {
-      lokasiDisplay: "Lokasi tidak dicantumkan",
-      kampus: "Kampus Sanata Dharma",
-    };
-  }
-
-  const lower = lokasi.toLowerCase();
-  let kampus = "Kampus III Paingan";
-
-  if (
-    lower.includes("kampus iii") ||
-    lower.includes("kampus 3") ||
-    lower.includes("paingan")
-  ) {
-    kampus = "Kampus III Paingan";
-  } else if (lower.includes("kampus ii") || lower.includes("kampus 2")) {
-    kampus = "Kampus II Mrican";
-  } else if (
-    lower.includes("kampus i") ||
-    lower.includes("kampus 1") ||
-    lower.includes("mrican")
-  ) {
-    kampus = "Kampus I Mrican";
-  } else if (
-    lower.includes("kampus iv") ||
-    lower.includes("kampus 4") ||
-    lower.includes("kotabaru")
-  ) {
-    kampus = "Kampus IV Kotabaru";
-  }
-
+function parseLokasi(lokasi?: string, lokasiKampus?: string | null) {
   return {
-    lokasiDisplay: lokasi,
-    kampus,
+    lokasiDisplay: lokasi || "Lokasi tidak dicantumkan",
+    kampus: resolveLokasiKampus(lokasiKampus, lokasi),
   };
 }
 
@@ -239,7 +227,7 @@ export default function AdminDashboardPage() {
   const [loadingReports, setLoadingReports] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // State Filter Periode Navbar (Bulan & Tahun) - default Semua agar seluruh data tampil
+  // State Filter Periode (Bulan & Tahun) - default Semua agar seluruh data tampil
   const [selectedMonth, setSelectedMonth] = useState("Semua");
   const [selectedYear, setSelectedYear] = useState("Semua");
 
@@ -247,7 +235,15 @@ export default function AdminDashboardPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [filterLokasi, setFilterLokasi] = useState("Semua");
+  const [filterKategori, setFilterKategori] = useState("Semua");
   const [filterStatus, setFilterStatus] = useState("Semua");
+
+  const isWR2 = useMemo(() => isWakilRektorII(authUser), [authUser]);
+  const showLocationFilter = useMemo(
+    () => !isCampusScopedAdmin(authUser),
+    [authUser]
+  );
+  const tableColumns = isWR2 ? WR2_REPORT_TABLE_COLUMNS : REPORT_TABLE_COLUMNS;
 
   // State Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -256,10 +252,18 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => setCurrentPage(1), 0);
     return () => window.clearTimeout(timer);
-  }, [debouncedSearchTerm, filterLokasi, filterStatus, selectedMonth, selectedYear]);
+  }, [
+    debouncedSearchTerm,
+    filterLokasi,
+    filterKategori,
+    filterStatus,
+    selectedMonth,
+    selectedYear,
+  ]);
 
   // State Modal Detail
   const [selectedReport, setSelectedReport] = useState<ReportItem | null>(null);
+  const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null);
 
   // Authenticated Admin User
   const adminUser = useMemo(() => {
@@ -291,7 +295,7 @@ export default function AdminDashboardPage() {
         const { tanggal, waktu } = parseTanggalDanWaktu(
           item.tanggal_buat || item.tanggal_kejadian
         );
-        const { lokasiDisplay, kampus } = parseLokasi(item.lokasi);
+        const { lokasiDisplay, kampus } = parseLokasi(item.lokasi, item.lokasi_kampus);
         const fotoList = getFotoList(item.foto);
         const status = normalizeToDashboardStatus(
           item.status_terkini || item.status_laporan
@@ -310,7 +314,7 @@ export default function AdminDashboardPage() {
         }
 
         return {
-          id: formatTicketId(idRaw, item.tanggal_buat || item.tanggal_kejadian),
+          id: formatReportId(idRaw),
           idRaw,
           tanggal,
           waktu,
@@ -367,7 +371,7 @@ export default function AdminDashboardPage() {
       const matchesYear =
         selectedYear === "Semua" || itemYear === selectedYear;
 
-      // 2. Pencarian (ID tiket, nomor ID asli, pelapor, atau fasilitas/sarana)
+      // 2. Pencarian (ID laporan, nomor ID asli, pelapor, atau fasilitas/sarana)
       const searchLower = debouncedSearchTerm.toLowerCase();
       const matchesSearch =
         debouncedSearchTerm === "" ||
@@ -376,15 +380,24 @@ export default function AdminDashboardPage() {
         item.pelaporNama.toLowerCase().includes(searchLower) ||
         item.pelaporNim.toLowerCase().includes(searchLower) ||
         item.fasilitas.toLowerCase().includes(searchLower) ||
+        item.kategori.toLowerCase().includes(searchLower) ||
+        item.kampus.toLowerCase().includes(searchLower) ||
         item.lokasi.toLowerCase().includes(searchLower);
 
-      // 3. Filter Lokasi Kampus
+      // 3. Filter Lokasi Kampus (hanya aktif untuk admin lintas semua kampus)
       const matchesLokasi =
+        !showLocationFilter ||
         filterLokasi === "Semua" ||
         item.kampus === filterLokasi ||
         item.lokasi.toLowerCase().includes(filterLokasi.toLowerCase());
 
-      // 4. Filter Status
+      // 4. Filter Kategori Laporan (khusus Wakil Rektor II)
+      const matchesKategori =
+        !isWR2 ||
+        filterKategori === "Semua" ||
+        normalizeKategoriLaporan(item.kategori) === filterKategori;
+
+      // 5. Filter Status
       const matchesStatus =
         filterStatus === "Semua" || item.status === filterStatus;
 
@@ -393,6 +406,7 @@ export default function AdminDashboardPage() {
         matchesYear &&
         matchesSearch &&
         matchesLokasi &&
+        matchesKategori &&
         matchesStatus
       );
     });
@@ -401,7 +415,10 @@ export default function AdminDashboardPage() {
     selectedMonth,
     selectedYear,
     debouncedSearchTerm,
+    showLocationFilter,
     filterLokasi,
+    isWR2,
+    filterKategori,
     filterStatus,
   ]);
 
@@ -429,6 +446,7 @@ export default function AdminDashboardPage() {
   const handleResetFilter = () => {
     setSearchTerm("");
     setFilterLokasi("Semua");
+    setFilterKategori("Semua");
     setFilterStatus("Semua");
     setCurrentPage(1);
   };
@@ -516,21 +534,11 @@ export default function AdminDashboardPage() {
       {!authLoading && (
         <div className="min-h-screen w-full bg-[#F8F9FA] text-slate-800 flex flex-col font-sans antialiased">
           {/* ------------------------------------------------------------- */}
-          {/* 1. TOP NAVBAR ADMIN DENGAN FILTER BULAN & TAHUN */}
+          {/* 1. TOP NAVBAR ADMIN */}
           {/* ------------------------------------------------------------- */}
           <AdminNavbar
             adminName={adminUser.nama}
             adminRole={adminUser.role}
-            selectedMonth={selectedMonth}
-            selectedYear={selectedYear}
-            onMonthChange={(m) => {
-              setSelectedMonth(m);
-              setCurrentPage(1);
-            }}
-            onYearChange={(y) => {
-              setSelectedYear(y);
-              setCurrentPage(1);
-            }}
           />
 
           {/* ------------------------------------------------------------- */}
@@ -554,18 +562,27 @@ export default function AdminDashboardPage() {
               </div>
             )}
 
-            {/* Keterangan Periode Aktif & Tombol Segarkan */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-white px-4 py-3 rounded-2xl border border-slate-200/80 shadow-2xs">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#7A0C0C]" />
+            {/* Keterangan Periode Aktif, Filter Bulan/Tahun & Tombol Segarkan */}
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 bg-white px-4 py-3 rounded-2xl border border-slate-200/80 shadow-2xs">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* <span className="w-2.5 h-2.5 rounded-full bg-[#7A0C0C]" /> */}
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   Periode Data Aktif:
                 </span>
-                <span className="text-xs font-bold text-gray-900 bg-gray-100 px-2.5 py-1 rounded-lg">
-                  {periodLabel}
-                </span>
+                <PeriodFilter
+                  selectedMonth={selectedMonth}
+                  selectedYear={selectedYear}
+                  onMonthChange={(m) => {
+                    setSelectedMonth(m);
+                    setCurrentPage(1);
+                  }}
+                  onYearChange={(y) => {
+                    setSelectedYear(y);
+                    setCurrentPage(1);
+                  }}
+                />
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between lg:justify-end gap-3">
                 <span className="text-xs text-gray-500 font-medium">
                   {loadingReports
                     ? "Memuat data laporan..."
@@ -769,7 +786,7 @@ export default function AdminDashboardPage() {
                       setSearchTerm(e.target.value);
                       setCurrentPage(1);
                     }}
-                    placeholder="Cari ID tiket, nama pelapor, NIM, fasilitas, atau ruangan..."
+                    placeholder="Cari ID laporan, nama pelapor, NIM, fasilitas, atau ruangan..."
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50/50 text-sm text-gray-800 placeholder:text-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] transition-all min-h-[44px]"
                   />
                   {searchTerm && (
@@ -785,24 +802,49 @@ export default function AdminDashboardPage() {
 
                 {/* Filter Dropdowns & Reset */}
                 <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5">
-                  {/* Filter Lokasi Kampus */}
-                  <div className="w-full sm:w-auto">
-                    <select
-                      value={filterLokasi}
-                      onChange={(e) => {
-                        setFilterLokasi(e.target.value);
-                        setCurrentPage(1);
-                      }}
-                      aria-label="Filter berdasarkan lokasi kampus"
-                      className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
-                    >
-                      <option value="Semua">Semua Lokasi</option>
-                      <option value="Kampus I Mrican">Kampus I Mrican</option>
-                      <option value="Kampus II Mrican">Kampus II Mrican</option>
-                      <option value="Kampus III Paingan">Kampus III Paingan</option>
-                      <option value="Kampus IV Kotabaru">Kampus IV Kotabaru</option>
-                    </select>
-                  </div>
+                  {/* Filter Lokasi Kampus (dihilangkan untuk admin masing-masing kampus) */}
+                  {showLocationFilter && (
+                    <div className="w-full sm:w-auto">
+                      <select
+                        value={filterLokasi}
+                        onChange={(e) => {
+                          setFilterLokasi(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        aria-label="Filter berdasarkan lokasi kampus"
+                        className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
+                      >
+                        <option value="Semua">Semua Lokasi</option>
+                        {LOKASI_KAMPUS_OPTIONS.map((kampus) => (
+                          <option key={kampus} value={kampus}>
+                            {kampus}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Filter Kategori Laporan (khusus Wakil Rektor II) */}
+                  {isWR2 && (
+                    <div className="w-full sm:w-auto">
+                      <select
+                        value={filterKategori}
+                        onChange={(e) => {
+                          setFilterKategori(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        aria-label="Filter berdasarkan kategori laporan"
+                        className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
+                      >
+                        <option value="Semua">Semua Kategori</option>
+                        {KATEGORI_LAPORAN_OPTIONS.map((kategori) => (
+                          <option key={kategori} value={kategori}>
+                            {kategori}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   {/* Filter Status Laporan */}
                   <div className="w-full sm:w-auto">
@@ -838,7 +880,8 @@ export default function AdminDashboardPage() {
 
               {/* Status Aktif Filter Info */}
               {(debouncedSearchTerm !== "" ||
-                filterLokasi !== "Semua" ||
+                (showLocationFilter && filterLokasi !== "Semua") ||
+                (isWR2 && filterKategori !== "Semua") ||
                 filterStatus !== "Semua") && (
                 <div className="pt-2 border-t border-gray-100 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                   <span className="font-medium text-gray-700">Filter aktif:</span>
@@ -853,11 +896,22 @@ export default function AdminDashboardPage() {
                       </button>
                     </span>
                   )}
-                  {filterLokasi !== "Semua" && (
+                  {showLocationFilter && filterLokasi !== "Semua" && (
                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-800">
                       {filterLokasi}
                       <button
                         onClick={() => setFilterLokasi("Semua")}
+                        className="hover:text-red-600 cursor-pointer"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  )}
+                  {isWR2 && filterKategori !== "Semua" && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-800">
+                      Kategori: {filterKategori}
+                      <button
+                        onClick={() => setFilterKategori("Semua")}
                         className="hover:text-red-600 cursor-pointer"
                       >
                         ×
@@ -924,35 +978,36 @@ export default function AdminDashboardPage() {
                     <table className="w-full text-left text-sm">
                       <thead className="bg-gray-50/75 border-b border-gray-200/80 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
                         <tr>
-                          <th scope="col" className="px-5 py-3.5">
-                            Tiket & Tanggal
-                          </th>
-                          <th scope="col" className="px-5 py-3.5">
-                            Pelapor
-                          </th>
-                          <th scope="col" className="px-5 py-3.5">
-                            Lokasi & Fasilitas
-                          </th>
-                          <th scope="col" className="px-5 py-3.5">
-                            Status
-                          </th>
-                          <th scope="col" className="px-5 py-3.5 text-right">
-                            Aksi
-                          </th>
+                          {tableColumns.map((col) => (
+                            <th
+                              key={col.label}
+                              scope="col"
+                              className={`px-5 py-3.5 ${col.alignRight ? "text-right" : ""}`}
+                            >
+                              {col.label}
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {Array.from({ length: 5 }).map((_, idx) => (
                           <tr key={idx} className="animate-pulse">
                             <td className="px-5 py-4 align-top">
-                              <div className="h-4 bg-gray-200 rounded w-24 mb-2" />
-                              <div className="h-3 bg-gray-100 rounded w-32" />
+                              <div className="h-4 bg-gray-200 rounded w-10" />
+                            </td>
+                            <td className="px-5 py-4 align-top">
+                              <div className="h-4 bg-gray-100 rounded w-32" />
                             </td>
                             <td className="px-5 py-4 align-top">
                               <div className="h-4 bg-gray-200 rounded w-28 mb-1.5" />
                               <div className="h-3 bg-gray-100 rounded w-20 mb-1" />
                               <div className="h-3 bg-gray-100 rounded w-16" />
                             </td>
+                            {isWR2 && (
+                              <td className="px-5 py-4 align-top">
+                                <div className="h-4 bg-gray-200 rounded w-20" />
+                              </td>
+                            )}
                             <td className="px-5 py-4 align-top">
                               <div className="h-4 bg-gray-200 rounded w-36 mb-1.5" />
                               <div className="h-3 bg-gray-100 rounded w-44 mb-1" />
@@ -1012,21 +1067,15 @@ export default function AdminDashboardPage() {
                     <table className="w-full text-left text-sm">
                       <thead className="bg-gray-50/75 border-b border-gray-200/80 text-[11px] font-bold text-gray-500 uppercase tracking-wider">
                         <tr>
-                          <th scope="col" className="px-5 py-3.5">
-                            Tiket & Tanggal
-                          </th>
-                          <th scope="col" className="px-5 py-3.5">
-                            Pelapor
-                          </th>
-                          <th scope="col" className="px-5 py-3.5">
-                            Lokasi & Fasilitas
-                          </th>
-                          <th scope="col" className="px-5 py-3.5">
-                            Status
-                          </th>
-                          <th scope="col" className="px-5 py-3.5 text-right">
-                            Aksi
-                          </th>
+                          {tableColumns.map((col) => (
+                            <th
+                              key={col.label}
+                              scope="col"
+                              className={`px-5 py-3.5 ${col.alignRight ? "text-right" : ""}`}
+                            >
+                              {col.label}
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
@@ -1035,12 +1084,16 @@ export default function AdminDashboardPage() {
                             key={report.id}
                             className="hover:bg-gray-50/80 transition-colors group"
                           >
-                            {/* Kolom Tiket & Tanggal */}
-                            <td className="px-5 py-4 align-top">
+                            {/* Kolom ID */}
+                            <td className="px-5 py-4 align-top whitespace-nowrap">
                               <span className="font-mono font-bold text-xs text-[#7A0C0C] block group-hover:underline">
                                 {report.id}
                               </span>
-                              <span className="text-xs text-gray-500 flex items-center gap-1.5 mt-1">
+                            </td>
+
+                            {/* Kolom Tanggal */}
+                            <td className="px-5 py-4 align-top whitespace-nowrap">
+                              <span className="text-xs text-gray-500 flex items-center gap-1.5">
                                 <Calendar className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                                 {report.tanggal} • {report.waktu}
                               </span>
@@ -1058,6 +1111,19 @@ export default function AdminDashboardPage() {
                                 {report.pelaporRole}
                               </span>
                             </td>
+
+                            {/* Kolom Kategori Laporan (Khusus WR 2) */}
+                            {isWR2 && (
+                              <td className="px-5 py-4 align-top whitespace-nowrap">
+                                <span
+                                  className={`text-xs font-semibold ${getKategoriTextColorClass(
+                                    report.kategori
+                                  )}`}
+                                >
+                                  {normalizeKategoriLaporan(report.kategori)}
+                                </span>
+                              </td>
+                            )}
 
                             {/* Kolom Lokasi & Fasilitas */}
                             <td className="px-5 py-4 align-top max-w-xs">
@@ -1121,6 +1187,15 @@ export default function AdminDashboardPage() {
                           </div>
                           <div className="flex flex-col items-end gap-1">
                             {getStatusBadge(report.status)}
+                            {isWR2 && (
+                              <span
+                                className={`text-[11px] font-semibold ${getKategoriTextColorClass(
+                                  report.kategori
+                                )}`}
+                              >
+                                {normalizeKategoriLaporan(report.kategori)}
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -1269,7 +1344,10 @@ export default function AdminDashboardPage() {
 
                   <button
                     type="button"
-                    onClick={() => setSelectedReport(null)}
+                    onClick={() => {
+                      setSelectedReport(null);
+                      setActivePhotoIndex(null);
+                    }}
                     aria-label="Tutup modal"
                     className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center transition-colors cursor-pointer"
                   >
@@ -1318,7 +1396,7 @@ export default function AdminDashboardPage() {
                         Lokasi / Kampus
                       </span>
                       <span className="font-semibold text-gray-900">
-                        {selectedReport.lokasi}
+                        {selectedReport.kampus} — {selectedReport.lokasi}
                       </span>
                     </div>
                   </div>
@@ -1343,12 +1421,11 @@ export default function AdminDashboardPage() {
                         {selectedReport.fotoList.map((fotoItem, idx) => {
                           const fullUrl = getFotoUrl(fotoItem);
                           return (
-                            <a
+                            <button
                               key={idx}
-                              href={fullUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="group relative h-28 rounded-xl overflow-hidden border border-gray-200 bg-gray-100 flex flex-col items-center justify-center text-xs hover:border-[#7A0C0C] transition-colors"
+                              type="button"
+                              onClick={() => setActivePhotoIndex(idx)}
+                              className="group relative h-28 rounded-xl overflow-hidden border border-gray-200 bg-gray-100 flex flex-col items-center justify-center text-xs hover:border-[#7A0C0C] transition-colors cursor-pointer"
                             >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
@@ -1359,7 +1436,7 @@ export default function AdminDashboardPage() {
                               <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/60 text-[10px] text-white font-medium">
                                 Foto #{idx + 1}
                               </span>
-                            </a>
+                            </button>
                           );
                         })}
                       </div>
@@ -1376,7 +1453,10 @@ export default function AdminDashboardPage() {
                 <div className="p-4 sm:p-5 border-t border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row items-center justify-end gap-3 shrink-0">
                   <button
                     type="button"
-                    onClick={() => setSelectedReport(null)}
+                    onClick={() => {
+                      setSelectedReport(null);
+                      setActivePhotoIndex(null);
+                    }}
                     className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl border border-gray-300 bg-white text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors cursor-pointer"
                   >
                     Tutup
@@ -1385,6 +1465,7 @@ export default function AdminDashboardPage() {
                     type="button"
                     onClick={() => {
                       setSelectedReport(null);
+                      setActivePhotoIndex(null);
                       router.push("/admin/ubah-status");
                     }}
                     className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 rounded-xl bg-[#7A0C0C] text-white text-sm font-semibold hover:bg-[#6e1010] transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
@@ -1398,6 +1479,14 @@ export default function AdminDashboardPage() {
           )}
         </div>
       )}
+
+      <ImagePreviewModal
+        images={(selectedReport?.fotoList ?? []).map(getFotoUrl)}
+        activeIndex={selectedReport ? activePhotoIndex : null}
+        onClose={() => setActivePhotoIndex(null)}
+        onChangeIndex={setActivePhotoIndex}
+        titlePrefix="Foto Bukti"
+      />
     </>
   );
 }

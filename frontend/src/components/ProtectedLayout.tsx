@@ -17,12 +17,13 @@ export function ProtectedLayout({
 }: ProtectedLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const normalizedPath = pathname?.replace(/\/+$/, '') || '/';
   const { user, isLoading, isAuthenticated } = useAuth();
-  const loginPath = pathname.startsWith('/admin') ? '/admin/login' : '/login';
+  const loginPath = normalizedPath.startsWith('/admin') ? '/admin/login' : '/login';
 
   const isPublicRoute =
-    publicRoutes.includes(pathname) ||
-    ['/login', '/register', '/forgot-password', '/admin/login', '/admin/forgot-password'].includes(pathname);
+    publicRoutes.includes(normalizedPath) ||
+    ['/login', '/register', '/forgot-password', '/admin/login', '/admin/forgot-password'].includes(normalizedPath);
 
   useEffect(() => {
     if (isLoading || isPublicRoute) {
@@ -37,7 +38,11 @@ export function ProtectedLayout({
     if (allowedRoles && !allowedRoles.includes(user.role)) {
       router.replace(user.role === 'Admin' ? '/admin/dashboard' : '/buat-laporan');
     }
-  }, [allowedRoles, isAuthenticated, isLoading, isPublicRoute, loginPath, pathname, router, user]);
+  }, [allowedRoles, isAuthenticated, isLoading, isPublicRoute, loginPath, router, user]);
+
+  if (isPublicRoute) {
+    return <>{children}</>;
+  }
 
   if (isLoading) {
     return (
@@ -50,11 +55,11 @@ export function ProtectedLayout({
     );
   }
 
-  if (!isPublicRoute && (!isAuthenticated || !user)) {
+  if (!isAuthenticated || !user) {
     return null;
   }
 
-  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
     return null;
   }
 

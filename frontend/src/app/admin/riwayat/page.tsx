@@ -2,8 +2,18 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import AdminNavbar from "@/components/AdminNavbar";
+import ImagePreviewModal from "@/components/ImagePreviewModal";
 import { adminLaporanApi } from "@/lib/api";
 import { getCurrentAuthUser } from "@/lib/auth";
+import { LOKASI_KAMPUS_OPTIONS, resolveLokasiKampus } from "@/lib/laporanCampus";
+import {
+  KATEGORI_LAPORAN_OPTIONS,
+  isCampusScopedAdmin,
+  isWakilRektorII,
+  normalizeKategoriLaporan,
+  resolveAdminCampus,
+} from "@/lib/admin-positions";
+import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
 import { useDebounce } from "@/hooks/useDebounce";
 import {
   Search,
@@ -37,6 +47,7 @@ interface LaporanItem {
   tanggal_kejadian?: string;
   tanggal_buat: string;
   tanggal_rubah?: string | null;
+  lokasi_kampus?: string | null;
   lokasi: string;
   foto?: string | string[] | null;
   pesan_tanggapan?: string | null;
@@ -88,25 +99,18 @@ function formatTanggalLong(dateStr: string | null | undefined): string {
   }
 }
 
-function parseLokasiDanFasilitas(lokasi?: string, deskripsi?: string) {
+function parseLokasiDanFasilitas(
+  lokasi?: string,
+  deskripsi?: string,
+  lokasiKampus?: string | null,
+) {
+  const kampus = resolveLokasiKampus(lokasiKampus, lokasi);
+
   if (!lokasi) {
     return {
-      kampus: "Kampus Sanata Dharma",
+      kampus,
       detail: deskripsi || "Sarana Prasarana",
     };
-  }
-
-  const lower = lokasi.toLowerCase();
-  let kampus = "Kampus USD";
-
-  if (lower.includes("kampus iii") || lower.includes("kampus 3") || lower.includes("paingan")) {
-    kampus = "Kampus III Paingan";
-  } else if (lower.includes("kampus ii") || lower.includes("kampus 2")) {
-    kampus = "Kampus II Mrican";
-  } else if (lower.includes("kampus i") || lower.includes("kampus 1") || lower.includes("mrican")) {
-    kampus = "Kampus I Mrican";
-  } else if (lower.includes("kampus iv") || lower.includes("kampus 4") || lower.includes("kotabaru")) {
-    kampus = "Kampus IV Kotabaru";
   }
 
   let detail = lokasi;
@@ -133,8 +137,27 @@ export default function AdminRiwayatLaporanPage() {
     return {
       nama: currentUser?.nama || currentUser?.username || "Admin",
       role: currentUser?.jabatan_label || currentUser?.jabatan || "Administrator",
+      roleDetail: currentUser?.role_detail || "",
+      campus: currentUser?.campus || "",
+      jabatan: currentUser?.jabatan || "",
+      jabatanLabel: currentUser?.jabatan_label || "",
+      username: currentUser?.username || "",
     };
   });
+
+  const adminIdentity = useMemo(
+    () => ({
+      campus: adminUser.campus,
+      role_detail: adminUser.roleDetail,
+      jabatan: adminUser.jabatan,
+      jabatan_label: adminUser.jabatanLabel || adminUser.role,
+      username: adminUser.username,
+    }),
+    [adminUser],
+  );
+  const adminCampus = useMemo(() => resolveAdminCampus(adminIdentity), [adminIdentity]);
+  const showLocationFilter = useMemo(() => !isCampusScopedAdmin(adminIdentity), [adminIdentity]);
+  const isWR2 = useMemo(() => isWakilRektorII(adminIdentity), [adminIdentity]);
 
   const [laporanList, setLaporanList] = useState<LaporanItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -143,6 +166,7 @@ export default function AdminRiwayatLaporanPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
   const [filterKampus, setFilterKampus] = useState("Semua Lokasi");
+  const [filterKategori, setFilterKategori] = useState("Semua");
   const [filterStatus, setFilterStatus] = useState("Semua");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -150,10 +174,11 @@ export default function AdminRiwayatLaporanPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => setCurrentPage(1), 0);
     return () => window.clearTimeout(timer);
-  }, [debouncedSearchTerm, filterKampus, filterStatus]);
+  }, [debouncedSearchTerm, filterKampus, filterKategori, filterStatus]);
 
   // State Modal Detail & Ubah Status
   const [selectedDetail, setSelectedDetail] = useState<LaporanItem | null>(null);
+  const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null);
   const [statusBaru, setStatusBaru] = useState("");
   const [pesanTanggapan, setPesanTanggapan] = useState("");
   const [updateLoading, setUpdateLoading] = useState(false);
@@ -165,11 +190,15 @@ export default function AdminRiwayatLaporanPage() {
   const checkCanEditStatus = useCallback(
     (laporan: LaporanItem): boolean => {
       const role = (adminUser.role || "").toLowerCase();
+      const roleDetail = (adminUser.roleDetail || "").toUpperCase();
+      const jabatan = (adminUser.jabatan || "").toLowerCase();
 
       if (
+        roleDetail === "BOTH" ||
+        jabatan === "wakil_rektor_ii" ||
         role.includes("wakil rektor ii") ||
         role.includes("wr ii") ||
-        role.includes("administrator")
+        role === "administrator"
       ) {
         return true;
       }
@@ -177,36 +206,41 @@ export default function AdminRiwayatLaporanPage() {
       const isBPS = laporan.kategori_laporan === "Fasilitas" || laporan.kategori_laporan === "BPS";
       const isBLU = laporan.kategori_laporan === "Kebersihan" || laporan.kategori_laporan === "BLU";
 
-      if (role.includes("kepala biro layanan umum") || role.includes("kepala blu")) {
+      if (
+        jabatan === "kepala_blu" ||
+        role.includes("kepala biro layanan umum") ||
+        role.includes("kepala blu")
+      ) {
         return isBLU;
       }
 
-      if (role.includes("kepala biro prasarana") || role.includes("kepala bps")) {
+      if (
+        jabatan === "kepala_bps" ||
+        role.includes("kepala biro sarana") ||
+        role.includes("kepala biro prasarana") ||
+        role.includes("kepala bps")
+      ) {
         return isBPS;
       }
 
-      const lokasi = (laporan.lokasi || "").toLowerCase();
-      const isKampus1 =
-        lokasi.includes("kampus i ") || lokasi.includes("kampus 1") || lokasi.includes("mrican");
-      const isKampus2 =
-        lokasi.includes("kampus ii") || lokasi.includes("kampus 2") || lokasi.includes("mrican");
-      const isKampus3 =
-        lokasi.includes("kampus iii") || lokasi.includes("kampus 3") || lokasi.includes("paingan");
-      const isKampus4 = lokasi.includes("kampus iv") || lokasi.includes("kampus 4");
+      const jabatanKampusMatch = jabatan.match(/_([1-4])$/) ?? role.match(/\b([1-4])\b/);
+      const adminCampus =
+        adminUser.campus || (jabatanKampusMatch ? `Kampus ${jabatanKampusMatch[1]}` : "");
+      if (!adminCampus) {
+        return false;
+      }
 
-      if (role.includes("blu") && role.includes("kampus i") && isBLU && isKampus1) return true;
-      if (role.includes("blu") && role.includes("kampus ii") && isBLU && isKampus2) return true;
-      if (role.includes("blu") && role.includes("kampus iii") && isBLU && isKampus3) return true;
-      if (role.includes("blu") && role.includes("kampus iv") && isBLU && isKampus4) return true;
+      const reportCampus = resolveLokasiKampus(laporan.lokasi_kampus, laporan.lokasi);
+      if (reportCampus !== adminCampus) {
+        return false;
+      }
 
-      if (role.includes("bps") && role.includes("kampus i") && isBPS && isKampus1) return true;
-      if (role.includes("bps") && role.includes("kampus ii") && isBPS && isKampus2) return true;
-      if (role.includes("bps") && role.includes("kampus iii") && isBPS && isKampus3) return true;
-      if (role.includes("bps") && role.includes("kampus iv") && isBPS && isKampus4) return true;
+      if (roleDetail === "BPS" || role.includes("bps")) return isBPS;
+      if (roleDetail === "BLU" || role.includes("blu")) return isBLU;
 
       return false;
     },
-    [adminUser.role],
+    [adminUser],
   );
 
   const fetchAllLaporanAdmin = useCallback(async () => {
@@ -291,6 +325,8 @@ export default function AdminRiwayatLaporanPage() {
       const matchesSearch =
         debouncedSearchTerm === "" ||
         (item.deskripsi && item.deskripsi.toLowerCase().includes(searchLow)) ||
+        (item.kategori_laporan && item.kategori_laporan.toLowerCase().includes(searchLow)) ||
+        (item.lokasi_kampus && item.lokasi_kampus.toLowerCase().includes(searchLow)) ||
         (item.lokasi && item.lokasi.toLowerCase().includes(searchLow)) ||
         (item.nim && item.nim.toLowerCase().includes(searchLow)) ||
         (item.nama_pelapor && item.nama_pelapor.toLowerCase().includes(searchLow)) ||
@@ -315,32 +351,27 @@ export default function AdminRiwayatLaporanPage() {
         }
       }
 
-      let matchesKampus = true;
-      if (filterKampus !== "Semua Lokasi" && item.lokasi) {
-        const itemLokasi = item.lokasi.toLowerCase();
-        if (filterKampus === "Kampus I Mrican") {
-          matchesKampus =
-            itemLokasi.includes("kampus i") ||
-            itemLokasi.includes("kampus 1") ||
-            itemLokasi.includes("mrican");
-        } else if (filterKampus === "Kampus II Mrican") {
-          matchesKampus = itemLokasi.includes("kampus ii") || itemLokasi.includes("kampus 2");
-        } else if (filterKampus === "Kampus III Paingan") {
-          matchesKampus =
-            itemLokasi.includes("kampus iii") ||
-            itemLokasi.includes("kampus 3") ||
-            itemLokasi.includes("paingan");
-        } else if (filterKampus === "Kampus IV Kotabaru") {
-          matchesKampus =
-            itemLokasi.includes("kampus iv") ||
-            itemLokasi.includes("kampus 4") ||
-            itemLokasi.includes("kotabaru");
-        }
-      }
+      const matchesKampus =
+        !showLocationFilter ||
+        filterKampus === "Semua Lokasi" ||
+        resolveLokasiKampus(item.lokasi_kampus, item.lokasi) === filterKampus;
 
-      return matchesSearch && matchesStatus && matchesKampus;
+      const matchesKategori =
+        !isWR2 ||
+        filterKategori === "Semua" ||
+        normalizeKategoriLaporan(item.kategori_laporan) === filterKategori;
+
+      return matchesSearch && matchesStatus && matchesKampus && matchesKategori;
     });
-  }, [laporanList, debouncedSearchTerm, filterStatus, filterKampus]);
+  }, [
+    laporanList,
+    debouncedSearchTerm,
+    filterStatus,
+    showLocationFilter,
+    filterKampus,
+    isWR2,
+    filterKategori,
+  ]);
 
   const totalPages = Math.ceil(filteredList.length / itemsPerPage) || 1;
   const paginatedData = filteredList.slice(
@@ -351,6 +382,7 @@ export default function AdminRiwayatLaporanPage() {
   const handleResetFilter = () => {
     setSearchTerm("");
     setFilterKampus("Semua Lokasi");
+    setFilterKategori("Semua");
     setFilterStatus("Semua");
     setCurrentPage(1);
   };
@@ -472,7 +504,9 @@ export default function AdminRiwayatLaporanPage() {
                 </span>
                 <span className="text-xs text-slate-400">tiket</span>
               </div>
-              <p className="mt-2 text-xs text-slate-400">Semua kampus USD</p>
+              <p className="mt-2 text-xs text-slate-400">
+                {adminCampus || "Semua kampus USD"}
+              </p>
             </div>
 
             {/* Card 2: Selesai */}
@@ -545,24 +579,51 @@ export default function AdminRiwayatLaporanPage() {
               )}
             </div>
 
-            {/* Dropdown Lokasi */}
-            <div className="relative">
-              <select
-                value={filterKampus}
-                onChange={(e) => {
-                  setFilterKampus(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="h-11 pl-4 pr-9 bg-white border border-slate-200/90 rounded-xl text-xs sm:text-sm font-medium text-slate-700 outline-none focus:border-[#7A0C0C] shadow-2xs cursor-pointer appearance-none w-full sm:w-auto"
-              >
-                <option value="Semua Lokasi">Semua Lokasi</option>
-                <option value="Kampus I Mrican">Kampus I Mrican</option>
-                <option value="Kampus II Mrican">Kampus II Mrican</option>
-                <option value="Kampus III Paingan">Kampus III Paingan</option>
-                <option value="Kampus IV Kotabaru">Kampus IV Kotabaru</option>
-              </select>
-              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
+            {/* Dropdown Lokasi (dihilangkan untuk admin masing-masing kampus) */}
+            {showLocationFilter && (
+              <div className="relative">
+                <select
+                  value={filterKampus}
+                  onChange={(e) => {
+                    setFilterKampus(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  aria-label="Filter berdasarkan lokasi kampus"
+                  className="h-11 pl-4 pr-9 bg-white border border-slate-200/90 rounded-xl text-xs sm:text-sm font-medium text-slate-700 outline-none focus:border-[#7A0C0C] shadow-2xs cursor-pointer appearance-none w-full sm:w-auto"
+                >
+                  <option value="Semua Lokasi">Semua Lokasi</option>
+                  {LOKASI_KAMPUS_OPTIONS.map((kampus) => (
+                    <option key={kampus} value={kampus}>
+                      {kampus}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            )}
+
+            {/* Dropdown Kategori Laporan (khusus Wakil Rektor II) */}
+            {isWR2 && (
+              <div className="relative">
+                <select
+                  value={filterKategori}
+                  onChange={(e) => {
+                    setFilterKategori(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  aria-label="Filter berdasarkan kategori laporan"
+                  className="h-11 pl-4 pr-9 bg-white border border-slate-200/90 rounded-xl text-xs sm:text-sm font-medium text-slate-700 outline-none focus:border-[#7A0C0C] shadow-2xs cursor-pointer appearance-none w-full sm:w-auto"
+                >
+                  <option value="Semua">Semua Kategori</option>
+                  {KATEGORI_LAPORAN_OPTIONS.map((kategori) => (
+                    <option key={kategori} value={kategori}>
+                      {kategori}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            )}
 
             {/* Dropdown Status */}
             <div className="relative">
@@ -625,6 +686,7 @@ export default function AdminRiwayatLaporanPage() {
                       const { kampus, detail } = parseLokasiDanFasilitas(
                         lap.lokasi,
                         lap.deskripsi,
+                        lap.lokasi_kampus,
                       );
                       const year = lap.tanggal_buat
                         ? new Date(lap.tanggal_buat).getFullYear()
@@ -677,6 +739,7 @@ export default function AdminRiwayatLaporanPage() {
                               type="button"
                               onClick={() => {
                                 setSelectedDetail(lap);
+                                setActivePhotoIndex(null);
                                 setStatusBaru(lap.status_terkini);
                                 setPesanTanggapan(lap.pesan_tanggapan || "");
                                 setModalError("");
@@ -784,7 +847,10 @@ export default function AdminRiwayatLaporanPage() {
                 {renderStatusBadge(selectedDetail.status_terkini)}
                 <button
                   type="button"
-                  onClick={() => setSelectedDetail(null)}
+                  onClick={() => {
+                    setSelectedDetail(null);
+                    setActivePhotoIndex(null);
+                  }}
                   className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
@@ -894,7 +960,7 @@ export default function AdminRiwayatLaporanPage() {
                   </p>
                   <p className="font-bold text-slate-800">
                     {selectedDetail.kategori_laporan} (
-                    {selectedDetail.kategori_laporan === "Fasilitas" ? "BLU" : "BPS"})
+                    {selectedDetail.kategori_laporan === "Fasilitas" ? "BPS" : "BLU"})
                   </p>
                 </div>
                 <div>
@@ -913,7 +979,10 @@ export default function AdminRiwayatLaporanPage() {
                   <p className="text-xs text-slate-400 font-medium mb-0.5">Lokasi Kejadian</p>
                   <p className="font-bold text-slate-800 flex items-center gap-1">
                     <MapPin className="w-4 h-4 text-red-600 shrink-0" />
-                    <span>{selectedDetail.lokasi || "-"}</span>
+                    <span>
+                      {selectedDetail.lokasi_kampus ? `${selectedDetail.lokasi_kampus} — ` : ""}
+                      {selectedDetail.lokasi || "-"}
+                    </span>
                   </p>
                 </div>
               </div>
@@ -940,26 +1009,39 @@ export default function AdminRiwayatLaporanPage() {
               {/* Foto Bukti */}
               <div>
                 <p className="text-xs text-slate-400 font-medium mb-1.5">Foto Bukti Pendukung</p>
-                {selectedDetail.foto ? (
-                  <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center p-1">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={
-                        typeof selectedDetail.foto === "string"
-                          ? selectedDetail.foto
-                          : Array.isArray(selectedDetail.foto)
-                            ? selectedDetail.foto[0]
-                            : ""
-                      }
-                      alt="Foto pendukung laporan"
-                      className="w-full max-h-60 object-contain rounded-xl"
-                    />
-                  </div>
-                ) : (
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-400 text-xs italic">
-                    Pelapor tidak mengunggah foto pendukung.
-                  </div>
-                )}
+                {(() => {
+                  const detailPhotos = getFotoList(selectedDetail.foto);
+                  if (detailPhotos.length === 0) {
+                    return (
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-400 text-xs italic">
+                        Pelapor tidak mengunggah foto pendukung.
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {detailPhotos.map((foto, index) => {
+                        const url = getFotoUrl(foto);
+                        return (
+                          <button
+                            key={`${foto}-${index}`}
+                            type="button"
+                            onClick={() => setActivePhotoIndex(index)}
+                            className="group relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 flex items-center justify-center p-1 hover:border-[#7A0C0C] transition-colors cursor-pointer"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={url}
+                              alt={`Foto pendukung laporan ${index + 1}`}
+                              className="w-full max-h-60 object-contain rounded-xl group-hover:scale-[1.02] transition-transform duration-200"
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Alur Progres Penanganan */}
@@ -1017,7 +1099,10 @@ export default function AdminRiwayatLaporanPage() {
               <p className="text-xs text-slate-400">Portal Admin USD</p>
               <button
                 type="button"
-                onClick={() => setSelectedDetail(null)}
+                onClick={() => {
+                  setSelectedDetail(null);
+                  setActivePhotoIndex(null);
+                }}
                 className="px-5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold transition-all cursor-pointer"
               >
                 Tutup
@@ -1026,6 +1111,14 @@ export default function AdminRiwayatLaporanPage() {
           </div>
         </div>
       )}
+
+      <ImagePreviewModal
+        images={getFotoList(selectedDetail?.foto).map(getFotoUrl)}
+        activeIndex={selectedDetail ? activePhotoIndex : null}
+        onClose={() => setActivePhotoIndex(null)}
+        onChangeIndex={setActivePhotoIndex}
+        titlePrefix="Foto Pendukung"
+      />
     </div>
   );
 }

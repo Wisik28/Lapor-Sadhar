@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
+import ImagePreviewModal from "@/components/ImagePreviewModal";
 import { laporanApi, type LaporanItem, type StatusLaporan } from "@/lib/api";
 import { clearAuthSession } from "@/lib/auth";
 import { useAuthProtection } from "@/lib/useAuth";
@@ -268,6 +269,7 @@ export default function LihatStatusPage() {
   const [filterStatus, setFilterStatus] = useState<(typeof STATUS_FILTERS)[number]>("Semua");
   const [filterKategori, setFilterKategori] = useState<(typeof KATEGORI_FILTERS)[number]>("Semua");
   const [laporanTerpilih, setLaporanTerpilih] = useState<number | null>(null);
+  const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -565,7 +567,10 @@ export default function LihatStatusPage() {
                           <button
                             key={item.id_laporan}
                             type="button"
-                            onClick={() => setLaporanTerpilih(item.id_laporan)}
+                            onClick={() => {
+                              setActivePhotoIndex(null);
+                              setLaporanTerpilih(item.id_laporan);
+                            }}
                             className={`w-full rounded-xl border p-4 text-left transition ${active ? "border-[#7A0C0C] bg-red-50/60 ring-1 ring-[#7A0C0C]/10" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}
                           >
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -677,12 +682,11 @@ export default function LihatStatusPage() {
                           <p className="mb-2 text-xs text-slate-400">Foto Pendukung</p>
                           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                             {fotoLaporanAktif.map((foto, index) => (
-                              <a
+                              <button
+                                type="button"
                                 key={`${foto}-${index}`}
-                                href={getFotoUrl(foto)}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                                onClick={() => setActivePhotoIndex(index)}
+                                className="text-left overflow-hidden rounded-xl border border-slate-200 bg-slate-50 hover:border-[#7A0C0C] transition-colors cursor-pointer"
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
@@ -698,8 +702,8 @@ export default function LihatStatusPage() {
                                 <p className="hidden p-3 text-center text-xs text-red-700">
                                   Foto tidak dapat dimuat dari penyimpanan.
                                 </p>
-                                <p className="p-2 text-center text-xs text-[#7A0C0C]">Buka foto</p>
-                              </a>
+                                <p className="p-2 text-center text-xs text-[#7A0C0C]">Lihat foto</p>
+                              </button>
                             ))}
                           </div>
                         </div>
@@ -752,6 +756,13 @@ export default function LihatStatusPage() {
           </div>
         </main>
       </div>
+
+      <ImagePreviewModal
+        images={fotoLaporanAktif.map(getFotoUrl)}
+        activeIndex={activePhotoIndex}
+        onClose={() => setActivePhotoIndex(null)}
+        onChangeIndex={setActivePhotoIndex}
+      />
     </div>
   );
 }

@@ -36,6 +36,7 @@ class PriorityDashboardController extends Controller
             'laporan.deskripsi',
             'laporan.tanggal_buat',
             'laporan.tanggal_kejadian',
+            'laporan.lokasi_kampus',
             'laporan.lokasi',
             'laporan.kategori_lokasi',
             'laporan.tingkat_keparahan',
@@ -99,6 +100,8 @@ class PriorityDashboardController extends Controller
         try {
             $this->scoringService->ensureTablesExist();
 
+            $admin = $request->attributes->get('admin_session')?->admin;
+
             // Ambil kolom laporan yang dibutuhkan daftar + nama pelapor + status terbaru
             // dalam satu query tanpa mengunduh kolom longText `foto` (foto dimuat di endpoint show).
             $laporans = Laporan::query()
@@ -108,6 +111,7 @@ class PriorityDashboardController extends Controller
                 ]))
                 ->leftJoin('pelapor', 'pelapor.nomor_identitas', '=', 'laporan.nim')
                 ->leftJoin('user_mahasiswa', 'user_mahasiswa.nim', '=', 'pelapor.nomor_identitas')
+                ->visibleToAdmin($admin)
                 ->get();
 
             // Pastikan setiap laporan memiliki PriorityAssessment secara batch (menghindari N+1 query)
@@ -134,6 +138,7 @@ class PriorityDashboardController extends Controller
                     'deskripsi'                => $laporan->deskripsi,
                     'tanggal_buat'             => $laporan->tanggal_buat,
                     'tanggal_kejadian'         => $laporan->tanggal_kejadian,
+                    'lokasi_kampus'            => $laporan->lokasi_kampus,
                     'lokasi'                   => $laporan->lokasi,
                     'kategori_lokasi'          => $assessment?->kategori_lokasi ?? $laporan->kategori_lokasi ?? 'Tidak Diketahui',
                     'tingkat_keparahan_lokasi' => $assessment?->tingkat_keparahan_lokasi ?? $laporan->tingkat_keparahan ?? 'Sedang',
@@ -197,6 +202,7 @@ class PriorityDashboardController extends Controller
                     if ($searchQuery !== null) {
                         return str_contains(strtolower($it['deskripsi']), $searchQuery)
                             || str_contains(strtolower($it['lokasi']), $searchQuery)
+                            || str_contains(strtolower((string) ($it['lokasi_kampus'] ?? '')), $searchQuery)
                             || str_contains(strtolower($it['nama_pelapor']), $searchQuery)
                             || str_contains((string) $it['id_laporan'], $searchQuery);
                     }
@@ -254,10 +260,18 @@ class PriorityDashboardController extends Controller
      * GET /api/admin/priority/reports/{id}
      * Ambil rincian penilaian prioritas sebuah laporan
      */
-    public function show($id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         try {
             $laporan = Laporan::with(['statuses', 'pelapor.mahasiswa', 'pelapor.pegawai'])->findOrFail($id);
+            $admin = $request->attributes->get('admin_session')?->admin;
+            if ($admin && ! $admin->canAccessLaporan($laporan)) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Anda tidak memiliki akses ke laporan dari kampus atau unit lain.',
+                ], 403);
+            }
+
             $assessment = $this->scoringService->assessAndSave($laporan);
 
             $locWeight = $this->scoringService->resolveLocationWeight($laporan->lokasi ?? '');
@@ -326,7 +340,16 @@ class PriorityDashboardController extends Controller
 
         try {
             $session = $request->attributes->get('admin_session');
+            $admin = $session?->admin;
             $adminId = $session?->admin_id;
+
+            $laporan = Laporan::findOrFail($id);
+            if ($admin && ! $admin->canAccessLaporan($laporan)) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Anda tidak memiliki akses untuk mengubah prioritas laporan dari kampus atau unit lain.',
+                ], 403);
+            }
 
             $updated = $this->scoringService->overrideSeverityByAdmin(
                 (int) $id,
@@ -357,13 +380,14 @@ class PriorityDashboardController extends Controller
      * GET /api/admin/priority/summary
      * Metrik ringkasan kartu statistik dashboard prioritas
      */
-    public function summary(): JsonResponse
+    public function summary(Request $request): JsonResponse
     {
         try {
+            $admin = $request->attributes->get('admin_session')?->admin;
             $hasTable = $this->scoringService->ensureTablesExist();
 
             if ($hasTable) {
-                $rows = DB::table('laporan')
+                $rowsQuery = DB::table('laporan')
                     ->leftJoin('priority_assessments', 'priority_assessments.id_laporan', '=', 'laporan.id_laporan')
                     ->select([
                         'laporan.id_laporan',
@@ -372,8 +396,18 @@ class PriorityDashboardController extends Controller
                         'priority_assessments.priority_level',
                         'priority_assessments.severity_level',
                         'priority_assessments.needs_review',
-                    ])
-                    ->get();
+                    ]);
+
+                if ($admin) {
+                    if ($campus = $admin->resolvedCampus()) {
+                        $rowsQuery->where('laporan.lokasi_kampus', $campus);
+                    }
+                    if ($kategori = $admin->allowedKategoriLaporan()) {
+                        $rowsQuery->where('laporan.kategori_laporan', $kategori);
+                    }
+                }
+
+                $rows = $rowsQuery->get();
 
                 $missingIds = [];
                 foreach ($rows as $row) {
@@ -409,6 +443,7 @@ class PriorityDashboardController extends Controller
 
             $laporans = Laporan::query()
                 ->select($this->lightweightLaporanColumns())
+                ->visibleToAdmin($admin)
                 ->get();
             $assessments = $this->scoringService->assessAndSaveMany($laporans);
 
@@ -428,12 +463,14 @@ class PriorityDashboardController extends Controller
      * POST /api/admin/priority/recalculate
      * Menghitung ulang semua laporan aktif (misalnya untuk penuaan / aging harian)
      */
-    public function recalculateAll(): JsonResponse
+    public function recalculateAll(Request $request): JsonResponse
     {
         try {
+            $admin = $request->attributes->get('admin_session')?->admin;
             $this->scoringService->ensureTablesExist();
             $laporans = Laporan::query()
                 ->select($this->lightweightLaporanColumns())
+                ->visibleToAdmin($admin)
                 ->get();
             $assessments = $this->scoringService->assessAndSaveMany($laporans, true);
             $count = $assessments->count();

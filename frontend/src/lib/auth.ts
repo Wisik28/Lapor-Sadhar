@@ -38,7 +38,9 @@ export async function setAuthSession(user: AuthUser, token: string, isAdmin: boo
   localStorage.setItem("session_login_time", now.toString());
   localStorage.setItem("session_expiry_time", sessionData.expiryTime.toString());
   const tokenKey = isAdmin ? "admin_token" : "auth_token";
+  const otherTokenKey = isAdmin ? "auth_token" : "admin_token";
   localStorage.setItem(tokenKey, token);
+  localStorage.removeItem(otherTokenKey);
 
   // Simpan ke cookies via API route (untuk middleware)
   try {
