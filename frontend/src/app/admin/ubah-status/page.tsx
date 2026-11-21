@@ -1,12 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Lock, UserCheck } from "lucide-react";
 import AdminNavbar from "@/components/AdminNavbar";
-import ImagePreviewModal from "@/components/ImagePreviewModal";
 import { adminLaporanApi } from "@/lib/api";
 import { getCurrentAuthUser } from "@/lib/auth";
 import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
-import { useDebounce } from "@/hooks/useDebounce";
 
 type StatusValue =
   | "Terkirim"
@@ -35,7 +34,6 @@ type Laporan = {
   tanggal_kejadian?: string;
   tanggal_buat?: string;
   tanggal_rubah?: string;
-  lokasi_kampus?: string | null;
   lokasi?: string;
   foto?: string | string[] | null;
   pesan_tanggapan?: string | null;
@@ -57,12 +55,11 @@ const STATUS_LABEL: Record<StatusValue, string> = {
   Terkirim: "Terkirim",
   "Sedang Diverifikasi": "Sedang Diverifikasi",
   Terverifikasi: "Terverifikasi",
-  Proses: "DIproses",
+  Proses: "Diproses",
   Selesai: "Selesai",
   Ditolak: "Ditolak",
 };
 
-// Pilihan bulan untuk filter periode laporan.
 const BULAN_LIST = [
   { value: "1", label: "Januari" },
   { value: "2", label: "Februari" },
@@ -78,8 +75,6 @@ const BULAN_LIST = [
   { value: "12", label: "Desember" },
 ];
 
-// Membaca tanggal laporan.
-// Mendukung tanggal ISO dan format tanggal MySQL.
 function getTanggalLaporan(value?: string): Date | null {
   if (!value) return null;
 
@@ -112,7 +107,6 @@ function getTanggalLaporan(value?: string): Date | null {
   return Number.isNaN(tanggal.getTime()) ? null : tanggal;
 }
 
-// Mengelompokkan kategori menjadi Kebersihan atau Fasilitas.
 function getKategoriFilter(kategori?: string): string {
   const nilai = (kategori ?? "").trim().toLowerCase();
 
@@ -128,12 +122,7 @@ function normalizeStatus(value?: string): StatusValue {
   if (status === "sedang diverifikasi") return "Sedang Diverifikasi";
   if (status === "terverifikasi" || status === "diverifikasi")
     return "Terverifikasi";
-  if (
-    status === "proses" ||
-    status === "diproses" ||
-    status === "Diproses"
-  )
-    return "Proses";
+  if (status === "proses" || status === "diproses") return "Proses";
   if (status === "selesai") return "Selesai";
   if (status === "ditolak") return "Ditolak";
 
@@ -214,30 +203,81 @@ export default function UbahStatusLaporanPage() {
   });
 
   const [pencarian, setPencarian] = useState("");
-  const debouncedPencarian = useDebounce(pencarian, 500);
   const [filterStatus, setFilterStatus] = useState("Semua");
-
-  // TAMBAHAN: State filter kategori, bulan, dan tahun.
   const [filterKategori, setFilterKategori] = useState("Semua");
   const [filterBulan, setFilterBulan] = useState("Semua");
   const [filterTahun, setFilterTahun] = useState("Semua");
 
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setCurrentPage(1), 0);
-    return () => window.clearTimeout(timer);
-  }, [debouncedPencarian, filterStatus, filterKategori, filterBulan, filterTahun]);
-
   const [statusBaru, setStatusBaru] = useState<StatusValue>("Terkirim");
   const [pesanTanggapan, setPesanTanggapan] = useState("");
-  const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [menyimpan, setMenyimpan] = useState(false);
   const [error, setError] = useState("");
   const [sukses, setSukses] = useState("");
+
+  const checkCanEditStatus = useCallback(
+    (item: Laporan): boolean => {
+      const role = (adminRole || "").trim().toLowerCase();
+
+      // 1. Akses penuh semua unit & semua kampus
+      if (
+        role.includes("wakil rektor") ||
+        role.includes("wr ii") ||
+        role.includes("administrator")
+      ) {
+        return true;
+      }
+
+      const kategori = (item.kategori_laporan || "").trim().toLowerCase();
+      const isBPS =
+        kategori === "bps" || kategori.includes("fasilitas");
+      const isBLU =
+        kategori === "blu" || kategori.includes("kebersihan");
+
+      // Deteksi unit pada nama role
+      const roleIsBPS =
+        /\bbps\b/i.test(role) ||
+        role.includes("sarana") ||
+        role.includes("prasarana");
+      const roleIsBLU =
+        /\bblu\b/i.test(role) || role.includes("layanan umum");
+
+      if (!roleIsBPS && !roleIsBLU) return false;
+      if (roleIsBPS && !isBPS) return false;
+      if (roleIsBLU && !isBLU) return false;
+
+      // Deteksi pembatasan kampus pada nama role (misal: "BPS 3" atau "BPS Kampus III")
+      const roleKampus1 = /\b(kampus\s*)?(i|1)\b/i.test(role);
+      const roleKampus2 = /\b(kampus\s*)?(ii|2)\b/i.test(role);
+      const roleKampus3 = /\b(kampus\s*)?(iii|3)\b/i.test(role);
+      const roleKampus4 = /\b(kampus\s*)?(iv|4)\b/i.test(role);
+
+      const punyaBatasanKampus =
+        roleKampus1 || roleKampus2 || roleKampus3 || roleKampus4;
+
+      // 2. Jika Kepala Biro (tidak terikat nomor kampus), boleh akses semua kampus sesuai unitnya
+      if (!punyaBatasanKampus) {
+        return true;
+      }
+
+      // 3. Jika Kepala Bagian / Staf kampus tertentu, cocokkan dengan lokasi kejadian laporan
+      const lokasi = (item.lokasi || "").toLowerCase();
+      const lokasiKampus1 = /\bkampus\s*(i|1)\b|\bmrican\b/i.test(lokasi);
+      const lokasiKampus2 = /\bkampus\s*(ii|2)\b|\bmrican\b/i.test(lokasi);
+      const lokasiKampus3 = /\bkampus\s*(iii|3)\b|\bpaingan\b/i.test(lokasi);
+      const lokasiKampus4 = /\bkampus\s*(iv|4)\b/i.test(lokasi);
+
+      if (roleKampus1 && lokasiKampus1) return true;
+      if (roleKampus2 && lokasiKampus2) return true;
+      if (roleKampus3 && lokasiKampus3) return true;
+      if (roleKampus4 && lokasiKampus4) return true;
+
+      return false;
+    },
+    [adminRole]
+  );
+
   const muatLaporan = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -345,7 +385,6 @@ export default function UbahStatusLaporanPage() {
     };
   }, []);
 
-  // Membuat daftar tahun berdasarkan tanggal laporan yang tersedia.
   const daftarTahun = useMemo(() => {
     const tahun = laporan
       .map((item) => getTanggalLaporan(item.tanggal_buat))
@@ -356,26 +395,23 @@ export default function UbahStatusLaporanPage() {
   }, [laporan]);
 
   const laporanTersaring = useMemo(() => {
-    const keyword = debouncedPencarian.trim().toLowerCase();
+    const keyword = pencarian.trim().toLowerCase();
 
     return laporan.filter((item) => {
       const status = normalizeStatus(
         item.status_terkini ?? item.status_laporan
       );
 
-      // Filter status yang sudah ada.
       const cocokStatus =
         filterStatus === "Semua" ||
         status === normalizeStatus(filterStatus);
 
-      // TAMBAHAN: Filter kategori.
       const kategori = getKategoriFilter(item.kategori_laporan);
 
       const cocokKategori =
         filterKategori === "Semua" ||
         kategori === filterKategori;
 
-      // TAMBAHAN: Filter bulan dan tahun berdasarkan tanggal laporan dibuat.
       const tanggalLaporan = getTanggalLaporan(item.tanggal_buat);
 
       const cocokBulan =
@@ -388,13 +424,11 @@ export default function UbahStatusLaporanPage() {
         (tanggalLaporan !== null &&
           tanggalLaporan.getFullYear() === Number(filterTahun));
 
-      // Pencarian yang sudah ada tetap dipertahankan.
       const teks = [
         item.id_laporan,
         item.nim,
         item.nama_pelapor,
         item.kategori_laporan,
-        item.lokasi_kampus,
         item.lokasi,
         item.deskripsi,
       ]
@@ -413,21 +447,12 @@ export default function UbahStatusLaporanPage() {
     });
   }, [
     laporan,
-    debouncedPencarian,
+    pencarian,
     filterStatus,
     filterKategori,
     filterBulan,
     filterTahun,
   ]);
-
-  const totalPages = Math.ceil(laporanTersaring.length / itemsPerPage) || 1;
-
-  const paginatedLaporan = useMemo(() => {
-    return laporanTersaring.slice(
-      (currentPage - 1) * itemsPerPage,
-      currentPage * itemsPerPage
-    );
-  }, [laporanTersaring, currentPage, itemsPerPage]);
 
   const statistik = useMemo(() => {
     const jumlahStatus = (status: StatusValue) =>
@@ -454,10 +479,18 @@ export default function UbahStatusLaporanPage() {
   );
 
   const pilihanStatus = getAllowedStatuses(statusSekarang);
+  const canEditTerpilih = laporanTerpilih
+    ? checkCanEditStatus(laporanTerpilih)
+    : false;
 
   async function simpanStatus() {
     if (!laporanTerpilih) {
       setError("Pilih laporan terlebih dahulu.");
+      return;
+    }
+
+    if (!checkCanEditStatus(laporanTerpilih)) {
+      setError("Anda tidak memiliki hak akses untuk mengubah status laporan ini.");
       return;
     }
 
@@ -499,28 +532,25 @@ export default function UbahStatusLaporanPage() {
   }
 
   function pilihLaporan(item: Laporan) {
-  setLaporanTerpilih(item);
-  setActivePhotoIndex(null);
+    setLaporanTerpilih(item);
 
-  setStatusBaru(
-    normalizeStatus(
-      item.status_terkini ?? item.status_laporan
-    )
-  );
+    setStatusBaru(
+      normalizeStatus(
+        item.status_terkini ?? item.status_laporan
+      )
+    );
 
-  setPesanTanggapan(item.pesan_tanggapan ?? "");
-  setError("");
-  setSukses("");
-}
+    setPesanTanggapan(item.pesan_tanggapan ?? "");
+    setError("");
+    setSukses("");
+  }
 
-  // TAMBAHAN: Mengembalikan semua filter ke kondisi awal.
   function resetFilter() {
     setPencarian("");
     setFilterStatus("Semua");
     setFilterKategori("Semua");
     setFilterBulan("Semua");
     setFilterTahun("Semua");
-    setCurrentPage(1);
   }
 
   const fotoList = getFotoList(laporanTerpilih?.foto);
@@ -543,7 +573,7 @@ export default function UbahStatusLaporanPage() {
             </h1>
             <p className="mt-2 text-sm text-slate-500">
               Periksa laporan, perbarui status, dan berikan tanggapan kepada
-              pelapor.
+              pelapor sesuai hak akses unit kerja Anda.
             </p>
           </div>
 
@@ -584,20 +614,20 @@ export default function UbahStatusLaporanPage() {
             { label: "Selesai", value: statistik.selesai, color: "text-green-700" },
             { label: "Ditolak", value: statistik.ditolak, color: "text-red-700" },
           ].map((item) => (
-          <div
-            key={item.label}
-            className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-2xs"
-          >
-          <p className="text-sm font-medium text-slate-500">
-            {item.label}
-          </p>
+            <div
+              key={item.label}
+              className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-5 text-center shadow-2xs"
+            >
+              <p className="text-sm font-medium text-slate-500">
+                {item.label}
+              </p>
 
-          <p className={`mt-2 text-3xl font-bold ${item.color}`}>
-            {item.value}
-          </p>
-          </div>
+              <p className={`mt-2 text-3xl font-bold ${item.color}`}>
+                {item.value}
+              </p>
+            </div>
           ))}
-          </section>
+        </section>
 
         <section className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
           <div className="space-y-4 lg:col-span-5">
@@ -608,20 +638,14 @@ export default function UbahStatusLaporanPage() {
                 <input
                   type="search"
                   value={pencarian}
-                  onChange={(event) => {
-                    setPencarian(event.target.value);
-                    setCurrentPage(1);
-                  }}
+                  onChange={(event) => setPencarian(event.target.value)}
                   placeholder="Cari nama, NIM, kategori, lokasi..."
                   className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10"
                 />
 
                 <select
                   value={filterStatus}
-                  onChange={(event) => {
-                    setFilterStatus(event.target.value);
-                    setCurrentPage(1);
-                  }}
+                  onChange={(event) => setFilterStatus(event.target.value)}
                   className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#7A0C0C]"
                 >
                   <option value="Semua">Semua Status</option>
@@ -632,7 +656,6 @@ export default function UbahStatusLaporanPage() {
                   ))}
                 </select>
 
-                {/* Filter kategori laporan. */}
                 <div>
                   <label
                     htmlFor="filterKategori"
@@ -643,10 +666,7 @@ export default function UbahStatusLaporanPage() {
                   <select
                     id="filterKategori"
                     value={filterKategori}
-                    onChange={(event) => {
-                      setFilterKategori(event.target.value);
-                      setCurrentPage(1);
-                    }}
+                    onChange={(event) => setFilterKategori(event.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10"
                   >
                     <option value="Semua">Semua Kategori</option>
@@ -655,7 +675,6 @@ export default function UbahStatusLaporanPage() {
                   </select>
                 </div>
 
-                {/* Filter periode bulan dan tahun. */}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label
@@ -667,10 +686,7 @@ export default function UbahStatusLaporanPage() {
                     <select
                       id="filterBulan"
                       value={filterBulan}
-                      onChange={(event) => {
-                        setFilterBulan(event.target.value);
-                        setCurrentPage(1);
-                      }}
+                      onChange={(event) => setFilterBulan(event.target.value)}
                       className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10"
                     >
                       <option value="Semua">Semua Bulan</option>
@@ -692,10 +708,7 @@ export default function UbahStatusLaporanPage() {
                     <select
                       id="filterTahun"
                       value={filterTahun}
-                      onChange={(event) => {
-                        setFilterTahun(event.target.value);
-                        setCurrentPage(1);
-                      }}
+                      onChange={(event) => setFilterTahun(event.target.value)}
                       className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10"
                     >
                       <option value="Semua">Semua Tahun</option>
@@ -708,7 +721,6 @@ export default function UbahStatusLaporanPage() {
                   </div>
                 </div>
 
-                {/* Jumlah hasil dan tombol reset filter. */}
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
                   <p className="text-xs text-slate-500">
                     Menampilkan{" "}
@@ -744,12 +756,13 @@ export default function UbahStatusLaporanPage() {
                   </p>
                 </div>
               ) : (
-                paginatedLaporan.map((item) => {
+                laporanTersaring.map((item) => {
                   const status = normalizeStatus(
                     item.status_terkini ?? item.status_laporan
                   );
                   const aktif =
                     laporanTerpilih?.id_laporan === item.id_laporan;
+                  const canEdit = checkCanEditStatus(item);
 
                   return (
                     <button
@@ -786,80 +799,27 @@ export default function UbahStatusLaporanPage() {
                         {item.deskripsi || "Tidak ada deskripsi."}
                       </p>
 
-                      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400">
-                        <span>NIM: {item.nim || "-"}</span>
-                        {item.lokasi_kampus && <span>{item.lokasi_kampus}</span>}
-                        <span>{formatTanggal(item.tanggal_buat)}</span>
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                        <div className="flex flex-wrap gap-x-4 gap-y-1">
+                          <span>NIM: {item.nim || "-"}</span>
+                          <span>{formatTanggal(item.tanggal_buat)}</span>
+                        </div>
+
+                        {canEdit ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                            <UserCheck className="w-3 h-3 shrink-0" /> Bisa Diubah
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+                            <Lock className="w-3 h-3 shrink-0" /> Lihat Saja
+                          </span>
+                        )}
                       </div>
                     </button>
                   );
                 })
               )}
             </div>
-
-            {/* Kontrol Pagination */}
-            {laporanTersaring.length > 0 && (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-                <p>
-                  Menampilkan {(currentPage - 1) * itemsPerPage + 1}–
-                  {Math.min(currentPage * itemsPerPage, laporanTersaring.length)} dari{" "}
-                  {laporanTersaring.length} laporan
-                </p>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-                    disabled={currentPage === 1}
-                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer text-xs"
-                  >
-                    Sebelumnya
-                  </button>
-
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => {
-                    if (
-                      totalPages > 5 &&
-                      p !== 1 &&
-                      p !== totalPages &&
-                      Math.abs(p - currentPage) > 1
-                    ) {
-                      if (p === 2 || p === totalPages - 1) {
-                        return (
-                          <span key={p} className="px-1 text-slate-400">
-                            ...
-                          </span>
-                        );
-                      }
-                      return null;
-                    }
-
-                    return (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setCurrentPage(p)}
-                        className={`w-7 h-7 rounded-md font-bold text-xs transition-colors cursor-pointer flex items-center justify-center ${
-                          currentPage === p
-                            ? "bg-[#7A0C0C] text-white"
-                            : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    );
-                  })}
-
-                  <button
-                    type="button"
-                    onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer text-xs"
-                  >
-                    Selanjutnya
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
 
           <div className="space-y-6 lg:col-span-7">
@@ -934,7 +894,6 @@ export default function UbahStatusLaporanPage() {
                       Lokasi Kejadian
                     </p>
                     <p className="mt-1 text-sm leading-6 text-slate-600">
-                      {laporanTerpilih.lokasi_kampus ? `${laporanTerpilih.lokasi_kampus} — ` : ""}
                       {laporanTerpilih.lokasi || "Lokasi tidak dicantumkan."}
                     </p>
                   </div>
@@ -955,11 +914,12 @@ export default function UbahStatusLaporanPage() {
                       </p>
                       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                         {fotoList.map((foto, index) => (
-                          <button
+                          <a
                             key={`${foto}-${index}`}
-                            type="button"
-                            onClick={() => setActivePhotoIndex(index)}
-                            className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-left hover:border-[#7A0C0C] transition-colors cursor-pointer"
+                            href={getFotoUrl(foto)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
@@ -968,154 +928,180 @@ export default function UbahStatusLaporanPage() {
                               className="h-36 w-full object-cover transition group-hover:scale-105"
                               onError={(event) => {
                                 event.currentTarget.style.display = "none";
-                                const fallback = event.currentTarget.nextElementSibling;
-                                if (fallback instanceof HTMLElement) fallback.style.display = "block";
+                                const fallback =
+                                  event.currentTarget.nextElementSibling;
+                                if (fallback instanceof HTMLElement)
+                                  fallback.style.display = "block";
                               }}
                             />
-                            <span className="hidden p-3 text-center text-xs text-red-700">
+                            <p className="hidden p-3 text-center text-xs text-red-700">
                               Foto tidak dapat dimuat dari penyimpanan.
-                            </span>
-                            <span className="block p-2 text-center text-xs font-medium text-[#7A0C0C]">
+                            </p>
+                            <p className="p-2 text-center text-xs text-[#7A0C0C]">
                               Lihat foto
-                            </span>
-                          </button>
+                            </p>
+                          </a>
                         ))}
                       </div>
                     </div>
                   )}
                 </section>
 
-                <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs sm:p-6">
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-900">
-                      Perbarui Status Laporan
-                    </h2>
-                    <p className="mt-1 text-sm text-slate-500">
-                      Pilih status berikutnya sesuai tahapan penanganan
-                      laporan.
-                    </p>
-                  </div>
-
-                  <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {STATUS_LIST.map((status) => {
-                      const diizinkan = pilihanStatus.includes(status);
-                      const dipilih = statusBaru === status;
-
-                      return (
-                        <button
-                          key={status}
-                          type="button"
-                          disabled={!diizinkan || menyimpan}
-                          onClick={() => setStatusBaru(status)}
-                          className={`rounded-xl border p-3 text-left transition ${
-                            dipilih
-                              ? "border-purple-500 bg-[#7A0C0C]/5 ring-2 ring-purple-100"
-                              : "border-slate-200 bg-white"
-                          } ${
-                            !diizinkan
-                              ? "cursor-not-allowed opacity-40"
-                              : "hover:border-[#7A0C0C]/40"
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <span
-                              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs ${
-                                dipilih
-                                  ? "border-[#7A0C0C] bg-[#7A0C0C] text-white"
-                                  : "border-slate-300"
-                              }`}
-                            >
-                              {dipilih ? "✓" : ""}
-                            </span>
-                            <span className="text-sm font-semibold text-slate-800">
-                              {STATUS_LABEL[status]}
-                            </span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {(statusBaru === "Ditolak" ||
-                    statusBaru !== statusSekarang) && (
-                    <div className="mt-5 rounded-xl bg-amber-50 p-3 text-sm leading-6 text-amber-800">
-                      {statusBaru === "Ditolak"
-                        ? "Alasan penolakan wajib diisi agar pelapor mengetahui penyebab laporan ditolak."
-                        : `Status akan diubah dari ${STATUS_LABEL[statusSekarang]} menjadi ${STATUS_LABEL[statusBaru]}.`}
+                {canEditTerpilih ? (
+                  <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs sm:p-6">
+                    <div>
+                      <h2 className="text-lg font-bold text-slate-900">
+                        Perbarui Status Laporan
+                      </h2>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Pilih status berikutnya sesuai tahapan penanganan
+                        laporan.
+                      </p>
                     </div>
-                  )}
 
-                  <div className="mt-5">
-                    <label
-                      htmlFor="pesanTanggapan"
-                      className="mb-2 block text-sm font-semibold text-slate-700"
-                    >
-                      Pesan Tanggapan
-                      {statusBaru === "Ditolak" && (
-                        <span className="ml-1 text-red-600">*</span>
-                      )}
-                    </label>
+                    <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {STATUS_LIST.map((status) => {
+                        const diizinkan = pilihanStatus.includes(status);
+                        const dipilih = statusBaru === status;
 
-                    <textarea
-                      id="pesanTanggapan"
-                      value={pesanTanggapan}
-                      onChange={(event) =>
-                        setPesanTanggapan(event.target.value)
-                      }
-                      maxLength={2000}
-                      rows={4}
-                      placeholder="Tuliskan hasil verifikasi, tindak lanjut, atau alasan penolakan..."
-                      className="w-full resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none transition focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10"
-                    />
-
-                    <p className="mt-1 text-right text-xs text-slate-400">
-                      {pesanTanggapan.length}/2000 karakter
-                    </p>
-                  </div>
-
-                  <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                    <button
-                      type="button"
-                      disabled={menyimpan}
-                      onClick={() => {
-                        setStatusBaru(statusSekarang);
-                        setPesanTanggapan(
-                          laporanTerpilih.pesan_tanggapan ?? ""
+                        return (
+                          <button
+                            key={status}
+                            type="button"
+                            disabled={!diizinkan || menyimpan}
+                            onClick={() => setStatusBaru(status)}
+                            className={`rounded-xl border p-3 text-left transition ${
+                              dipilih
+                                ? "border-purple-500 bg-[#7A0C0C]/5 ring-2 ring-purple-100"
+                                : "border-slate-200 bg-white"
+                            } ${
+                              !diizinkan
+                                ? "cursor-not-allowed opacity-40"
+                                : "hover:border-[#7A0C0C]/40"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <span
+                                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-xs ${
+                                  dipilih
+                                    ? "border-[#7A0C0C] bg-[#7A0C0C] text-white"
+                                    : "border-slate-300"
+                                }`}
+                              >
+                                {dipilih ? "✓" : ""}
+                              </span>
+                              <span className="text-sm font-semibold text-slate-800">
+                                {STATUS_LABEL[status]}
+                              </span>
+                            </div>
+                          </button>
                         );
-                        setError("");
-                        setSukses("");
-                      }}
-                      className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      Batalkan Perubahan
-                    </button>
+                      })}
+                    </div>
 
-                    <button
-                      type="button"
-                      disabled={
-                        menyimpan ||
-                        (statusBaru === statusSekarang &&
-                          pesanTanggapan.trim() ===
-                            (laporanTerpilih.pesan_tanggapan ?? "").trim())
-                      }
-                      onClick={() => void simpanStatus()}
-                      className="rounded-xl bg-[#7A0C0C] px-5 py-3 text-sm font-semibold text-white shadow-2xs transition hover:bg-[#600909] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {menyimpan ? "Menyimpan..." : "Simpan Perubahan"}
-                    </button>
-                  </div>
+                    {(statusBaru === "Ditolak" ||
+                      statusBaru !== statusSekarang) && (
+                      <div className="mt-5 rounded-xl bg-amber-50 p-3 text-sm leading-6 text-amber-800">
+                        {statusBaru === "Ditolak"
+                          ? "Alasan penolakan wajib diisi agar pelapor mengetahui penyebab laporan ditolak."
+                          : `Status akan diubah dari ${STATUS_LABEL[statusSekarang]} menjadi ${STATUS_LABEL[statusBaru]}.`}
+                      </div>
+                    )}
 
-                  {laporanTerpilih.pesan_tanggapan && (
-                    <div className="mt-5 rounded-xl border border-[#7A0C0C]/20 bg-[#7A0C0C]/5 p-4">
-                      <p className="text-sm font-semibold text-[#7A0C0C]">
-                        Tanggapan Tersimpan
-                      </p>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#7A0C0C]">
-                        {laporanTerpilih.pesan_tanggapan}
+                    <div className="mt-5">
+                      <label
+                        htmlFor="pesanTanggapan"
+                        className="mb-2 block text-sm font-semibold text-slate-700"
+                      >
+                        Pesan Tanggapan
+                        {statusBaru === "Ditolak" && (
+                          <span className="ml-1 text-red-600">*</span>
+                        )}
+                      </label>
+
+                      <textarea
+                        id="pesanTanggapan"
+                        value={pesanTanggapan}
+                        onChange={(event) =>
+                          setPesanTanggapan(event.target.value)
+                        }
+                        maxLength={2000}
+                        rows={4}
+                        placeholder="Tuliskan hasil verifikasi, tindak lanjut, atau alasan penolakan..."
+                        className="w-full resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none transition focus:border-[#7A0C0C] focus:ring-1 focus:ring-[#7A0C0C]/10"
+                      />
+
+                      <p className="mt-1 text-right text-xs text-slate-400">
+                        {pesanTanggapan.length}/2000 karakter
                       </p>
                     </div>
-                  )}
-                </section>
+
+                    <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                      <button
+                        type="button"
+                        disabled={menyimpan}
+                        onClick={() => {
+                          setStatusBaru(statusSekarang);
+                          setPesanTanggapan(
+                            laporanTerpilih.pesan_tanggapan ?? ""
+                          );
+                          setError("");
+                          setSukses("");
+                        }}
+                        className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Batalkan Perubahan
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={
+                          menyimpan ||
+                          (statusBaru === statusSekarang &&
+                            pesanTanggapan.trim() ===
+                              (laporanTerpilih.pesan_tanggapan ?? "").trim())
+                        }
+                        onClick={() => void simpanStatus()}
+                        className="rounded-xl bg-[#7A0C0C] px-5 py-3 text-sm font-semibold text-white shadow-2xs transition hover:bg-[#600909] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {menyimpan ? "Menyimpan..." : "Simpan Perubahan"}
+                      </button>
+                    </div>
+
+                    {laporanTerpilih.pesan_tanggapan && (
+                      <div className="mt-5 rounded-xl border border-[#7A0C0C]/20 bg-[#7A0C0C]/5 p-4">
+                        <p className="text-sm font-semibold text-[#7A0C0C]">
+                          Tanggapan Tersimpan
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#7A0C0C]">
+                          {laporanTerpilih.pesan_tanggapan}
+                        </p>
+                      </div>
+                    )}
+                  </section>
+                ) : (
+                  <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs sm:p-6 space-y-4">
+                    <div className="bg-slate-100 p-4 rounded-2xl border border-slate-200 flex items-center gap-3 text-slate-600 text-sm">
+                      <Lock className="w-5 h-5 text-slate-400 shrink-0" />
+                      <span>
+                        Role Anda (<strong>{adminRole}</strong>) hanya memiliki
+                        hak akses untuk <strong>melihat laporan ini</strong> dan
+                        tidak dapat mengubah statusnya.
+                      </span>
+                    </div>
+
+                    {laporanTerpilih.pesan_tanggapan && (
+                      <div className="rounded-xl border border-[#7A0C0C]/20 bg-[#7A0C0C]/5 p-4">
+                        <p className="text-sm font-semibold text-[#7A0C0C]">
+                          Tanggapan Tersimpan
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#7A0C0C]">
+                          {laporanTerpilih.pesan_tanggapan}
+                        </p>
+                      </div>
+                    )}
+                  </section>
+                )}
 
                 <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs sm:p-6">
                   <div className="flex items-center justify-between gap-3">
@@ -1208,14 +1194,6 @@ export default function UbahStatusLaporanPage() {
           </div>
         </section>
       </main>
-
-      <ImagePreviewModal
-        images={fotoList.map(getFotoUrl)}
-        activeIndex={activePhotoIndex}
-        onClose={() => setActivePhotoIndex(null)}
-        onChangeIndex={setActivePhotoIndex}
-        titlePrefix="Foto Bukti"
-      />
     </div>
   );
 }

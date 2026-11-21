@@ -26,6 +26,7 @@ export interface BuatLaporanState {
   kategori: string;
   tanggal: string;
   lokasiKampus: string;
+  detailLokasi: string;
   lokasi: string;
   deskripsi: string;
   attachments: Attachment[];
@@ -35,11 +36,11 @@ export interface BuatLaporanState {
 }
 
 export function useBuatLaporan(today: string) {
-  // Initialize state with today's date - this won't change per render
   const [state, setState] = useState<BuatLaporanState>(() => ({
     kategori: '',
     tanggal: today,
     lokasiKampus: '',
+    detailLokasi: '',
     lokasi: '',
     deskripsi: '',
     attachments: [],
@@ -48,13 +49,12 @@ export function useBuatLaporan(today: string) {
     success: '',
   }));
 
-  // reset doesn't need 'today' in dependency because we use setState
-  // and today is already set in initial state
   const reset = useCallback(() => {
     setState({
       kategori: '',
       tanggal: today,
       lokasiKampus: '',
+      detailLokasi: '',
       lokasi: '',
       deskripsi: '',
       attachments: [],
@@ -72,9 +72,21 @@ export function useBuatLaporan(today: string) {
     setState((prev) => ({ ...prev, success: '' }));
   }, []);
 
-  const updateField = useCallback((field: keyof Omit<BuatLaporanState, 'loading' | 'error' | 'success' | 'attachments'>, value: string) => {
-    setState((prev) => ({ ...prev, [field]: value }));
-  }, []);
+  const updateField = useCallback(
+    (
+      field: keyof Omit<BuatLaporanState, 'loading' | 'error' | 'success' | 'attachments'>,
+      value: string
+    ) => {
+      setState((prev) => {
+        const updated = { ...prev, [field]: value };
+        const kampus = updated.lokasiKampus.trim();
+        const detail = updated.detailLokasi.trim();
+        updated.lokasi = kampus && detail ? `${kampus}, ${detail}` : kampus || detail;
+        return updated;
+      });
+    },
+    []
+  );
 
   const addAttachment = useCallback((file: File) => {
     setState((prev) => ({
@@ -100,25 +112,38 @@ export function useBuatLaporan(today: string) {
 
   const submit = useCallback(
     async (nim: string, onSuccess?: (data: LaporanItem) => void) => {
-      if (!state.kategori || !state.lokasiKampus || !state.lokasi || !state.deskripsi) {
-        setState((prev) => ({ ...prev, error: 'Mohon lengkapi seluruh kolom formulir!' }));
+      if (
+        !state.kategori ||
+        !state.lokasiKampus.trim() ||
+        !state.detailLokasi.trim() ||
+        !state.deskripsi.trim()
+      ) {
+        setState((prev) => ({
+          ...prev,
+          error: 'Mohon lengkapi seluruh kolom formulir termasuk kampus dan detail lokasi!',
+        }));
         return;
       }
 
       if (state.tanggal > today) {
-        setState((prev) => ({ ...prev, error: 'Tanggal kejadian tidak boleh melebihi hari ini!' }));
+        setState((prev) => ({
+          ...prev,
+          error: 'Tanggal kejadian tidak boleh melebihi hari ini!',
+        }));
         return;
       }
 
       if (!nim) {
-        setState((prev) => ({ ...prev, error: 'Sesi login tidak ditemukan. Silakan login ulang.' }));
+        setState((prev) => ({
+          ...prev,
+          error: 'Sesi login tidak ditemukan. Silakan login ulang.',
+        }));
         return;
       }
 
       setState((prev) => ({ ...prev, loading: true, error: '', success: '' }));
 
       try {
-        // Use state directly within the async function
         const fotoData = await Promise.all(
           state.attachments.map((attachment) => fileToDataUrl(attachment.file))
         );
@@ -127,13 +152,14 @@ export function useBuatLaporan(today: string) {
             ? JSON.stringify(fotoData)
             : (fotoData[0] ?? undefined);
 
+        const lokasiGabungan = `${state.lokasiKampus.trim()}, ${state.detailLokasi.trim()}`;
+
         const res = await laporanApi.create({
           nim,
           kategori_laporan: state.kategori,
-          deskripsi: state.deskripsi,
+          deskripsi: state.deskripsi.trim(),
           tanggal_kejadian: state.tanggal,
-          lokasi_kampus: state.lokasiKampus,
-          lokasi: state.lokasi,
+          lokasi: lokasiGabungan,
           foto: fotoPayload,
         });
 
@@ -143,6 +169,7 @@ export function useBuatLaporan(today: string) {
             kategori: '',
             tanggal: today,
             lokasiKampus: '',
+            detailLokasi: '',
             lokasi: '',
             deskripsi: '',
             attachments: [],
