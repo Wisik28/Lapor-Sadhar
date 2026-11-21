@@ -131,7 +131,7 @@ class AdminAuthController extends Controller
             'nama' => $admin->nama_admin,
             'role' => 'Admin',
             'role_detail' => $admin->role,
-            'campus' => $admin->campus,
+            'campus' => $admin->resolvedCampus(),
             'jabatan' => $admin->jabatan,
             'jabatan_label' => Admin::POSITIONS[$admin->jabatan]['label'] ?? null,
             'email' => $admin->email,

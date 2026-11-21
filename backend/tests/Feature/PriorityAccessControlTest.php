@@ -4,9 +4,13 @@ namespace Tests\Feature;
 
 use App\Models\Admin;
 use App\Models\AdminSession;
+use App\Models\Laporan;
 use App\Models\Pelapor;
 use App\Models\Priority\PriorityAssessment;
+use App\Models\Status;
+use App\Models\UserMahasiswa;
 use App\Services\LaporanService;
+use App\Services\Priority\PriorityScoringService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -127,10 +131,22 @@ class PriorityAccessControlTest extends TestCase
             'expires_at' => now()->addHour(),
         ]);
 
-        $response = $this->withHeader('Authorization', 'Bearer ' . $plainToken)
-            ->getJson('/api/admin/priority/reports');
+        $preflight = $this->withHeaders([
+            'Origin'                         => 'http://localhost:3000',
+            'Access-Control-Request-Method'  => 'GET',
+            'Access-Control-Request-Headers' => 'Authorization, Content-Type',
+        ])->options('/api/admin/priority/reports');
+
+        $preflight->assertNoContent();
+        $preflight->assertHeader('Access-Control-Allow-Origin', '*');
+
+        $response = $this->withHeaders([
+            'Origin'        => 'http://localhost:3000',
+            'Authorization' => 'Bearer ' . $plainToken,
+        ])->getJson('/api/admin/priority/reports');
 
         $response->assertOk();
+        $response->assertHeader('Access-Control-Allow-Origin', '*');
         $response->assertJsonStructure([
             'status',
             'message',
@@ -148,6 +164,127 @@ class PriorityAccessControlTest extends TestCase
             'message',
             'total',
             'data',
+            'summary',
         ]);
+    }
+
+    public function test_priority_list_omits_heavy_foto_while_detail_preserves_foto_and_summary_matches(): void
+    {
+        $admin = Admin::create([
+            'nama_admin' => 'Admin WR II',
+            'username'   => 'admin.wr2',
+            'password'   => bcrypt('password123'),
+            'role'       => 'BOTH',
+            'campus'     => 'Semua Kampus',
+            'email'      => 'wr2@usd.ac.id',
+            'jabatan'    => 'wakil_rektor_ii',
+        ]);
+
+        $plainToken = 'test-priority-list-token-67890';
+        AdminSession::create([
+            'admin_id'   => $admin->admin_id,
+            'token_hash' => hash('sha256', $plainToken),
+            'expires_at' => now()->addHour(),
+        ]);
+
+        Pelapor::create(['nomor_identitas' => '235314010', 'tipe_user' => 'mahasiswa']);
+        UserMahasiswa::create([
+            'nim'          => '235314010',
+            'nama'         => 'Budi Santoso',
+            'password'     => bcrypt('secret123'),
+            'no_handphone' => '08123456789',
+        ]);
+
+        $fakeBase64Foto = 'data:image/png;base64,' . str_repeat('A', 2048);
+
+        $laporan = Laporan::withoutEvents(function () use ($fakeBase64Foto) {
+            $lap = Laporan::create([
+                'nim'              => '235314010',
+                'kategori_laporan' => 'Fasilitas',
+                'deskripsi'        => 'Kabel terbuka di ruang kelas membuat percikan api',
+                'tanggal_kejadian' => now()->toDateString(),
+                'lokasi'           => 'Ruang K.205',
+                'foto'             => $fakeBase64Foto,
+                'tanggal_buat'     => now()->subDays(2),
+            ]);
+
+            Status::create([
+                'id_laporan'      => $lap->id_laporan,
+                'status_laporan'  => 'Diverifikasi',
+                'tanggal_merubah' => now(),
+            ]);
+
+            return $lap;
+        });
+
+        $listResponse = $this->withHeader('Authorization', 'Bearer ' . $plainToken)
+            ->getJson('/api/admin/priority/reports');
+
+        $listResponse->assertOk();
+        $listData = $listResponse->json('data');
+        $this->assertCount(1, $listData);
+        $this->assertNull($listData[0]['foto']);
+        $this->assertTrue($listData[0]['has_foto']);
+        $this->assertSame('Budi Santoso', $listData[0]['nama_pelapor']);
+        $this->assertSame('Diverifikasi', $listData[0]['status_terkini']);
+        $this->assertSame('kritis', $listData[0]['priority_level']);
+
+        $summaryResponse = $this->withHeader('Authorization', 'Bearer ' . $plainToken)
+            ->getJson('/api/admin/priority/summary');
+
+        $summaryResponse->assertOk();
+        $this->assertSame($summaryResponse->json('data'), $listResponse->json('summary'));
+
+        $detailResponse = $this->withHeader('Authorization', 'Bearer ' . $plainToken)
+            ->getJson('/api/admin/priority/reports/' . $laporan->id_laporan);
+
+        $detailResponse->assertOk();
+        $this->assertSame($fakeBase64Foto, $detailResponse->json('data.laporan.foto'));
+    }
+
+    public function test_batch_assess_and_save_many_matches_single_assessment_scoring_and_duplicate_count(): void
+    {
+        Pelapor::create(['nomor_identitas' => '235314021', 'tipe_user' => 'mahasiswa']);
+        Pelapor::create(['nomor_identitas' => '235314022', 'tipe_user' => 'mahasiswa']);
+
+        $laporans = Laporan::withoutEvents(function () {
+            $l1 = Laporan::create([
+                'nim'              => '235314021',
+                'kategori_laporan' => 'Fasilitas',
+                'deskripsi'        => 'AC mati di ruang kuliah lantai 2',
+                'tanggal_kejadian' => now()->toDateString(),
+                'lokasi'           => 'Ruang K.201, Gedung B',
+                'tanggal_buat'     => now()->subDays(3),
+            ]);
+
+            $l2 = Laporan::create([
+                'nim'              => '235314022',
+                'kategori_laporan' => 'Fasilitas',
+                'deskripsi'        => 'AC ruangan tidak dingin sama sekali',
+                'tanggal_kejadian' => now()->toDateString(),
+                'lokasi'           => 'Ruang K.201, Gedung B',
+                'tanggal_buat'     => now()->subDay(),
+            ]);
+
+            return collect([$l1, $l2]);
+        });
+
+        /** @var PriorityScoringService $scoringService */
+        $scoringService = app(PriorityScoringService::class);
+        $batchResults = $scoringService->assessAndSaveMany($laporans);
+
+        $this->assertCount(2, $batchResults);
+        $this->assertDatabaseCount('priority_assessments', 2);
+
+        foreach ($laporans as $lap) {
+            $batchAssessment = $batchResults->get($lap->id_laporan);
+            $singleRecalculated = $scoringService->assessAndSave($lap->fresh(), true);
+
+            $this->assertSame($singleRecalculated->priority_score, $batchAssessment->priority_score);
+            $this->assertSame($singleRecalculated->priority_level, $batchAssessment->priority_level);
+            $this->assertSame($singleRecalculated->severity_level, $batchAssessment->severity_level);
+            $this->assertSame($singleRecalculated->kategori_lokasi, $batchAssessment->kategori_lokasi);
+            $this->assertSame($singleRecalculated->reasons, $batchAssessment->reasons);
+        }
     }
 }

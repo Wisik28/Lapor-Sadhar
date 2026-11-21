@@ -10,6 +10,7 @@ export interface UbahPengajuanState {
   selectedLaporan: LaporanItem | null;
   editKategori: string;
   editTanggal: string;
+  editLokasiKampus: string;
   editLokasi: string;
   editDeskripsi: string;
   saveLoading: boolean;
@@ -23,6 +24,7 @@ export function useUbahPengajuan() {
     selectedLaporan: null,
     editKategori: '',
     editTanggal: '',
+    editLokasiKampus: '',
     editLokasi: '',
     editDeskripsi: '',
     saveLoading: false,
@@ -53,6 +55,7 @@ export function useUbahPengajuan() {
       selectedLaporan: laporan,
       editKategori: laporan.kategori_laporan,
       editTanggal: laporan.tanggal_kejadian?.split('T')[0] ?? today,
+      editLokasiKampus: laporan.lokasi_kampus ?? '',
       editLokasi: laporan.lokasi,
       editDeskripsi: laporan.deskripsi,
       error: '',
@@ -66,12 +69,13 @@ export function useUbahPengajuan() {
       selectedLaporan: null,
       editKategori: '',
       editTanggal: '',
+      editLokasiKampus: '',
       editLokasi: '',
       editDeskripsi: '',
     }));
   }, []);
 
-  const updateEditField = useCallback((field: 'editKategori' | 'editTanggal' | 'editLokasi' | 'editDeskripsi', value: string) => {
+  const updateEditField = useCallback((field: 'editKategori' | 'editTanggal' | 'editLokasiKampus' | 'editLokasi' | 'editDeskripsi', value: string) => {
     setState((prev) => ({ ...prev, [field]: value }));
   }, []);
 
@@ -82,7 +86,7 @@ export function useUbahPengajuan() {
       setError('');
       setSuccess('');
 
-      if (!state.editKategori || !state.editLokasi || !state.editDeskripsi) {
+      if (!state.editKategori || !state.editLokasiKampus || !state.editLokasi || !state.editDeskripsi) {
         setError('Semua kolom wajib diisi!');
         return;
       }
@@ -94,6 +98,7 @@ export function useUbahPengajuan() {
           kategori_laporan: state.editKategori,
           deskripsi: state.editDeskripsi,
           tanggal_kejadian: state.editTanggal,
+          lokasi_kampus: state.editLokasiKampus,
           lokasi: state.editLokasi,
         });
 
@@ -110,7 +115,7 @@ export function useUbahPengajuan() {
         setState((prev) => ({ ...prev, saveLoading: false }));
       }
     },
-    [state.selectedLaporan, state.editKategori, state.editLokasi, state.editDeskripsi, state.editTanggal, setError, setSuccess, clearSelection]
+    [state.selectedLaporan, state.editKategori, state.editLokasiKampus, state.editLokasi, state.editDeskripsi, state.editTanggal, setError, setSuccess, clearSelection]
   );
 
   const delete_ = useCallback(

@@ -4,10 +4,12 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
+import ImagePreviewModal from "@/components/ImagePreviewModal";
 import { laporanApi, type LaporanItem, type StatusLaporan } from "@/lib/api";
 import { clearAuthSession } from "@/lib/auth";
 import { useAuthProtection } from "@/lib/useAuth";
 import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
+import { useDebounce } from "@/hooks/useDebounce";
 import {
   AlertCircle,
   CalendarDays,
@@ -263,10 +265,19 @@ export default function LihatStatusPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [keyword, setKeyword] = useState("");
+  const debouncedKeyword = useDebounce(keyword, 500);
   const [filterStatus, setFilterStatus] = useState<(typeof STATUS_FILTERS)[number]>("Semua");
   const [filterKategori, setFilterKategori] = useState<(typeof KATEGORI_FILTERS)[number]>("Semua");
   const [laporanTerpilih, setLaporanTerpilih] = useState<number | null>(null);
+  const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setCurrentPage(1), 0);
+    return () => window.clearTimeout(timer);
+  }, [debouncedKeyword, filterStatus, filterKategori]);
 
   const identifier = user?.nim || user?.nomor_identitas || "";
 
@@ -328,7 +339,7 @@ export default function LihatStatusPage() {
   }, [authLoading, user, identifier, muatLaporan]);
 
   const laporanTersaring = useMemo(() => {
-    const q = keyword.trim().toLowerCase();
+    const q = debouncedKeyword.trim().toLowerCase();
     return laporan.filter((item) => {
       const status = normalisasiStatus(item.status_terkini);
       const cocokStatus = filterStatus === "Semua" || status === filterStatus;
@@ -342,7 +353,16 @@ export default function LihatStatusPage() {
       ].some((value) => (value || "").toLowerCase().includes(q));
       return cocokStatus && cocokKategori && cocokKeyword;
     });
-  }, [laporan, keyword, filterStatus, filterKategori]);
+  }, [laporan, debouncedKeyword, filterStatus, filterKategori]);
+
+  const totalPages = Math.ceil(laporanTersaring.length / itemsPerPage) || 1;
+
+  const paginatedLaporan = useMemo(() => {
+    return laporanTersaring.slice(
+      (currentPage - 1) * itemsPerPage,
+      currentPage * itemsPerPage
+    );
+  }, [laporanTersaring, currentPage, itemsPerPage]);
 
   const laporanAktif = laporan.find((item) => item.id_laporan === laporanTerpilih) ?? null;
   const fotoLaporanAktif = getFotoList(laporanAktif?.foto);
@@ -487,15 +507,32 @@ export default function LihatStatusPage() {
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
                     value={keyword}
-                    onChange={(event) => setKeyword(event.target.value)}
+                    onChange={(event) => {
+                      setKeyword(event.target.value);
+                      setCurrentPage(1);
+                    }}
                     placeholder="Cari ID, lokasi, atau deskripsi..."
                     className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-[#7A0C0C] focus:ring-2 focus:ring-[#7A0C0C]/10"
                   />
                 </label>
-                <select value={filterStatus} onChange={(event) => setFilterStatus(event.target.value as typeof filterStatus)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#7A0C0C]">
+                <select
+                  value={filterStatus}
+                  onChange={(event) => {
+                    setFilterStatus(event.target.value as typeof filterStatus);
+                    setCurrentPage(1);
+                  }}
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#7A0C0C]"
+                >
                   {STATUS_FILTERS.map((status) => <option key={status} value={status}>{status === "Semua" ? "Semua Status" : status}</option>)}
                 </select>
-                <select value={filterKategori} onChange={(event) => setFilterKategori(event.target.value as typeof filterKategori)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#7A0C0C]">
+                <select
+                  value={filterKategori}
+                  onChange={(event) => {
+                    setFilterKategori(event.target.value as typeof filterKategori);
+                    setCurrentPage(1);
+                  }}
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#7A0C0C]"
+                >
                   {KATEGORI_FILTERS.map((kategori) => <option key={kategori} value={kategori}>{kategori === "Semua" ? "Semua Kategori" : kategori}</option>)}
                 </select>
               </div>
@@ -522,30 +559,99 @@ export default function LihatStatusPage() {
                     <p className="mt-1 text-xs text-slate-400">Belum ada laporan atau tidak sesuai dengan pencarian dan filter.</p>
                   </div>
                 ) : (
-                  <div className="max-h-[680px] space-y-3 overflow-y-auto pr-1">
-                    {laporanTersaring.map((item) => {
-                      const active = laporanTerpilih === item.id_laporan;
-                      return (
-                        <button
-                          key={item.id_laporan}
-                          type="button"
-                          onClick={() => setLaporanTerpilih(item.id_laporan)}
-                          className={`w-full rounded-xl border p-4 text-left transition ${active ? "border-[#7A0C0C] bg-red-50/60 ring-1 ring-[#7A0C0C]/10" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}
-                        >
-                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                            <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${item.kategori_laporan === "Fasilitas" ? "bg-blue-50 text-blue-700" : "bg-green-50 text-green-700"}`}>{item.kategori_laporan}</span>
-                            <StatusBadge status={item.status_terkini} />
-                          </div>
-                          <p className="line-clamp-2 text-sm font-semibold text-slate-800">{item.deskripsi}</p>
-                          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
-                            <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{item.lokasi}</span>
-                            <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{formatTanggal(item.tanggal_buat)}</span>
-                          </div>
-                          <p className="mt-2 text-[11px] font-semibold text-slate-400">ID Laporan: #{item.id_laporan}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <>
+                    <div className="max-h-[680px] space-y-3 overflow-y-auto pr-1">
+                      {paginatedLaporan.map((item) => {
+                        const active = laporanTerpilih === item.id_laporan;
+                        return (
+                          <button
+                            key={item.id_laporan}
+                            type="button"
+                            onClick={() => {
+                              setActivePhotoIndex(null);
+                              setLaporanTerpilih(item.id_laporan);
+                            }}
+                            className={`w-full rounded-xl border p-4 text-left transition ${active ? "border-[#7A0C0C] bg-red-50/60 ring-1 ring-[#7A0C0C]/10" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}
+                          >
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                              <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${item.kategori_laporan === "Fasilitas" ? "bg-blue-50 text-blue-700" : "bg-green-50 text-green-700"}`}>{item.kategori_laporan}</span>
+                              <StatusBadge status={item.status_terkini} />
+                            </div>
+                            <p className="line-clamp-2 text-sm font-semibold text-slate-800">{item.deskripsi}</p>
+                            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                              <span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{item.lokasi}</span>
+                              <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{formatTanggal(item.tanggal_buat)}</span>
+                            </div>
+                            <p className="mt-2 text-[11px] font-semibold text-slate-400">ID Laporan: #{item.id_laporan}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Pagination Controls */}
+                    {laporanTersaring.length > 0 && (
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+                        <p>
+                          Menampilkan {(currentPage - 1) * itemsPerPage + 1}–
+                          {Math.min(currentPage * itemsPerPage, laporanTersaring.length)} dari{" "}
+                          {laporanTersaring.length}
+                        </p>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                            disabled={currentPage === 1}
+                            className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-600 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer text-xs"
+                          >
+                            Sebelumnya
+                          </button>
+
+                          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => {
+                            if (
+                              totalPages > 5 &&
+                              p !== 1 &&
+                              p !== totalPages &&
+                              Math.abs(p - currentPage) > 1
+                            ) {
+                              if (p === 2 || p === totalPages - 1) {
+                                return (
+                                  <span key={p} className="px-1 text-slate-400">
+                                    ...
+                                  </span>
+                                );
+                              }
+                              return null;
+                            }
+
+                            return (
+                              <button
+                                key={p}
+                                type="button"
+                                onClick={() => setCurrentPage(p)}
+                                className={`w-6 h-6 rounded-md font-bold text-xs transition-colors cursor-pointer flex items-center justify-center ${
+                                  currentPage === p
+                                    ? "bg-[#7A0C0C] text-white"
+                                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                }`}
+                              >
+                                {p}
+                              </button>
+                            );
+                          })}
+
+                          <button
+                            type="button"
+                            onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                            disabled={currentPage === totalPages}
+                            className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-600 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer text-xs"
+                          >
+                            Selanjutnya
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </section>
 
@@ -576,12 +682,11 @@ export default function LihatStatusPage() {
                           <p className="mb-2 text-xs text-slate-400">Foto Pendukung</p>
                           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                             {fotoLaporanAktif.map((foto, index) => (
-                              <a
+                              <button
+                                type="button"
                                 key={`${foto}-${index}`}
-                                href={getFotoUrl(foto)}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                                onClick={() => setActivePhotoIndex(index)}
+                                className="text-left overflow-hidden rounded-xl border border-slate-200 bg-slate-50 hover:border-[#7A0C0C] transition-colors cursor-pointer"
                               >
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img
@@ -597,8 +702,8 @@ export default function LihatStatusPage() {
                                 <p className="hidden p-3 text-center text-xs text-red-700">
                                   Foto tidak dapat dimuat dari penyimpanan.
                                 </p>
-                                <p className="p-2 text-center text-xs text-[#7A0C0C]">Buka foto</p>
-                              </a>
+                                <p className="p-2 text-center text-xs text-[#7A0C0C]">Lihat foto</p>
+                              </button>
                             ))}
                           </div>
                         </div>
@@ -651,6 +756,13 @@ export default function LihatStatusPage() {
           </div>
         </main>
       </div>
+
+      <ImagePreviewModal
+        images={fotoLaporanAktif.map(getFotoUrl)}
+        activeIndex={activePhotoIndex}
+        onClose={() => setActivePhotoIndex(null)}
+        onChangeIndex={setActivePhotoIndex}
+      />
     </div>
   );
 }

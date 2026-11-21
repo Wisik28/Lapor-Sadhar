@@ -7,12 +7,18 @@ import Navbar from '@/components/Navbar';
 import { useAuthProtection } from '@/lib/useAuth';
 import { useLaporanList } from '@/hooks/useLaporanList';
 import { useUbahPengajuan } from '@/hooks/useUbahPengajuan';
+import { LaporanItem } from '@/lib/api';
+import { LOKASI_KAMPUS_OPTIONS } from '@/lib/laporanCampus';
 
 export default function UbahPengajuanPage() {
   // All hooks at top level
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { isLoading: authLoading, user: authUser } = useAuthProtection();
-  const [currentUser, setCurrentUser] = useState({ nama: 'Pengguna', role: 'Mahasiswa', nim: '' });
+  const currentUser = useMemo(() => ({
+    nama: authUser?.nama || 'Pengguna',
+    role: authUser?.role || (authUser?.tipe_user === 'karyawan' ? 'Karyawan' : 'Mahasiswa'),
+    nim: authUser?.nim || authUser?.nomor_identitas || '',
+  }), [authUser]);
 
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
 
@@ -20,35 +26,23 @@ export default function UbahPengajuanPage() {
   const { state: laporanState, fetch: fetchLaporan, getEditableLaporan } = useLaporanList();
   const ubahPengajuan = useUbahPengajuan();
 
-  useEffect(() => {
-    if (!authLoading && authUser) {
-      setCurrentUser({
-        nama: authUser.nama,
-        role: authUser.role || (authUser.tipe_user === 'karyawan' ? 'Karyawan' : 'Mahasiswa'),
-        nim: authUser.nim || authUser.nomor_identitas || '',
-      });
-    }
-  }, [authLoading, authUser]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+  const editableLaporan = getEditableLaporan();
+  const totalPages = Math.ceil(editableLaporan.length / itemsPerPage) || 1;
+  const paginatedEditable = useMemo(() => {
+    return editableLaporan.slice(
+      (currentPage - 1) * itemsPerPage,
+      currentPage * itemsPerPage
+    );
+  }, [editableLaporan, currentPage, itemsPerPage]);
 
   useEffect(() => {
     if (!currentUser.nim) return;
     fetchLaporan(currentUser.nim);
   }, [currentUser.nim, fetchLaporan]);
 
-  if (authLoading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-[#F3F4F6]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-4 border-[#7A0C0C]/20 border-t-[#7A0C0C] rounded-full animate-spin" />
-          <p className="text-slate-600 text-sm font-medium">Memeriksa autentikasi...</p>
-        </div>
-      </div>
-    );
-  }
-
-  const editableLaporan = getEditableLaporan();
-
-  const handleSelectEdit = (lap: any) => {
+  const handleSelectEdit = (lap: LaporanItem) => {
     ubahPengajuan.selectForEdit(lap, today);
   };
 
@@ -63,6 +57,17 @@ export default function UbahPengajuanPage() {
       fetchLaporan(currentUser.nim);
     });
   };
+
+  if (authLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#F3F4F6]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-[#7A0C0C]/20 border-t-[#7A0C0C] rounded-full animate-spin" />
+          <p className="text-slate-600 text-sm font-medium">Memeriksa autentikasi...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#F3F4F6] font-sans antialiased text-slate-800">
@@ -127,7 +132,7 @@ export default function UbahPengajuanPage() {
               </div>
             ) : editableLaporan.length > 0 ? (
               <div className="space-y-3">
-                {editableLaporan.map((laporan: any) => (
+                {paginatedEditable.map((laporan: LaporanItem) => (
                   <div
                     key={laporan.id_laporan}
                     className="bg-white rounded-lg p-4 border border-slate-200 hover:border-slate-300 transition-colors"
@@ -143,7 +148,7 @@ export default function UbahPengajuanPage() {
                         <p className="text-sm text-slate-600 mt-1">{laporan.deskripsi}</p>
                         <p className="text-xs text-slate-500 mt-2 flex items-center gap-1">
                           <MapPin className="w-3 h-3" />
-                          {laporan.lokasi}
+                          {laporan.lokasi_kampus ? `${laporan.lokasi_kampus} — ` : ''}{laporan.lokasi}
                         </p>
                       </div>
                       <button
@@ -155,6 +160,52 @@ export default function UbahPengajuanPage() {
                     </div>
                   </div>
                 ))}
+
+                {/* Pagination Controls */}
+                {editableLaporan.length > itemsPerPage && (
+                  <div className="bg-white rounded-lg p-3 border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+                    <p>
+                      Menampilkan {(currentPage - 1) * itemsPerPage + 1}–
+                      {Math.min(currentPage * itemsPerPage, editableLaporan.length)} dari{" "}
+                      {editableLaporan.length} laporan
+                    </p>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                        disabled={currentPage === 1}
+                        className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-600 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer text-xs"
+                      >
+                        Sebelumnya
+                      </button>
+
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setCurrentPage(p)}
+                          className={`w-6 h-6 rounded-md font-bold text-xs transition-colors cursor-pointer flex items-center justify-center ${
+                            currentPage === p
+                              ? "bg-[#7A0C0C] text-white"
+                              : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ))}
+
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                        disabled={currentPage === totalPages}
+                        className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-600 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer text-xs"
+                      >
+                        Selanjutnya
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex h-64 items-center justify-center bg-white rounded-2xl flex-col gap-3">
@@ -177,6 +228,22 @@ export default function UbahPengajuanPage() {
                     >
                       <option value="Fasilitas">Fasilitas</option>
                       <option value="Kebersihan">Kebersihan</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">Lokasi Kampus</label>
+                    <select
+                      value={ubahPengajuan.state.editLokasiKampus}
+                      onChange={(e) => ubahPengajuan.updateEditField('editLokasiKampus', e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C]"
+                    >
+                      <option value="" disabled>-- Pilih Lokasi Kampus --</option>
+                      {LOKASI_KAMPUS_OPTIONS.map((kampus) => (
+                        <option key={kampus} value={kampus}>
+                          {kampus}
+                        </option>
+                      ))}
                     </select>
                   </div>
 

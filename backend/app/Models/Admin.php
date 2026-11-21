@@ -11,17 +11,17 @@ class Admin extends Authenticatable
     use HasFactory;
 
     public const POSITIONS = [
-        'wakil_rektor_ii' => ['label' => 'Wakil Rektor II', 'role' => 'BOTH'],
-        'kepala_blu' => ['label' => 'Kepala Biro Layanan Umum', 'role' => 'BLU'],
-        'kepala_bps' => ['label' => 'Kepala Biro Sarana dan Prasarana', 'role' => 'BPS'],
-        'kepala_bagian_blu_1' => ['label' => 'Kepala Bagian BLU 1', 'role' => 'BLU'],
-        'kepala_bagian_blu_2' => ['label' => 'Kepala Bagian BLU 2', 'role' => 'BLU'],
-        'kepala_bagian_blu_3' => ['label' => 'Kepala Bagian BLU 3', 'role' => 'BLU'],
-        'kepala_bagian_blu_4' => ['label' => 'Kepala Bagian BLU 4', 'role' => 'BLU'],
-        'kepala_bagian_bps_1' => ['label' => 'Kepala Bagian BPS 1', 'role' => 'BPS'],
-        'kepala_bagian_bps_2' => ['label' => 'Kepala Bagian BPS 2', 'role' => 'BPS'],
-        'kepala_bagian_bps_3' => ['label' => 'Kepala Bagian BPS 3', 'role' => 'BPS'],
-        'kepala_bagian_bps_4' => ['label' => 'Kepala Bagian BPS 4', 'role' => 'BPS'],
+        'wakil_rektor_ii' => ['label' => 'Wakil Rektor II', 'role' => 'BOTH', 'campus' => null],
+        'kepala_blu' => ['label' => 'Kepala Biro Layanan Umum', 'role' => 'BLU', 'campus' => null],
+        'kepala_bps' => ['label' => 'Kepala Biro Sarana dan Prasarana', 'role' => 'BPS', 'campus' => null],
+        'kepala_bagian_blu_1' => ['label' => 'Kepala Bagian BLU 1', 'role' => 'BLU', 'campus' => 'Kampus 1'],
+        'kepala_bagian_blu_2' => ['label' => 'Kepala Bagian BLU 2', 'role' => 'BLU', 'campus' => 'Kampus 2'],
+        'kepala_bagian_blu_3' => ['label' => 'Kepala Bagian BLU 3', 'role' => 'BLU', 'campus' => 'Kampus 3'],
+        'kepala_bagian_blu_4' => ['label' => 'Kepala Bagian BLU 4', 'role' => 'BLU', 'campus' => 'Kampus 4'],
+        'kepala_bagian_bps_1' => ['label' => 'Kepala Bagian BPS 1', 'role' => 'BPS', 'campus' => 'Kampus 1'],
+        'kepala_bagian_bps_2' => ['label' => 'Kepala Bagian BPS 2', 'role' => 'BPS', 'campus' => 'Kampus 2'],
+        'kepala_bagian_bps_3' => ['label' => 'Kepala Bagian BPS 3', 'role' => 'BPS', 'campus' => 'Kampus 3'],
+        'kepala_bagian_bps_4' => ['label' => 'Kepala Bagian BPS 4', 'role' => 'BPS', 'campus' => 'Kampus 4'],
     ];
 
     public const USERNAMES = [
@@ -73,5 +73,45 @@ class Admin extends Authenticatable
     public function sessions(): HasMany
     {
         return $this->hasMany(AdminSession::class, 'admin_id', 'admin_id');
+    }
+
+    /**
+     * Kembalikan kampus yang dikelola admin ini, atau null jika lintas semua kampus.
+     */
+    public function resolvedCampus(): ?string
+    {
+        $campusFromPosition = self::POSITIONS[$this->jabatan]['campus'] ?? null;
+
+        return Laporan::normalizeCampus($this->campus) ?? $campusFromPosition;
+    }
+
+    /**
+     * Kembalikan kategori laporan yang menjadi wewenang unit admin (BPS -> Fasilitas, BLU -> Kebersihan, BOTH -> null).
+     */
+    public function allowedKategoriLaporan(): ?string
+    {
+        return match ($this->role) {
+            'BPS' => 'Fasilitas',
+            'BLU' => 'Kebersihan',
+            default => null,
+        };
+    }
+
+    /**
+     * Periksa apakah admin berwenang mengakses/mengubah laporan sesuai kampus dan unitnya.
+     */
+    public function canAccessLaporan(Laporan $laporan): bool
+    {
+        $campus = $this->resolvedCampus();
+        if ($campus !== null && Laporan::normalizeCampus($laporan->lokasi_kampus) !== $campus) {
+            return false;
+        }
+
+        $kategori = $this->allowedKategoriLaporan();
+        if ($kategori !== null && strcasecmp((string) $laporan->kategori_laporan, $kategori) !== 0) {
+            return false;
+        }
+
+        return true;
     }
 }
