@@ -159,6 +159,7 @@ export function useBuatLaporan(today: string) {
           kategori_laporan: state.kategori,
           deskripsi: state.deskripsi.trim(),
           tanggal_kejadian: state.tanggal,
+          lokasi_kampus: state.lokasiKampus,
           lokasi: lokasiGabungan,
           foto: fotoPayload,
         });

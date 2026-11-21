@@ -528,10 +528,10 @@ class LaporanController extends Controller
             $admin = $request->attributes->get('admin_session')?->admin;
             $laporan = Laporan::findOrFail($id);
 
-            if ($admin && ! $admin->canAccessLaporan($laporan)) {
+            if ($admin && ! $admin->canEditLaporan($laporan)) {
                 return response()->json([
                     'status'  => 'error',
-                    'message' => 'Anda tidak memiliki wewenang untuk mengubah status laporan dari kampus atau unit lain.',
+                    'message' => 'Anda tidak memiliki wewenang untuk mengubah status laporan ini.',
                 ], 403);
             }
 

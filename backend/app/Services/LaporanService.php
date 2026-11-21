@@ -348,14 +348,20 @@ class LaporanService
                 'tanggal_merubah' => now(),
             ]);
 
-            if ($pesan) {
-                $laporan->pesan_tanggapan = $pesan;
-            }
+            // Selalu simpan tanggapan, termasuk saat admin mengosongkan tanggapan lama.
+            $laporan->pesan_tanggapan = $pesan;
             $laporan->tanggal_rubah = now();
             $laporan->save();
 
+            $laporan->load([
+                'statuses' => function ($query) {
+                    $query->orderBy('tanggal_merubah', 'desc');
+                    $query->orderBy('id_status', 'desc');
+                },
+            ]);
+
             return [
-                'laporan' => $laporan->fresh(),
+                'laporan' => $laporan,
                 'status'  => $statusRecord,
             ];
         });

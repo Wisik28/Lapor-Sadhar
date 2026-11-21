@@ -13,15 +13,15 @@ class Admin extends Authenticatable
     public const POSITIONS = [
         'wakil_rektor_ii' => ['label' => 'Wakil Rektor II', 'role' => 'BOTH', 'campus' => null],
         'kepala_blu' => ['label' => 'Kepala Biro Layanan Umum', 'role' => 'BLU', 'campus' => null],
-        'kepala_bps' => ['label' => 'Kepala Biro Sarana dan Prasarana', 'role' => 'BPS', 'campus' => null],
-        'kepala_bagian_blu_1' => ['label' => 'Kepala Bagian BLU 1', 'role' => 'BLU', 'campus' => 'Kampus 1'],
-        'kepala_bagian_blu_2' => ['label' => 'Kepala Bagian BLU 2', 'role' => 'BLU', 'campus' => 'Kampus 2'],
-        'kepala_bagian_blu_3' => ['label' => 'Kepala Bagian BLU 3', 'role' => 'BLU', 'campus' => 'Kampus 3'],
-        'kepala_bagian_blu_4' => ['label' => 'Kepala Bagian BLU 4', 'role' => 'BLU', 'campus' => 'Kampus 4'],
-        'kepala_bagian_bps_1' => ['label' => 'Kepala Bagian BPS 1', 'role' => 'BPS', 'campus' => 'Kampus 1'],
-        'kepala_bagian_bps_2' => ['label' => 'Kepala Bagian BPS 2', 'role' => 'BPS', 'campus' => 'Kampus 2'],
-        'kepala_bagian_bps_3' => ['label' => 'Kepala Bagian BPS 3', 'role' => 'BPS', 'campus' => 'Kampus 3'],
-        'kepala_bagian_bps_4' => ['label' => 'Kepala Bagian BPS 4', 'role' => 'BPS', 'campus' => 'Kampus 4'],
+        'kepala_bps' => ['label' => 'Kepala Biro Prasarana dan Sarana', 'role' => 'BPS', 'campus' => null],
+        'kepala_bagian_blu_1' => ['label' => 'Kepala Bagian BLU Kampus I', 'role' => 'BLU', 'campus' => 'Kampus 1'],
+        'kepala_bagian_blu_2' => ['label' => 'Kepala Bagian BLU Kampus II', 'role' => 'BLU', 'campus' => 'Kampus 2'],
+        'kepala_bagian_blu_3' => ['label' => 'Kepala Bagian BLU Kampus III', 'role' => 'BLU', 'campus' => 'Kampus 3'],
+        'kepala_bagian_blu_4' => ['label' => 'Kepala Bagian BLU Kampus IV', 'role' => 'BLU', 'campus' => 'Kampus 4'],
+        'kepala_bagian_bps_1' => ['label' => 'Kepala Bagian BPS Kampus I', 'role' => 'BPS', 'campus' => 'Kampus 1'],
+        'kepala_bagian_bps_2' => ['label' => 'Kepala Bagian BPS Kampus II', 'role' => 'BPS', 'campus' => 'Kampus 2'],
+        'kepala_bagian_bps_3' => ['label' => 'Kepala Bagian BPS Kampus III', 'role' => 'BPS', 'campus' => 'Kampus 3'],
+        'kepala_bagian_bps_4' => ['label' => 'Kepala Bagian BPS Kampus IV', 'role' => 'BPS', 'campus' => 'Kampus 4'],
     ];
 
     public const USERNAMES = [
@@ -113,5 +113,18 @@ class Admin extends Authenticatable
         }
 
         return true;
+    }
+
+    /**
+     * Wakil Rektor II hanya dapat melihat laporan. Admin unit lain dapat mengubah
+     * laporan yang sesuai dengan cakupan kampus dan kategori unitnya.
+     */
+    public function canEditLaporan(Laporan $laporan): bool
+    {
+        if ($this->jabatan === 'wakil_rektor_ii' || $this->role === 'BOTH') {
+            return false;
+        }
+
+        return $this->canAccessLaporan($laporan);
     }
 }
