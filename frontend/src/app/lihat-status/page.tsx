@@ -52,7 +52,7 @@ const STATUS_CONFIG: Record<
     dot: "bg-blue-500",
   },
   "Sedang Diverifikasi": {
-    label: "Sedang Diverifikasi",
+    label: "Diverifikasi",
     text: "text-amber-700",
     bg: "bg-amber-50",
     border: "border-amber-200",
@@ -247,7 +247,7 @@ function ProgressStatus({ status }: { status: StatusKey }) {
                   : "text-slate-400"
               }`}
             >
-              {step}
+              {STATUS_CONFIG[step].label}
             </p>
           </div>
         );
@@ -523,7 +523,7 @@ export default function LihatStatusPage() {
                   }}
                   className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#7A0C0C]"
                 >
-                  {STATUS_FILTERS.map((status) => <option key={status} value={status}>{status === "Semua" ? "Semua Status" : status}</option>)}
+                  {STATUS_FILTERS.map((status) => <option key={status} value={status}>{status === "Semua" ? "Semua Status" : status === "Sedang Diverifikasi" ? "Diverifikasi" : status}</option>)}
                 </select>
                 <select
                   value={filterKategori}

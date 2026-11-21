@@ -130,6 +130,7 @@ class LaporanCampusScopingTest extends TestCase
                 'tanggal_kejadian' => now()->toDateString(),
                 'lokasi_kampus'    => $spec['lokasi_kampus'],
                 'lokasi'           => 'Ruang Kelas 101',
+                'foto'             => $key === 'k1_fasilitas' ? 'https://example.com/bukti-laporan.jpg' : null,
             ])->assertCreated();
 
             $reports[$key] = $res->json('data.id_laporan');
@@ -163,7 +164,26 @@ class LaporanCampusScopingTest extends TestCase
         // BPS 1 bisa mengubah laporan Kampus 1 & Fasilitas
         $this->withToken($bps1Token)->patchJson("/api/admin/laporan/{$reports['k1_fasilitas']}/status", [
             'status_laporan' => 'Sedang Diverifikasi',
+            'pesan_tanggapan' => 'Laporan sedang ditindaklanjuti.',
         ])->assertOk();
+
+        $adminReports = $this->withToken($bps1Token)
+            ->getJson('/api/admin/laporan')
+            ->assertOk()
+            ->json('data');
+        $updatedAdminReport = collect($adminReports)->firstWhere('id_laporan', $reports['k1_fasilitas']);
+        $this->assertSame('Sedang Diverifikasi', $updatedAdminReport['status_terkini']);
+        $this->assertSame('Laporan sedang ditindaklanjuti.', $updatedAdminReport['pesan_tanggapan']);
+        $this->assertSame('https://example.com/bukti-laporan.jpg', $updatedAdminReport['foto']);
+
+        $userReports = $this->withToken($userToken)
+            ->getJson('/api/laporan')
+            ->assertOk()
+            ->json('data');
+        $updatedUserReport = collect($userReports)->firstWhere('id_laporan', $reports['k1_fasilitas']);
+        $this->assertSame('Sedang Diverifikasi', $updatedUserReport['status_terkini']);
+        $this->assertSame('Laporan sedang ditindaklanjuti.', $updatedUserReport['pesan_tanggapan']);
+        $this->assertSame('https://example.com/bukti-laporan.jpg', $updatedUserReport['foto']);
 
         // Kepala Bagian BLU 1 -> hanya Kampus 1 & Kebersihan
         $blu1Token = $this->createAdminToken('kepala_bagian_blu_1');
@@ -203,6 +223,12 @@ class LaporanCampusScopingTest extends TestCase
         $wr2Ids = array_column($this->withToken($wr2Token)->getJson('/api/admin/laporan')->assertOk()->json('data'), 'id_laporan');
         sort($wr2Ids);
         $this->assertSame(array_values($reports), $wr2Ids);
+
+        // Wakil Rektor II dapat melihat seluruh laporan, tetapi tidak dapat mengubah status.
+        $this->withToken($wr2Token)->patchJson("/api/admin/laporan/{$reports['k1_kebersihan']}/status", [
+            'status_laporan' => 'Selesai',
+            'pesan_tanggapan' => 'Tidak boleh disimpan oleh WR II',
+        ])->assertForbidden();
     }
 
     public function test_infer_campus_from_lokasi_handles_roman_numerals_without_prefix_collision(): void

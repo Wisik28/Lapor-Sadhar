@@ -35,6 +35,7 @@ type Laporan = {
   tanggal_buat?: string;
   tanggal_rubah?: string;
   lokasi?: string;
+  lokasi_kampus?: string;
   foto?: string | string[] | null;
   pesan_tanggapan?: string | null;
   status_terkini?: string;
@@ -53,7 +54,7 @@ const STATUS_LIST: StatusValue[] = [
 
 const STATUS_LABEL: Record<StatusValue, string> = {
   Terkirim: "Terkirim",
-  "Sedang Diverifikasi": "Sedang Diverifikasi",
+  "Sedang Diverifikasi": "Diverifikasi",
   Terverifikasi: "Terverifikasi",
   Proses: "Diproses",
   Selesai: "Selesai",
@@ -119,8 +120,9 @@ function getKategoriFilter(kategori?: string): string {
 function normalizeStatus(value?: string): StatusValue {
   const status = (value ?? "Terkirim").trim().toLowerCase();
 
-  if (status === "sedang diverifikasi") return "Sedang Diverifikasi";
-  if (status === "terverifikasi" || status === "diverifikasi")
+  if (status === "sedang diverifikasi" || status === "diverifikasi")
+    return "Sedang Diverifikasi";
+  if (status === "terverifikasi")
     return "Terverifikasi";
   if (status === "proses" || status === "diproses") return "Proses";
   if (status === "selesai") return "Selesai";
@@ -130,6 +132,17 @@ function normalizeStatus(value?: string): StatusValue {
 }
 
 function formatTanggal(value?: string) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleDateString("id-ID", {
+    dateStyle: "medium",
+  });
+}
+
+function formatTanggalWaktu(value?: string) {
   if (!value) return "-";
 
   const date = new Date(value);
@@ -220,13 +233,12 @@ export default function UbahStatusLaporanPage() {
     (item: Laporan): boolean => {
       const role = (adminRole || "").trim().toLowerCase();
 
-      // 1. Akses penuh semua unit & semua kampus
       if (
         role.includes("wakil rektor") ||
         role.includes("wr ii") ||
-        role.includes("administrator")
+        role.includes("wakil_rektor")
       ) {
-        return true;
+        return false;
       }
 
       const kategori = (item.kategori_laporan || "").trim().toLowerCase();
@@ -247,7 +259,9 @@ export default function UbahStatusLaporanPage() {
       if (roleIsBPS && !isBPS) return false;
       if (roleIsBLU && !isBLU) return false;
 
-      // Deteksi pembatasan kampus pada nama role (misal: "BPS 3" atau "BPS Kampus III")
+      // Gunakan lokasi_kampus baku; lokasi teks hanya dipakai sebagai fallback data lama.
+      const lokasiKampus = (item.lokasi_kampus || "").trim().toLowerCase();
+      const lokasi = `${lokasiKampus} ${(item.lokasi || "").toLowerCase()}`;
       const roleKampus1 = /\b(kampus\s*)?(i|1)\b/i.test(role);
       const roleKampus2 = /\b(kampus\s*)?(ii|2)\b/i.test(role);
       const roleKampus3 = /\b(kampus\s*)?(iii|3)\b/i.test(role);
@@ -262,11 +276,10 @@ export default function UbahStatusLaporanPage() {
       }
 
       // 3. Jika Kepala Bagian / Staf kampus tertentu, cocokkan dengan lokasi kejadian laporan
-      const lokasi = (item.lokasi || "").toLowerCase();
       const lokasiKampus1 = /\bkampus\s*(i|1)\b|\bmrican\b/i.test(lokasi);
-      const lokasiKampus2 = /\bkampus\s*(ii|2)\b|\bmrican\b/i.test(lokasi);
+      const lokasiKampus2 = /\bkampus\s*(ii|2)\b/i.test(lokasi);
       const lokasiKampus3 = /\bkampus\s*(iii|3)\b|\bpaingan\b/i.test(lokasi);
-      const lokasiKampus4 = /\bkampus\s*(iv|4)\b/i.test(lokasi);
+      const lokasiKampus4 = /\bkampus\s*(iv|4)\b|\bkotabaru\b/i.test(lokasi);
 
       if (roleKampus1 && lokasiKampus1) return true;
       if (roleKampus2 && lokasiKampus2) return true;
@@ -462,11 +475,16 @@ export default function UbahStatusLaporanPage() {
             item.status_terkini ?? item.status_laporan
           ) === status
       ).length;
+    const jumlahSudahTerverifikasi = laporan.filter((item) =>
+      ["Terverifikasi", "Proses", "Selesai"].includes(
+        normalizeStatus(item.status_terkini ?? item.status_laporan)
+      )
+    ).length;
 
     return {
       total: laporan.length,
       terkirim: jumlahStatus("Terkirim"),
-      verifikasi: jumlahStatus("Terverifikasi"),
+      terverifikasi: jumlahSudahTerverifikasi,
       proses: jumlahStatus("Proses"),
       selesai: jumlahStatus("Selesai"),
       ditolak: jumlahStatus("Ditolak"),
@@ -571,10 +589,6 @@ export default function UbahStatusLaporanPage() {
             <h1 className="mt-1 text-2xl font-bold text-slate-900 sm:text-3xl">
               Status Laporan
             </h1>
-            <p className="mt-2 text-sm text-slate-500">
-              Periksa laporan, perbarui status, dan berikan tanggapan kepada
-              pelapor sesuai hak akses unit kerja Anda.
-            </p>
           </div>
 
           <button
@@ -609,7 +623,7 @@ export default function UbahStatusLaporanPage() {
           {[
             { label: "Total Laporan", value: statistik.total, color: "text-slate-900" },
             { label: "Terkirim", value: statistik.terkirim, color: "text-blue-700" },
-            { label: "Verifikasi", value: statistik.verifikasi, color: "text-amber-700" },
+            { label: "Terverifikasi", value: statistik.terverifikasi, color: "text-amber-700" },
             { label: "Diproses", value: statistik.proses, color: "text-[#7A0C0C]" },
             { label: "Selesai", value: statistik.selesai, color: "text-green-700" },
             { label: "Ditolak", value: statistik.ditolak, color: "text-red-700" },
@@ -1165,7 +1179,7 @@ export default function UbahStatusLaporanPage() {
                                     {STATUS_LABEL[status]}
                                   </span>
                                   <span className="text-xs text-slate-400">
-                                    {formatTanggal(
+                                    {formatTanggalWaktu(
                                       getRiwayatTanggal(item)
                                     )}
                                   </span>

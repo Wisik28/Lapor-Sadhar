@@ -52,7 +52,7 @@ export interface LaporanItem {
   tanggal_rubah?: string | null;
   lokasi_kampus?: string | null;
   lokasi: string;
-  foto?: string | null;
+  foto?: string | string[] | null;
   status_terkini: "Terkirim" | "Diverifikasi" | "Sedang Diverifikasi" | "Terverifikasi" | "Proses" | "Diproses" | "Selesai" | "Ditolak";
   riwayat_status: StatusLaporan[];
   pesan_tanggapan?: string | null;
