@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import Image from "next/image";
 import {
   X,
   Sparkles,
@@ -18,15 +17,16 @@ import {
   FileText,
   ImageIcon,
   Eye,
-  ExternalLink
+  ExternalLink,
+  Paperclip,
 } from "lucide-react";
 import {
   priorityApi,
   PriorityReportItem,
   PriorityDetailData,
-  SeverityLevel
+  SeverityLevel,
 } from "@/lib/priorityApi";
-import { PriorityScoreBadge, SeverityBadge } from "./PriorityScoreBadge";
+import { getFotoUrl as getBaseFotoUrl } from "@/lib/laporanPhoto";
 
 interface PriorityDetailModalProps {
   report: PriorityReportItem | null;
@@ -38,14 +38,32 @@ interface PriorityDetailModalProps {
   hideHandlingInfo?: boolean;
 }
 
-function getFotoList(fotoSource: any): string[] {
+function resolveFotoUrl(rawFoto: string): string {
+  const trimmed = rawFoto.trim();
+  if (!trimmed || trimmed.startsWith("blob:")) return "";
+  if (/^(https?:|data:image\/)/i.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^\/?storage\//i.test(trimmed)) {
+    return getBaseFotoUrl(trimmed);
+  }
+  const apiBase = (
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"
+  ).replace(/\/api\/?$/, "");
+  return `${apiBase}/storage/${trimmed.replace(/^\/+/, "")}`;
+}
+
+function extractRawFotoList(fotoSource: unknown): string[] {
   if (!fotoSource) return [];
 
   if (Array.isArray(fotoSource)) {
     return fotoSource
       .map((item) => {
         if (typeof item === "string") return item.trim();
-        if (item && typeof item === "object") return (item.url || item.path || "").trim();
+        if (item && typeof item === "object") {
+          const obj = item as { url?: string; path?: string };
+          return (obj.url || obj.path || "").trim();
+        }
         return "";
       })
       .filter((url) => url.length > 0);
@@ -57,23 +75,29 @@ function getFotoList(fotoSource: any): string[] {
 
     if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
       try {
-        const parsed = JSON.parse(trimmed);
+        const parsed: unknown = JSON.parse(trimmed);
         if (Array.isArray(parsed)) {
           return parsed
             .map((item) => {
               if (typeof item === "string") return item.trim();
-              if (item && typeof item === "object") return (item.url || item.path || "").trim();
+              if (item && typeof item === "object") {
+                const obj = item as { url?: string; path?: string };
+                return (obj.url || obj.path || "").trim();
+              }
               return "";
             })
             .filter((url) => url.length > 0);
         }
       } catch {
-        // Fallback jika bukan JSON valid
+        // Lanjut sebagai teks biasa jika bukan JSON valid
       }
     }
 
-    if (trimmed.includes(",")) {
-      const parts = trimmed.split(",").map((p) => p.trim()).filter((p) => p.length > 0);
+    if (!trimmed.startsWith("data:image/") && trimmed.includes(",")) {
+      const parts = trimmed
+        .split(",")
+        .map((p) => p.trim())
+        .filter((p) => p.length > 0);
       if (parts.length > 1) {
         return parts;
       }
@@ -94,7 +118,6 @@ export function PriorityDetailModal({
   hideScoreBreakdown = false,
   hideHandlingInfo = false,
 }: PriorityDetailModalProps) {
-  const [loading, setLoading] = useState(false);
   const [detailData, setDetailData] = useState<PriorityDetailData | null>(null);
   const [selectedSeverity, setSelectedSeverity] = useState<SeverityLevel>("sedang");
   const [adminNotes, setAdminNotes] = useState("");
@@ -103,13 +126,29 @@ export function PriorityDetailModal({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null);
 
+  const reportExtra = report as PriorityReportItem & {
+    fotos?: unknown;
+    attachments?: unknown;
+  };
+
   const rawFoto =
     detailData?.laporan?.foto ||
-    (report as any)?.fotos ||
-    (report as any)?.attachments ||
+    reportExtra?.fotos ||
+    reportExtra?.attachments ||
     report?.foto;
 
-  const fotoList = useMemo(() => getFotoList(rawFoto), [rawFoto]);
+  const rawFotoItems = useMemo(() => extractRawFotoList(rawFoto), [rawFoto]);
+  const hasBlobOnly = useMemo(
+    () =>
+      rawFotoItems.length > 0 &&
+      rawFotoItems.every((item) => item.startsWith("blob:")),
+    [rawFotoItems]
+  );
+
+  const fotoList = useMemo(
+    () => rawFotoItems.map(resolveFotoUrl).filter((url) => url.length > 0),
+    [rawFotoItems]
+  );
 
   useEffect(() => {
     if (isOpen && report) {
@@ -127,13 +166,10 @@ export function PriorityDetailModal({
 
   const loadDetail = async (id: number) => {
     try {
-      setLoading(true);
       const data = await priorityApi.getReportDetail(id);
       setDetailData(data);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -149,8 +185,10 @@ export function PriorityDetailModal({
       setTimeout(() => {
         onClose();
       }, 1200);
-    } catch (err: any) {
-      setErrorMessage(err.message || "Gagal menyimpan penetapan prioritas.");
+    } catch (err) {
+      setErrorMessage(
+        err instanceof Error ? err.message : "Gagal menyimpan penetapan prioritas."
+      );
     } finally {
       setIsSaving(false);
     }
@@ -170,14 +208,20 @@ export function PriorityDetailModal({
                 {hideAiAnalysis ? "Detail Laporan" : "Penetapan Prioritas & Verifikasi AI"}
               </h2>
               <p className="text-xs text-gray-500 font-medium">
-                Kategori: <span className="font-semibold text-gray-700">{report.kategori_laporan}</span> • Status:{" "}
-                <span className="font-semibold text-gray-700">{report.status_terkini}</span>
+                Kategori:{" "}
+                <span className="font-semibold text-gray-700">
+                  {report.kategori_laporan}
+                </span>{" "}
+                • Status:{" "}
+                <span className="font-semibold text-gray-700">
+                  {report.status_terkini}
+                </span>
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+            className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -210,30 +254,34 @@ export function PriorityDetailModal({
               </p>
             </div>
 
-            {/* Lokasi Kejadian (Sama persis seperti yang diinputkan user) */}
+            {/* Lokasi Kejadian */}
             <div className="p-3.5 bg-white rounded-2xl border border-gray-200/90 shadow-2xs space-y-1.5">
               <div className="flex flex-wrap items-center justify-between gap-1.5">
                 <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
                   <MapPin className="w-3.5 h-3.5 text-[#8C1515]" />
                   Lokasi Kejadian (Input Pengguna):
                 </span>
-                {/* Konteks Kategori Sistem Backend */}
                 {(report.kategori_lokasi || detailData?.laporan?.kategori_lokasi) && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
                     <span>Kategori Sistem:</span>
                     <span className="text-[#8C1515]">
                       {detailData?.laporan?.kategori_lokasi || report.kategori_lokasi}
                     </span>
-                    {(report.tingkat_keparahan_lokasi || detailData?.laporan?.tingkat_keparahan) && (
+                    {(report.tingkat_keparahan_lokasi ||
+                      detailData?.laporan?.tingkat_keparahan) && (
                       <span className="text-slate-500 font-medium">
-                        • {detailData?.laporan?.tingkat_keparahan || report.tingkat_keparahan_lokasi}
+                        •{" "}
+                        {detailData?.laporan?.tingkat_keparahan ||
+                          report.tingkat_keparahan_lokasi}
                       </span>
                     )}
                   </span>
                 )}
               </div>
               <p className="text-sm font-semibold text-gray-900 break-words leading-snug">
-                {detailData?.laporan?.lokasi || report.lokasi || "Lokasi tidak dicantumkan."}
+                {detailData?.laporan?.lokasi ||
+                  report.lokasi ||
+                  "Lokasi tidak dicantumkan."}
               </p>
             </div>
 
@@ -242,22 +290,34 @@ export function PriorityDetailModal({
               <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-gray-200/80">
                 <User className="w-4 h-4 text-gray-500 shrink-0" />
                 <div className="min-w-0">
-                  <span className="block text-[10px] text-gray-400 font-medium">Pelapor</span>
-                  <span className="truncate font-semibold text-gray-800 block">{report.nama_pelapor}</span>
+                  <span className="block text-[10px] text-gray-400 font-medium">
+                    Pelapor
+                  </span>
+                  <span className="truncate font-semibold text-gray-800 block">
+                    {report.nama_pelapor}
+                  </span>
                 </div>
               </div>
               <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-gray-200/80">
                 <Calendar className="w-4 h-4 text-gray-500 shrink-0" />
                 <div className="min-w-0">
-                  <span className="block text-[10px] text-gray-400 font-medium">Waktu Buat</span>
-                  <span className="truncate font-semibold text-gray-800 block">{report.lama_menunggu}</span>
+                  <span className="block text-[10px] text-gray-400 font-medium">
+                    Waktu Buat
+                  </span>
+                  <span className="truncate font-semibold text-gray-800 block">
+                    {report.lama_menunggu}
+                  </span>
                 </div>
               </div>
               <div className="flex items-center gap-2 bg-white p-2.5 rounded-xl border border-gray-200/80">
                 <Clock className="w-4 h-4 text-gray-500 shrink-0" />
                 <div className="min-w-0">
-                  <span className="block text-[10px] text-gray-400 font-medium">Lama Menunggu</span>
-                  <span className="truncate font-semibold text-gray-800 block">{report.lama_menunggu_hari} hari</span>
+                  <span className="block text-[10px] text-gray-400 font-medium">
+                    Lama Menunggu
+                  </span>
+                  <span className="truncate font-semibold text-gray-800 block">
+                    {report.lama_menunggu_hari} hari
+                  </span>
                 </div>
               </div>
             </div>
@@ -278,10 +338,16 @@ export function PriorityDetailModal({
             </div>
 
             {fotoList.length === 0 ? (
-              <div className="flex items-center gap-2.5 p-4 rounded-2xl bg-gray-50 border border-gray-200/80 text-gray-400 text-xs">
-                <FileText className="w-5 h-5 opacity-60 shrink-0" />
-                <span>Tidak ada foto terlampir pada laporan ini.</span>
-              </div>
+              hasBlobOnly ? (
+                <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+                  Foto pada laporan ini gagal tersimpan ke server saat pengajuan awal.
+                </div>
+              ) : (
+                <div className="flex items-center gap-2.5 p-4 rounded-2xl bg-gray-50 border border-gray-200/80 text-gray-400 text-xs">
+                  <FileText className="w-5 h-5 opacity-60 shrink-0" />
+                  <span>Tidak ada foto terlampir pada laporan ini.</span>
+                </div>
+              )
             ) : (
               <div
                 className={`grid gap-3.5 ${
@@ -295,24 +361,61 @@ export function PriorityDetailModal({
                 {fotoList.map((fotoUrl, idx) => (
                   <div
                     key={`${fotoUrl}-${idx}`}
-                    onClick={() => setActivePhotoIndex(idx)}
-                    className="group relative h-48 rounded-2xl overflow-hidden border border-gray-200 bg-gray-100 cursor-pointer shadow-2xs hover:shadow-md transition-all"
+                    className="relative rounded-2xl overflow-hidden border border-gray-200 bg-gray-50 shadow-2xs"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={fotoUrl}
-                      alt={`Bukti foto ${idx + 1}`}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <span className="px-3 py-1.5 rounded-xl bg-white/95 text-gray-900 text-xs font-bold shadow-md flex items-center gap-1.5">
-                        <Eye className="w-3.5 h-3.5 text-[#8C1515]" />
-                        Lihat Foto
+                    <button
+                      type="button"
+                      onClick={() => setActivePhotoIndex(idx)}
+                      className="group relative block w-full h-48 cursor-pointer focus:outline-none"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={fotoUrl}
+                        alt={`Bukti foto ${idx + 1}`}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        onError={(e) => {
+                          const parentBtn = e.currentTarget.parentElement;
+                          if (parentBtn) {
+                            parentBtn.style.display = "none";
+                            const fallbackElem =
+                              parentBtn.nextElementSibling as HTMLElement;
+                            if (fallbackElem) fallbackElem.style.display = "flex";
+                          }
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <span className="px-3 py-1.5 rounded-xl bg-white/95 text-gray-900 text-xs font-bold shadow-md flex items-center gap-1.5">
+                          <Eye className="w-3.5 h-3.5 text-[#8C1515]" />
+                          Lihat Foto
+                        </span>
+                      </div>
+                      <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-lg bg-black/60 backdrop-blur-xs text-[10px] font-bold text-white shadow-xs">
+                        Foto #{idx + 1}
                       </span>
+                    </button>
+
+                    {/* Fallback jika file tidak ditemukan di storage lokal */}
+                    <div className="hidden h-48 w-full flex-col items-center justify-center p-4 text-center gap-2 bg-white">
+                      <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200">
+                        <Paperclip className="w-4 h-4 text-slate-400" />
+                      </div>
+                      <p className="text-xs font-bold text-slate-700">
+                        Gambar tidak dapat dimuat
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        File foto tidak tersedia di penyimpanan lokal
+                      </p>
+                      {!fotoUrl.startsWith("data:") && (
+                        <a
+                          href={fotoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] font-bold text-[#8C1515] hover:underline"
+                        >
+                          Buka Tautan Asli ↗
+                        </a>
+                      )}
                     </div>
-                    <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-lg bg-black/60 backdrop-blur-xs text-[10px] font-bold text-white shadow-xs">
-                      Foto #{idx + 1}
-                    </span>
                   </div>
                 ))}
               </div>
@@ -333,7 +436,9 @@ export function PriorityDetailModal({
               </div>
 
               <div className="space-y-1.5 pt-1">
-                <p className="text-xs font-semibold text-gray-700">Alasan Analisis AI:</p>
+                <p className="text-xs font-semibold text-gray-700">
+                  Alasan Analisis AI:
+                </p>
                 <ul className="space-y-1 text-xs text-gray-700">
                   {report.reasons.map((r, i) => (
                     <li key={i} className="flex items-start gap-1.5">
@@ -373,7 +478,8 @@ export function PriorityDetailModal({
                   Rincian Kontribusi Skor Prioritas
                 </span>
                 <span className="text-xs font-bold text-[#8C1515]">
-                  Total Skor: {report.priority_score} / 100 ({report.priority_level.toUpperCase()})
+                  Total Skor: {report.priority_score} / 100 (
+                  {report.priority_level.toUpperCase()})
                 </span>
               </div>
 
@@ -393,7 +499,7 @@ export function PriorityDetailModal({
             </div>
           )}
 
-          {/* Form Penetapan / Override oleh Admin (Hanya untuk Admin) */}
+          {/* Form Penetapan / Override oleh Admin */}
           {typeof window !== "undefined" && localStorage.getItem("admin_token") ? (
             <div className="p-5 bg-white rounded-2xl border-2 border-[#8C1515]/20 shadow-xs space-y-4">
               <div>
@@ -408,29 +514,28 @@ export function PriorityDetailModal({
                 </p>
               </div>
 
-              {/* Opsi Radio Tingkat Kerusakan */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {[
                   {
                     id: "berat",
                     label: "Berat (100 Poin)",
                     sub: "Bahaya keselamatan / henti operasional",
-                    border: "border-red-300",
-                    activeBg: "bg-red-50 border-red-500 ring-2 ring-red-500/20 text-red-900",
+                    activeBg:
+                      "bg-red-50 border-red-500 ring-2 ring-red-500/20 text-red-900",
                   },
                   {
                     id: "sedang",
                     label: "Sedang (50 Poin)",
                     sub: "Gangguan fungsi sebagian / kenyamanan",
-                    border: "border-amber-300",
-                    activeBg: "bg-amber-50 border-amber-500 ring-2 ring-amber-500/20 text-amber-900",
+                    activeBg:
+                      "bg-amber-50 border-amber-500 ring-2 ring-amber-500/20 text-amber-900",
                   },
                   {
                     id: "ringan",
                     label: "Ringan (20 Poin)",
                     sub: "Minor, tidak mengganggu fungsi utama",
-                    border: "border-blue-300",
-                    activeBg: "bg-blue-50 border-blue-500 ring-2 ring-blue-500/20 text-blue-900",
+                    activeBg:
+                      "bg-blue-50 border-blue-500 ring-2 ring-blue-500/20 text-blue-900",
                   },
                 ].map((opt) => {
                   const isSelected = selectedSeverity === opt.id;
@@ -442,7 +547,7 @@ export function PriorityDetailModal({
                       className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                         isSelected
                           ? opt.activeBg
-                          : `bg-white hover:bg-gray-50 text-gray-700 border-gray-200`
+                          : "bg-white hover:bg-gray-50 text-gray-700 border-gray-200"
                       }`}
                     >
                       <div className="flex items-center justify-between">
@@ -452,16 +557,19 @@ export function PriorityDetailModal({
                             isSelected ? "border-current" : "border-gray-300"
                           }`}
                         >
-                          {isSelected && <div className="w-2 h-2 rounded-full bg-current" />}
+                          {isSelected && (
+                            <div className="w-2 h-2 rounded-full bg-current" />
+                          )}
                         </div>
                       </div>
-                      <p className="text-[11px] text-gray-500 mt-1 leading-snug">{opt.sub}</p>
+                      <p className="text-[11px] text-gray-500 mt-1 leading-snug">
+                        {opt.sub}
+                      </p>
                     </button>
                   );
                 })}
               </div>
 
-              {/* Catatan Admin */}
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-gray-700">
                   Catatan Verifikasi / Alasan Penetapan Admin (Opsional):
@@ -479,7 +587,9 @@ export function PriorityDetailModal({
             <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200/80 flex items-start gap-3 text-xs text-amber-800">
               <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <p className="font-bold text-amber-900">Informasi Penanganan Laporan</p>
+                <p className="font-bold text-amber-900">
+                  Informasi Penanganan Laporan
+                </p>
                 <p className="mt-0.5 text-amber-700 leading-relaxed">
                   Skor dan tingkat prioritas dihitung secara otomatis untuk memandu antrean penanganan oleh pengelola sarana dan prasarana (BLU / BPS). Penetapan prioritas final dan perubahan status dikelola langsung oleh tim admin.
                 </p>
@@ -502,7 +612,11 @@ export function PriorityDetailModal({
                   >
                     <div className="flex items-center justify-between font-semibold">
                       <span>
-                        Diubah dari <span className="uppercase text-gray-500">{item.original_level}</span> →{" "}
+                        Diubah dari{" "}
+                        <span className="uppercase text-gray-500">
+                          {item.original_level}
+                        </span>{" "}
+                        →{" "}
                         <span className="uppercase font-bold text-[#8C1515]">
                           {item.corrected_level}
                         </span>
@@ -511,7 +625,11 @@ export function PriorityDetailModal({
                         {new Date(item.created_at).toLocaleDateString("id-ID")}
                       </span>
                     </div>
-                    {item.note && <p className="text-gray-600 italic text-[11px]">"{item.note}"</p>}
+                    {item.note && (
+                      <p className="text-gray-600 italic text-[11px]">
+                        &ldquo;{item.note}&rdquo;
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -525,7 +643,7 @@ export function PriorityDetailModal({
             type="button"
             onClick={onClose}
             disabled={isSaving}
-            className="px-4 py-2.5 rounded-xl border border-gray-300 text-xs font-bold text-gray-700 hover:bg-gray-100 transition-colors"
+            className="px-4 py-2.5 rounded-xl border border-gray-300 text-xs font-bold text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
           >
             Tutup
           </button>
@@ -567,15 +685,17 @@ export function PriorityDetailModal({
                 Foto Bukti #{activePhotoIndex + 1} dari {fotoList.length}
               </span>
               <div className="flex items-center gap-2">
-                <a
-                  href={fotoList[activePhotoIndex]}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-semibold transition-colors"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Buka di Tab Baru</span>
-                </a>
+                {!fotoList[activePhotoIndex].startsWith("data:") && (
+                  <a
+                    href={fotoList[activePhotoIndex]}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-semibold transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Buka di Tab Baru</span>
+                  </a>
+                )}
                 <button
                   type="button"
                   onClick={() => setActivePhotoIndex(null)}
@@ -601,7 +721,9 @@ export function PriorityDetailModal({
                   type="button"
                   onClick={() =>
                     setActivePhotoIndex((prev) =>
-                      prev !== null ? (prev - 1 + fotoList.length) % fotoList.length : 0
+                      prev !== null
+                        ? (prev - 1 + fotoList.length) % fotoList.length
+                        : 0
                     )
                   }
                   className="px-4 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition-colors cursor-pointer"
@@ -639,4 +761,3 @@ export function PriorityDetailModal({
     </div>
   );
 }
-

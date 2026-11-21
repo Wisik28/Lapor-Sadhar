@@ -1,13 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
 import { laporanApi, type LaporanItem } from "@/lib/api";
 import { useAuthProtection } from "@/lib/useAuth";
+import { getFotoList, getFotoUrl as getBaseFotoUrl } from "@/lib/laporanPhoto";
+import {
+  normalizeLaporanStatus,
+  type StatusLaporanTerkini,
+} from "@/lib/laporanStatus";
 import { useRouter } from "next/navigation";
-import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
-import { normalizeLaporanStatus } from "@/lib/laporanStatus";
 import {
   Search,
   FileText,
@@ -22,7 +25,17 @@ import {
   MapPin,
   Edit3,
   AlertCircle,
+  ZoomIn,
 } from "lucide-react";
+
+const STATUS_OPTIONS: StatusLaporanTerkini[] = [
+  "Terkirim",
+  "Sedang Diverifikasi",
+  "Terverifikasi",
+  "Diproses",
+  "Selesai",
+  "Ditolak",
+];
 
 // Helper Format Tanggal
 function formatTanggalLong(dateStr: string | null | undefined): string {
@@ -42,18 +55,83 @@ function formatTanggalTime(dateStr: string | null | undefined): string {
   if (!dateStr) return "-";
   try {
     const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return dateStr;
     const dateFormatted = d.toLocaleDateString("id-ID", {
       day: "2-digit",
       month: "short",
       year: "numeric",
     });
-    const timeFormatted = d.toLocaleTimeString("id-ID", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }).replace(".", ":");
+    const timeFormatted = d
+      .toLocaleTimeString("id-ID", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+      .replace(".", ":");
     return `${dateFormatted}, ${timeFormatted}`;
   } catch {
     return dateStr;
+  }
+}
+
+// Helper Normalisasi URL Foto
+function resolveFotoUrl(rawFoto: string): string {
+  const trimmed = rawFoto.trim();
+  if (!trimmed || trimmed.startsWith("blob:")) return "";
+  if (/^(https?:|data:image\/)/i.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^\/?storage\//i.test(trimmed)) {
+    return getBaseFotoUrl(trimmed);
+  }
+  const apiBase = (
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api"
+  ).replace(/\/api\/?$/, "");
+  return `${apiBase}/storage/${trimmed.replace(/^\/+/, "")}`;
+}
+
+function hasBlobFoto(foto?: string | string[] | null): boolean {
+  if (!foto) return false;
+  if (Array.isArray(foto)) {
+    return foto.some((item) => typeof item === "string" && item.startsWith("blob:"));
+  }
+  return typeof foto === "string" && foto.includes("blob:");
+}
+
+function getStatusBadgeStyle(status: StatusLaporanTerkini): {
+  badge: string;
+  dot: string;
+} {
+  switch (status) {
+    case "Terkirim":
+      return {
+        badge: "bg-blue-50 text-blue-700 border-blue-200",
+        dot: "bg-blue-500",
+      };
+    case "Sedang Diverifikasi":
+      return {
+        badge: "bg-amber-50 text-amber-700 border-amber-200",
+        dot: "bg-amber-500",
+      };
+    case "Terverifikasi":
+      return {
+        badge: "bg-indigo-50 text-indigo-700 border-indigo-200",
+        dot: "bg-indigo-500",
+      };
+    case "Diproses":
+      return {
+        badge: "bg-purple-50 text-[#7A0C0C] border-purple-200",
+        dot: "bg-[#7A0C0C]",
+      };
+    case "Selesai":
+      return {
+        badge: "bg-emerald-50 text-emerald-700 border-emerald-200",
+        dot: "bg-emerald-500",
+      };
+    case "Ditolak":
+      return {
+        badge: "bg-red-50 text-red-700 border-red-200",
+        dot: "bg-red-500",
+      };
   }
 }
 
@@ -80,7 +158,9 @@ export default function UserRiwayatLaporanPage() {
 
   const nim = authUser?.nim || authUser?.nomor_identitas || "";
   const nama = authUser?.nama ?? "Pengguna";
-  const role = authUser?.role || (authUser?.tipe_user === "karyawan" ? "Karyawan" : "Mahasiswa");
+  const role =
+    authUser?.role ||
+    (authUser?.tipe_user === "karyawan" ? "Karyawan" : "Mahasiswa");
 
   const [laporanList, setLaporanList] = useState<LaporanItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,13 +171,23 @@ export default function UserRiwayatLaporanPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
-  // State Modal Detail
+  // State Modal Detail & Pratinjau Foto
   const [selectedDetail, setSelectedDetail] = useState<LaporanItem | null>(null);
-  const selectedDetailPhotos = getFotoList(selectedDetail?.foto);
+  const [previewFoto, setPreviewFoto] = useState<string | null>(null);
+
+  // Daftar URL foto valid untuk laporan yang dibuka di modal detail
+  const selectedFotoList = useMemo(() => {
+    if (!selectedDetail) return [];
+    return getFotoList(
+      selectedDetail.foto as string | string[] | null | undefined
+    )
+      .map(resolveFotoUrl)
+      .filter((url) => url.length > 0);
+  }, [selectedDetail]);
 
   // ── Ambil Data Backend ──
-  const fetchLaporan = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
+  const fetchLaporan = useCallback(async () => {
+    setLoading(true);
     try {
       if (!nim) {
         setLaporanList([]);
@@ -109,64 +199,41 @@ export default function UserRiwayatLaporanPage() {
           (a, b) => b.id_laporan - a.id_laporan
         );
         setLaporanList(sortedData);
-        setSelectedDetail((current) =>
-          current
-            ? sortedData.find((laporan) => laporan.id_laporan === current.id_laporan) ?? null
-            : null
-        );
       } else {
-        if (!silent) setLaporanList([]);
+        setLaporanList([]);
       }
     } catch (error) {
       console.error("Gagal mengambil riwayat laporan:", error);
-      if (!silent) setLaporanList([]);
+      setLaporanList([]);
     } finally {
-      if (!silent) setLoading(false);
+      setLoading(false);
     }
   }, [nim]);
 
   useEffect(() => {
-    if (authLoading) return;
-
-    const timeoutId = window.setTimeout(() => {
-      void fetchLaporan();
-    }, 0);
-
-    return () => window.clearTimeout(timeoutId);
+    if (!authLoading) {
+      fetchLaporan();
+    }
   }, [authLoading, fetchLaporan]);
 
+  // Reset ke halaman 1 jika filter berubah
   useEffect(() => {
-    if (authLoading || !nim) return;
-
-    const refreshVisiblePage = () => {
-      if (document.visibilityState === "visible") {
-        void fetchLaporan(true);
-      }
-    };
-    const intervalId = window.setInterval(refreshVisiblePage, 15000);
-    document.addEventListener("visibilitychange", refreshVisiblePage);
-
-    return () => {
-      window.clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", refreshVisiblePage);
-    };
-  }, [authLoading, nim, fetchLaporan]);
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => setCurrentPage(1), 0);
-    return () => window.clearTimeout(timeoutId);
+    setCurrentPage(1);
   }, [searchTerm, filterStatus, filterKategori, filterWaktu]);
 
   // ── Hitung KPI ──
   const totalLaporan = laporanList.length;
   const sedangDiproses = laporanList.filter((l) =>
-    ["Terkirim", "Sedang Diverifikasi", "Terverifikasi", "Diproses"].includes(
+    ["Sedang Diverifikasi", "Terverifikasi", "Diproses"].includes(
       normalizeLaporanStatus(l.status_terkini)
     )
   ).length;
-  const selesaiCount = laporanList.filter((l) => normalizeLaporanStatus(l.status_terkini) === "Selesai").length;
-  const ditolakCount = laporanList.filter((l) => normalizeLaporanStatus(l.status_terkini) === "Ditolak").length;
-  const tingkatResolusi = totalLaporan > 0 ? Math.round((selesaiCount / totalLaporan) * 100) : 0;
+  const selesaiCount = laporanList.filter(
+    (l) => normalizeLaporanStatus(l.status_terkini) === "Selesai"
+  ).length;
+  const ditolakCount = laporanList.filter(
+    (l) => normalizeLaporanStatus(l.status_terkini) === "Ditolak"
+  ).length;
 
   // ── Filter Data ──
   const filteredList = laporanList.filter((item) => {
@@ -177,23 +244,20 @@ export default function UserRiwayatLaporanPage() {
       (item.lokasi && item.lokasi.toLowerCase().includes(searchLow)) ||
       String(item.id_laporan).includes(searchLow);
 
+    const normalizedItemStatus = normalizeLaporanStatus(item.status_terkini);
     const matchesStatus =
       filterStatus === "Semua" ||
-      normalizeLaporanStatus(item.status_terkini) === normalizeLaporanStatus(filterStatus);
-    const matchesKategori = filterKategori === "Semua" || item.kategori_laporan === filterKategori;
+      normalizedItemStatus === normalizeLaporanStatus(filterStatus);
+    const matchesKategori =
+      filterKategori === "Semua" || item.kategori_laporan === filterKategori;
 
-    // Filter Rentang Waktu / Bulan
+    // Filter Bulan
     let matchesWaktu = true;
     const targetDateStr = item.tanggal_buat || item.tanggal_kejadian;
 
     if (targetDateStr && filterWaktu !== "Semua Waktu") {
       const itemDate = new Date(targetDateStr);
-      if (filterWaktu === "Bulan Ini") {
-        const now = new Date();
-        matchesWaktu =
-          itemDate.getMonth() === now.getMonth() &&
-          itemDate.getFullYear() === now.getFullYear();
-      } else {
+      if (!Number.isNaN(itemDate.getTime())) {
         matchesWaktu = itemDate.getMonth() === Number(filterWaktu);
       }
     }
@@ -207,46 +271,18 @@ export default function UserRiwayatLaporanPage() {
     currentPage * itemsPerPage
   );
 
-  const renderStatusBadge = (status: string) => {
-    switch (normalizeLaporanStatus(status)) {
-      case "Terkirim":
-      case "Sedang Diverifikasi":
-      case "Terverifikasi":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-            {normalizeLaporanStatus(status)}
-          </span>
-        );
-      case "Diproses":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200 whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0" />
-            Diproses
-          </span>
-        );
-      case "Selesai":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-            Selesai
-          </span>
-        );
-      case "Ditolak":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
-            Ditolak
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-            {status}
-          </span>
-        );
-    }
+  const renderStatusBadge = (rawStatus?: string | null) => {
+    const status = normalizeLaporanStatus(rawStatus);
+    const style = getStatusBadgeStyle(status);
+
+    return (
+      <span
+        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border whitespace-nowrap ${style.badge}`}
+      >
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
+        {status}
+      </span>
+    );
   };
 
   const handleGoToUbahPengajuan = (idLaporan: number) => {
@@ -259,19 +295,25 @@ export default function UserRiwayatLaporanPage() {
       <div className="flex h-screen w-full items-center justify-center bg-[#F3F4F6]">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="w-8 h-8 animate-spin text-[#7A0C0C]" />
-          <p className="text-slate-600 text-sm font-medium">Memeriksa autentikasi...</p>
+          <p className="text-slate-600 text-sm font-medium">
+            Memeriksa autentikasi...
+          </p>
         </div>
       </div>
     );
   }
 
-  const stepsProgres = [
+  const stepsProgres: { key: StatusLaporanTerkini; label: string; num: number }[] = [
     { key: "Terkirim", label: "Terkirim", num: 1 },
     { key: "Sedang Diverifikasi", label: "Sedang Diverifikasi", num: 2 },
     { key: "Terverifikasi", label: "Terverifikasi", num: 3 },
     { key: "Diproses", label: "Diproses", num: 4 },
     { key: "Selesai", label: "Selesai", num: 5 },
   ];
+
+  const selectedStatus = selectedDetail
+    ? normalizeLaporanStatus(selectedDetail.status_terkini)
+    : "Terkirim";
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#F3F4F6] font-sans text-slate-800">
@@ -300,8 +342,12 @@ export default function UserRiwayatLaporanPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
                 <div>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">TOTAL LAPORAN</p>
-                  <h3 className="text-2xl font-extrabold text-slate-900 mt-1">{totalLaporan}</h3>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    TOTAL LAPORAN
+                  </p>
+                  <h3 className="text-2xl font-extrabold text-slate-900 mt-1">
+                    {totalLaporan}
+                  </h3>
                   <p className="text-[11px] text-slate-400 mt-1">Semua kampus</p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-red-50 text-[#7A0C0C] flex items-center justify-center border border-red-100 shrink-0">
@@ -311,9 +357,15 @@ export default function UserRiwayatLaporanPage() {
 
               <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
                 <div>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">SEDANG DIPROSES</p>
-                  <h3 className="text-2xl font-extrabold text-amber-600 mt-1">{sedangDiproses}</h3>
-                  <p className="text-[11px] text-amber-600/80 mt-1">Tindak lanjut BPS & Teknisi</p>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    SEDANG DIPROSES
+                  </p>
+                  <h3 className="text-2xl font-extrabold text-amber-600 mt-1">
+                    {sedangDiproses}
+                  </h3>
+                  <p className="text-[11px] text-amber-600/80 mt-1">
+                    Verifikasi & Teknisi
+                  </p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100 shrink-0">
                   <Clock className="w-5 h-5" />
@@ -322,9 +374,15 @@ export default function UserRiwayatLaporanPage() {
 
               <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
                 <div>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">SELESAI</p>
-                  <h3 className="text-2xl font-extrabold text-emerald-600 mt-1">{selesaiCount}</h3>
-                  <p className="text-[11px] text-emerald-600/80 mt-1">✓ {tingkatResolusi}% resolusi</p>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    SELESAI
+                  </p>
+                  <h3 className="text-2xl font-extrabold text-emerald-600 mt-1">
+                    {selesaiCount}
+                  </h3>
+                  <p className="text-[11px] text-emerald-600/80 mt-1">
+                    Masalah tuntas
+                  </p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shrink-0">
                   <CheckCircle2 className="w-5 h-5" />
@@ -333,11 +391,17 @@ export default function UserRiwayatLaporanPage() {
 
               <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
                 <div>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">DITOLAK</p>
-                  <h3 className="text-2xl font-extrabold text-slate-700 mt-1">{ditolakCount}</h3>
-                  <p className="text-[11px] text-slate-400 mt-1">Duplikasi / Tidak valid</p>
+                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    DITOLAK
+                  </p>
+                  <h3 className="text-2xl font-extrabold text-red-700 mt-1">
+                    {ditolakCount}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Duplikasi / Tidak valid
+                  </p>
                 </div>
-                <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center border border-slate-200 shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center border border-red-100 shrink-0">
                   <XCircle className="w-5 h-5" />
                 </div>
               </div>
@@ -357,15 +421,13 @@ export default function UserRiwayatLaporanPage() {
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
-                {/* Filter Waktu (Clean Dropdown) */}
+                {/* Filter Waktu */}
                 <select
                   value={filterWaktu}
                   onChange={(e) => setFilterWaktu(e.target.value)}
                   className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none cursor-pointer"
                 >
                   <option value="Semua Waktu">Waktu: Semua Waktu</option>
-                  <option value="Bulan Ini">Bulan Ini</option>
-                  <hr />
                   {LIST_BULAN.map((b) => (
                     <option key={b.value} value={b.value}>
                       {b.label}
@@ -380,12 +442,11 @@ export default function UserRiwayatLaporanPage() {
                   className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none cursor-pointer"
                 >
                   <option value="Semua">Status: Semua</option>
-                  <option value="Terkirim">Terkirim</option>
-                  <option value="Sedang Diverifikasi">Sedang Diverifikasi</option>
-                  <option value="Terverifikasi">Terverifikasi</option>
-                  <option value="Diproses">Diproses</option>
-                  <option value="Selesai">Selesai</option>
-                  <option value="Ditolak">Ditolak</option>
+                  {STATUS_OPTIONS.map((st) => (
+                    <option key={st} value={st}>
+                      {st}
+                    </option>
+                  ))}
                 </select>
 
                 {/* Filter Kategori */}
@@ -400,12 +461,14 @@ export default function UserRiwayatLaporanPage() {
                 </select>
 
                 <button
-                  onClick={() => void fetchLaporan()}
+                  onClick={fetchLaporan}
                   disabled={loading}
                   className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-600 transition-colors cursor-pointer"
                   title="Muat ulang data"
                 >
-                  <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+                  <RefreshCw
+                    className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+                  />
                 </button>
               </div>
             </div>
@@ -416,74 +479,127 @@ export default function UserRiwayatLaporanPage() {
                 <table className="w-full text-left text-xs sm:text-sm border-collapse">
                   <thead className="bg-slate-50/90 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                     <tr>
-                      <th className="px-4 py-3.5 whitespace-nowrap">Tanggal & Waktu</th>
+                      <th className="px-4 py-3.5 whitespace-nowrap">
+                        Tanggal & Waktu
+                      </th>
                       <th className="px-4 py-3.5">Judul & Lokasi Kejadian</th>
-                      <th className="px-4 py-3.5 whitespace-nowrap text-center">Kategori</th>
-                      <th className="px-4 py-3.5 whitespace-nowrap text-center">Status</th>
-                      <th className="px-4 py-3.5 whitespace-nowrap text-center">Lampiran</th>
-                      <th className="px-4 py-3.5 text-right whitespace-nowrap">Aksi</th>
+                      <th className="px-4 py-3.5 whitespace-nowrap text-center">
+                        Kategori
+                      </th>
+                      <th className="px-4 py-3.5 whitespace-nowrap text-center">
+                        Status
+                      </th>
+                      <th className="px-4 py-3.5 whitespace-nowrap text-center">
+                        Lampiran
+                      </th>
+                      <th className="px-4 py-3.5 text-right whitespace-nowrap">
+                        Aksi
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {loading ? (
                       <tr>
-                        <td colSpan={6} className="py-12 text-center text-slate-400">
+                        <td
+                          colSpan={6}
+                          className="py-12 text-center text-slate-400"
+                        >
                           <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-[#7A0C0C]" />
                           Memuat riwayat laporan...
                         </td>
                       </tr>
                     ) : paginatedData.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="py-12 text-center text-slate-400">
+                        <td
+                          colSpan={6}
+                          className="py-12 text-center text-slate-400"
+                        >
                           Belum ada data riwayat laporan.
                         </td>
                       </tr>
                     ) : (
-                      paginatedData.map((lap) => (
-                        <tr key={lap.id_laporan} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="px-4 py-3.5 align-middle whitespace-nowrap text-xs text-slate-500">
-                            <span className="font-semibold text-slate-800 block">
-                              {lap.tanggal_kejadian || "-"}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3.5 align-middle">
-                            <p className="font-bold text-slate-900 line-clamp-1 text-xs sm:text-sm">
-                              {lap.deskripsi}
-                            </p>
-                            <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
-                              <span className="shrink-0 text-red-500">📍</span>
-                              <span className="truncate">{lap.lokasi}</span>
-                            </p>
-                          </td>
-                          <td className="px-4 py-3.5 align-middle text-center whitespace-nowrap">
-                            <span className="inline-block px-2.5 py-1 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                              {lap.kategori_laporan}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3.5 align-middle text-center whitespace-nowrap">
-                            {renderStatusBadge(lap.status_terkini)}
-                          </td>
-                          <td className="px-4 py-3.5 align-middle text-center whitespace-nowrap text-xs text-slate-500">
-                            {lap.foto ? (
-                              <span className="inline-flex items-center gap-1 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 text-slate-700 text-[11px] font-medium">
-                                <Paperclip className="w-3 h-3 text-slate-400 shrink-0" />
-                                Foto
+                      paginatedData.map((lap) => {
+                        const rawFoto = lap.foto as
+                          | string
+                          | string[]
+                          | null
+                          | undefined;
+                        const rowFotos = getFotoList(rawFoto)
+                          .map(resolveFotoUrl)
+                          .filter((url) => url.length > 0);
+                        const firstFotoUrl = rowFotos[0] || "";
+
+                        return (
+                          <tr
+                            key={lap.id_laporan}
+                            className="hover:bg-slate-50/80 transition-colors"
+                          >
+                            <td className="px-4 py-3.5 align-middle whitespace-nowrap text-xs text-slate-500">
+                              <span className="font-semibold text-slate-800 block">
+                                {lap.tanggal_kejadian || "-"}
                               </span>
-                            ) : (
-                              <span className="text-slate-300">-</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap">
-                            <button
-                              onClick={() => setSelectedDetail(lap)}
-                              className="px-3.5 py-1.5 rounded-lg bg-[#7A0C0C] hover:bg-[#9E1B1B] text-white text-xs font-semibold shadow-2xs transition-all inline-flex items-center gap-1 cursor-pointer"
-                            >
-                              <span>Detail</span>
-                              <ChevronRight className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
+                            </td>
+                            <td className="px-4 py-3.5 align-middle">
+                              <p className="font-bold text-slate-900 line-clamp-1 text-xs sm:text-sm">
+                                {lap.deskripsi}
+                              </p>
+                              <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
+                                <span className="shrink-0 text-red-500">📍</span>
+                                <span className="truncate">{lap.lokasi}</span>
+                              </p>
+                            </td>
+                            <td className="px-4 py-3.5 align-middle text-center whitespace-nowrap">
+                              <span className="inline-block px-2.5 py-1 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                                {lap.kategori_laporan}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 align-middle text-center whitespace-nowrap">
+                              {renderStatusBadge(lap.status_terkini)}
+                            </td>
+                            <td className="px-4 py-3.5 align-middle text-center whitespace-nowrap text-xs text-slate-500">
+                              {firstFotoUrl ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (rowFotos.length === 1) {
+                                      setPreviewFoto(firstFotoUrl);
+                                    } else {
+                                      setSelectedDetail(lap);
+                                    }
+                                  }}
+                                  title="Klik untuk melihat foto"
+                                  className="inline-flex items-center gap-1 bg-slate-100 hover:bg-red-50 hover:text-[#7A0C0C] hover:border-red-200 px-2.5 py-1 rounded-md border border-slate-200 text-slate-700 text-[11px] font-medium transition-colors cursor-pointer"
+                                >
+                                  <Paperclip className="w-3 h-3 shrink-0" />
+                                  <span>
+                                    {rowFotos.length > 1
+                                      ? `Foto (${rowFotos.length})`
+                                      : "Foto"}
+                                  </span>
+                                </button>
+                              ) : hasBlobFoto(rawFoto) ? (
+                                <span
+                                  className="text-[11px] text-amber-600 italic"
+                                  title="File tidak terunggah ke server"
+                                >
+                                  Gagal unggah
+                                </span>
+                              ) : (
+                                <span className="text-slate-300">-</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap">
+                              <button
+                                onClick={() => setSelectedDetail(lap)}
+                                className="px-3.5 py-1.5 rounded-lg bg-[#7A0C0C] hover:bg-[#9E1B1B] text-white text-xs font-semibold shadow-2xs transition-all inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <span>Detail</span>
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -492,8 +608,12 @@ export default function UserRiwayatLaporanPage() {
               {/* Pagination */}
               <div className="px-4 py-3 bg-slate-50/50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
                 <p>
-                  Menampilkan {paginatedData.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0} -{" "}
-                  {Math.min(currentPage * itemsPerPage, filteredList.length)} dari {filteredList.length} pengajuan laporan
+                  Menampilkan{" "}
+                  {paginatedData.length > 0
+                    ? (currentPage - 1) * itemsPerPage + 1
+                    : 0}{" "}
+                  - {Math.min(currentPage * itemsPerPage, filteredList.length)}{" "}
+                  dari {filteredList.length} pengajuan laporan
                 </p>
 
                 <div className="flex items-center gap-1">
@@ -504,21 +624,25 @@ export default function UserRiwayatLaporanPage() {
                   >
                     Sebelumnya
                   </button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setCurrentPage(p)}
-                      className={`w-7 h-7 rounded-lg font-bold transition-colors cursor-pointer ${
-                        currentPage === p
-                          ? "bg-[#7A0C0C] text-white"
-                          : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ))}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                    (p) => (
+                      <button
+                        key={p}
+                        onClick={() => setCurrentPage(p)}
+                        className={`w-7 h-7 rounded-lg font-bold transition-colors cursor-pointer ${
+                          currentPage === p
+                            ? "bg-[#7A0C0C] text-white"
+                            : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    )
+                  )}
                   <button
-                    onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+                    onClick={() =>
+                      setCurrentPage((p) => Math.min(p + 1, totalPages))
+                    }
                     disabled={currentPage === totalPages}
                     className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer"
                   >
@@ -548,10 +672,7 @@ export default function UserRiwayatLaporanPage() {
                 </h2>
               </div>
               <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                  {normalizeLaporanStatus(selectedDetail.status_terkini)}
-                </span>
+                {renderStatusBadge(selectedDetail.status_terkini)}
                 <button
                   onClick={() => setSelectedDetail(null)}
                   className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors cursor-pointer"
@@ -566,15 +687,25 @@ export default function UserRiwayatLaporanPage() {
               {/* Grid Info Utama */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs text-slate-400 font-medium mb-1">Kategori</p>
-                  <p className="font-bold text-slate-800">{selectedDetail.kategori_laporan || "-"}</p>
+                  <p className="text-xs text-slate-400 font-medium mb-1">
+                    Kategori
+                  </p>
+                  <p className="font-bold text-slate-800">
+                    {selectedDetail.kategori_laporan || "-"}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400 font-medium mb-1">Tanggal Kejadian</p>
-                  <p className="font-bold text-slate-800">{formatTanggalLong(selectedDetail.tanggal_kejadian)}</p>
+                  <p className="text-xs text-slate-400 font-medium mb-1">
+                    Tanggal Kejadian
+                  </p>
+                  <p className="font-bold text-slate-800">
+                    {formatTanggalLong(selectedDetail.tanggal_kejadian)}
+                  </p>
                 </div>
                 <div className="sm:col-span-2">
-                  <p className="text-xs text-slate-400 font-medium mb-1">Lokasi</p>
+                  <p className="text-xs text-slate-400 font-medium mb-1">
+                    Lokasi
+                  </p>
                   <p className="font-bold text-slate-800 flex items-center gap-1">
                     <MapPin className="w-4 h-4 text-red-600 shrink-0" />
                     <span>{selectedDetail.lokasi || "-"}</span>
@@ -584,7 +715,9 @@ export default function UserRiwayatLaporanPage() {
 
               {/* Deskripsi */}
               <div>
-                <p className="text-xs text-slate-400 font-medium mb-1.5">Deskripsi</p>
+                <p className="text-xs text-slate-400 font-medium mb-1.5">
+                  Deskripsi
+                </p>
                 <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/60 text-slate-700 text-xs sm:text-sm leading-relaxed">
                   {selectedDetail.deskripsi}
                 </div>
@@ -592,34 +725,82 @@ export default function UserRiwayatLaporanPage() {
 
               {/* Foto Pendukung */}
               <div>
-                <p className="text-xs text-slate-400 font-medium mb-1.5">Foto Pendukung</p>
-                {selectedDetailPhotos.length > 0 ? (
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                    {selectedDetailPhotos.map((foto, index) => (
-                      <a
-                        key={`${foto}-${index}`}
-                        href={getFotoUrl(foto)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50"
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-xs text-slate-400 font-medium">
+                    Foto Pendukung
+                    {selectedFotoList.length > 1
+                      ? ` (${selectedFotoList.length} foto)`
+                      : ""}
+                  </p>
+                </div>
+
+                {selectedFotoList.length > 0 ? (
+                  <div
+                    className={`grid gap-3 ${
+                      selectedFotoList.length > 1
+                        ? "grid-cols-1 sm:grid-cols-2"
+                        : "grid-cols-1"
+                    }`}
+                  >
+                    {selectedFotoList.map((fotoUrl, idx) => (
+                      <div
+                        key={`${selectedDetail.id_laporan}-foto-${idx}`}
+                        className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-50/70 p-2"
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={getFotoUrl(foto)}
-                          alt={`Foto pendukung laporan ${index + 1}`}
-                          className="h-40 w-full object-contain"
-                          onError={(event) => {
-                            event.currentTarget.style.display = "none";
-                            const fallback = event.currentTarget.nextElementSibling;
-                            if (fallback instanceof HTMLElement) fallback.style.display = "block";
-                          }}
-                        />
-                        <p className="hidden p-4 text-center text-xs text-red-700">
-                          Foto tidak dapat dimuat dari tautan tersimpan.
-                        </p>
-                        <p className="p-2 text-center text-xs font-semibold text-[#7A0C0C]">Buka foto</p>
-                      </a>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewFoto(fotoUrl)}
+                          className="block w-full relative group cursor-zoom-in focus:outline-none"
+                          title="Klik untuk memperbesar foto"
+                        >
+                          <img
+                            src={fotoUrl}
+                            alt={`Foto pendukung laporan ${idx + 1}`}
+                            className="w-full max-h-60 object-contain rounded-xl transition-opacity group-hover:opacity-90"
+                            onError={(e) => {
+                              const parentBtn = e.currentTarget.parentElement;
+                              if (parentBtn) {
+                                parentBtn.style.display = "none";
+                                const fallbackElem =
+                                  parentBtn.nextElementSibling as HTMLElement;
+                                if (fallbackElem) fallbackElem.style.display = "flex";
+                              }
+                            }}
+                          />
+                          <span className="absolute bottom-2.5 right-2.5 bg-black/75 text-white text-[10px] font-semibold px-2.5 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1">
+                            <ZoomIn className="w-3 h-3" />
+                            <span>Perbesar</span>
+                          </span>
+                        </button>
+
+                        {/* Tampilan Fallback Rapi di Tengah */}
+                        <div className="hidden w-full flex-col items-center justify-center py-6 px-4 text-center gap-2 rounded-xl border border-dashed border-slate-200 bg-white">
+                          <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200">
+                            <Paperclip className="w-5 h-5 text-slate-400" />
+                          </div>
+                          <p className="text-xs font-semibold text-slate-600">
+                            Gambar tidak dapat dimuat
+                          </p>
+                          {!fotoUrl.startsWith("data:") && (
+                            <a
+                              href={fotoUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[11px] text-[#7A0C0C] font-bold hover:underline"
+                            >
+                              Buka Tautan Foto Asli ↗
+                            </a>
+                          )}
+                        </div>
+                      </div>
                     ))}
+                  </div>
+                ) : hasBlobFoto(
+                    selectedDetail.foto as string | string[] | null | undefined
+                  ) ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-amber-700 text-xs">
+                    Foto pada laporan ini gagal tersimpan ke server saat
+                    pengajuan awal.
                   </div>
                 ) : (
                   <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-400 text-xs italic">
@@ -631,12 +812,22 @@ export default function UserRiwayatLaporanPage() {
               {/* Tanggal Dibuat & Terakhir Diperbarui */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
                 <div>
-                  <p className="text-xs text-slate-400 font-medium mb-1">Tanggal Dibuat</p>
-                  <p className="font-bold text-slate-800">{formatTanggalLong(selectedDetail.tanggal_buat)}</p>
+                  <p className="text-xs text-slate-400 font-medium mb-1">
+                    Tanggal Dibuat
+                  </p>
+                  <p className="font-bold text-slate-800">
+                    {formatTanggalLong(selectedDetail.tanggal_buat)}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400 font-medium mb-1">Terakhir Diperbarui</p>
-                  <p className="font-bold text-slate-800">{selectedDetail.tanggal_rubah ? formatTanggalLong(selectedDetail.tanggal_rubah) : "-"}</p>
+                  <p className="text-xs text-slate-400 font-medium mb-1">
+                    Terakhir Diperbarui
+                  </p>
+                  <p className="font-bold text-slate-800">
+                    {selectedDetail.tanggal_rubah
+                      ? formatTanggalLong(selectedDetail.tanggal_rubah)
+                      : "-"}
+                  </p>
                 </div>
               </div>
 
@@ -644,12 +835,14 @@ export default function UserRiwayatLaporanPage() {
               <div className="pt-2 border-t border-slate-100 space-y-3">
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-red-700" />
-                  <p className="font-bold text-slate-800 text-xs sm:text-sm">Progres Penanganan</p>
+                  <p className="font-bold text-slate-800 text-xs sm:text-sm">
+                    Progres Penanganan
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
                   {stepsProgres.map((st) => {
-                    const isCurrent = normalizeLaporanStatus(selectedDetail.status_terkini) === st.key;
+                    const isCurrent = selectedStatus === st.key;
                     return (
                       <div
                         key={st.key}
@@ -662,7 +855,9 @@ export default function UserRiwayatLaporanPage() {
                         <div className="flex items-center gap-1.5 mb-1">
                           <span
                             className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 ${
-                              isCurrent ? "bg-red-700 text-white" : "bg-slate-200 text-slate-600"
+                              isCurrent
+                                ? "bg-red-700 text-white"
+                                : "bg-slate-200 text-slate-600"
                             }`}
                           >
                             {st.num}
@@ -673,7 +868,11 @@ export default function UserRiwayatLaporanPage() {
                             </span>
                           )}
                         </div>
-                        <p className={`text-xs font-bold ${isCurrent ? "text-red-900" : "text-slate-600"}`}>
+                        <p
+                          className={`text-xs font-bold ${
+                            isCurrent ? "text-red-900" : "text-slate-600"
+                          }`}
+                        >
                           {st.label}
                         </p>
                       </div>
@@ -686,31 +885,41 @@ export default function UserRiwayatLaporanPage() {
               <div className="pt-2 border-t border-slate-100 space-y-3">
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-red-700" />
-                  <p className="font-bold text-slate-800 text-xs sm:text-sm">Riwayat Perubahan Status</p>
+                  <p className="font-bold text-slate-800 text-xs sm:text-sm">
+                    Riwayat Perubahan Status
+                  </p>
                 </div>
 
                 <div className="space-y-2">
-                  {selectedDetail.riwayat_status && selectedDetail.riwayat_status.length > 0 ? (
-                    selectedDetail.riwayat_status.map((rs) => (
-                      <div key={rs.id_status} className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-blue-500" />
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                            {normalizeLaporanStatus(rs.status_laporan)}
+                  {selectedDetail.riwayat_status &&
+                  selectedDetail.riwayat_status.length > 0 ? (
+                    [...selectedDetail.riwayat_status]
+                      .sort((a, b) => {
+                        const tanggalA = new Date(
+                          a.tanggal_merubah || 0
+                        ).getTime();
+                        const tanggalB = new Date(
+                          b.tanggal_merubah || 0
+                        ).getTime();
+                        return tanggalA - tanggalB;
+                      })
+                      .map((rs, idx) => (
+                        <div
+                          key={rs.id_status ?? `${rs.tanggal_merubah}-${idx}`}
+                          className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100"
+                        >
+                          <div className="flex items-center gap-2">
+                            {renderStatusBadge(rs.status_laporan)}
+                          </div>
+                          <span className="text-xs text-slate-400 font-medium">
+                            {formatTanggalTime(rs.tanggal_merubah)}
                           </span>
                         </div>
-                        <span className="text-xs text-slate-400 font-medium">
-                          {formatTanggalTime(rs.tanggal_merubah)}
-                        </span>
-                      </div>
-                    ))
+                      ))
                   ) : (
                     <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                       <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-blue-500" />
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                          {selectedDetail.status_terkini}
-                        </span>
+                        {renderStatusBadge(selectedDetail.status_terkini)}
                       </div>
                       <span className="text-xs text-slate-400 font-medium">
                         {formatTanggalTime(selectedDetail.tanggal_buat)}
@@ -722,34 +931,41 @@ export default function UserRiwayatLaporanPage() {
 
               {/* Tanggapan Admin */}
               <div className="pt-2 border-t border-slate-100 space-y-2">
-                <p className="font-bold text-slate-800 text-xs sm:text-sm">Tanggapan Admin</p>
-                {selectedDetail.pesan_tanggapan?.trim() ? (
-                  <div className="bg-amber-50 p-3.5 rounded-2xl border border-amber-200 text-amber-900 text-xs leading-relaxed whitespace-pre-wrap">
-                    {selectedDetail.pesan_tanggapan}
-                  </div>
-                ) : (
-                  <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/60 text-slate-500 text-xs leading-relaxed">
-                    Belum ada tanggapan dari admin untuk laporan ini.
-                  </div>
-                )}
+                <p className="font-bold text-slate-800 text-xs sm:text-sm">
+                  Tanggapan Admin
+                </p>
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200/60 text-slate-600 text-xs leading-relaxed">
+                  {selectedDetail.pesan_tanggapan ||
+                    "Belum ada tanggapan dari admin untuk laporan ini."}
+                </div>
               </div>
             </div>
 
             {/* Footer Modal */}
             <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-              {selectedDetail.status_terkini === "Terkirim" ? (
+              {selectedStatus === "Terkirim" ? (
                 <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200/60 w-full sm:w-auto">
                   <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>Pengajuan ini masih dapat diubah sebelum diverifikasi.</span>
+                  <span>
+                    Pengajuan ini masih dapat diubah sebelum diverifikasi.
+                  </span>
                 </div>
               ) : (
-                <span className="text-xs text-slate-400">Laporan dalam penanganan.</span>
+                <span className="text-xs text-slate-400">
+                  {selectedStatus === "Selesai"
+                    ? "Laporan telah selesai ditangani."
+                    : selectedStatus === "Ditolak"
+                      ? "Laporan ditolak oleh admin."
+                      : "Laporan dalam penanganan."}
+                </span>
               )}
 
               <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-                {selectedDetail.status_terkini === "Terkirim" && (
+                {selectedStatus === "Terkirim" && (
                   <button
-                    onClick={() => handleGoToUbahPengajuan(selectedDetail.id_laporan)}
+                    onClick={() =>
+                      handleGoToUbahPengajuan(selectedDetail.id_laporan)
+                    }
                     className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-[#7A0C0C] hover:bg-[#9E1B1B] text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
@@ -764,6 +980,49 @@ export default function UserRiwayatLaporanPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox Pratinjau Foto Ukuran Penuh */}
+      {previewFoto && (
+        <div
+          onClick={() => setPreviewFoto(null)}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-xs p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-4xl w-full flex flex-col items-center gap-3"
+          >
+            <div className="w-full flex items-center justify-between text-white">
+              <span className="text-xs font-semibold text-slate-300">
+                Pratinjau Foto Bukti Laporan
+              </span>
+              <div className="flex items-center gap-2">
+                {!previewFoto.startsWith("data:") && (
+                  <a
+                    href={previewFoto}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-semibold transition-colors"
+                  >
+                    Buka di Tab Baru ↗
+                  </a>
+                )}
+                <button
+                  onClick={() => setPreviewFoto(null)}
+                  className="p-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer"
+                  title="Tutup pratinjau"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <img
+              src={previewFoto}
+              alt="Pratinjau foto ukuran penuh"
+              className="max-h-[82vh] w-auto max-w-full object-contain rounded-2xl shadow-2xl border border-white/10"
+            />
           </div>
         </div>
       )}
