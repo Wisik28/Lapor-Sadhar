@@ -42,10 +42,13 @@ export interface BuatLaporanState {
   success: string;
 }
 
-export function useBuatLaporan(today: string) {
+export function useBuatLaporan(today?: string) {
+  const getCurrentDate = () => new Date().toISOString().split('T')[0];
+  const initialDate = today || getCurrentDate();
+
   const [state, setState] = useState<BuatLaporanState>(() => ({
     kategori: '',
-    tanggal: today,
+    tanggal: initialDate,
     lokasiKampus: '',
     detailLokasi: '',
     lokasi: '',
@@ -59,7 +62,7 @@ export function useBuatLaporan(today: string) {
   const reset = useCallback(() => {
     setState({
       kategori: '',
-      tanggal: today,
+      tanggal: getCurrentDate(),
       lokasiKampus: '',
       detailLokasi: '',
       lokasi: '',
@@ -69,7 +72,7 @@ export function useBuatLaporan(today: string) {
       error: '',
       success: '',
     });
-  }, [today]);
+  }, []);
 
   const clearError = useCallback(() => {
     setState((prev) => ({ ...prev, error: '' }));
@@ -140,14 +143,6 @@ export function useBuatLaporan(today: string) {
         return;
       }
 
-      if (state.tanggal > today) {
-        setState((prev) => ({
-          ...prev,
-          error: 'Tanggal kejadian tidak boleh melebihi hari ini!',
-        }));
-        return;
-      }
-
       if (!nim) {
         setState((prev) => ({
           ...prev,
@@ -156,7 +151,9 @@ export function useBuatLaporan(today: string) {
         return;
       }
 
-      setState((prev) => ({ ...prev, loading: true, error: '', success: '' }));
+      const tanggalSubmit = getCurrentDate();
+
+      setState((prev) => ({ ...prev, tanggal: tanggalSubmit, loading: true, error: '', success: '' }));
 
       try {
         const fotoData = await Promise.all(
@@ -175,7 +172,7 @@ export function useBuatLaporan(today: string) {
           nim,
           kategori_laporan: state.kategori,
           deskripsi: state.deskripsi.trim(),
-          tanggal_kejadian: state.tanggal,
+          tanggal_kejadian: tanggalSubmit,
           lokasi_kampus: lokasiKampusApi,
           lokasi: lokasiGabungan,
           foto: fotoPayload,
@@ -185,7 +182,7 @@ export function useBuatLaporan(today: string) {
           state.attachments.forEach((attachment) => URL.revokeObjectURL(attachment.url));
           setState({
             kategori: '',
-            tanggal: today,
+            tanggal: tanggalSubmit,
             lokasiKampus: '',
             detailLokasi: '',
             lokasi: '',
@@ -213,7 +210,7 @@ export function useBuatLaporan(today: string) {
         }));
       }
     },
-    [state, today]
+    [state]
   );
 
   return {
