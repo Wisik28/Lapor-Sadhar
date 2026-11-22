@@ -77,6 +77,21 @@ const STATUS_LABEL: Record<StatusValue, string> = {
   Ditolak: "Ditolak",
 };
 
+const BULAN_OPTIONS = [
+  { value: "01", label: "Januari" },
+  { value: "02", label: "Februari" },
+  { value: "03", label: "Maret" },
+  { value: "04", label: "April" },
+  { value: "05", label: "Mei" },
+  { value: "06", label: "Juni" },
+  { value: "07", label: "Juli" },
+  { value: "08", label: "Agustus" },
+  { value: "09", label: "September" },
+  { value: "10", label: "Oktober" },
+  { value: "11", label: "November" },
+  { value: "12", label: "Desember" },
+];
+
 function normalizeStatus(value?: string): StatusValue {
   const status = (value ?? "Terkirim").trim().toLowerCase();
 
@@ -220,6 +235,7 @@ export default function AdminRiwayatLaporanPage() {
   const [filterKampus, setFilterKampus] = useState("Semua Kampus");
   const [filterStatus, setFilterStatus] = useState("Semua");
   const [filterKategori, setFilterKategori] = useState("Semua");
+  const [filterBulan, setFilterBulan] = useState("Semua");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
@@ -347,7 +363,7 @@ export default function AdminRiwayatLaporanPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterKampus, filterStatus, filterKategori]);
+  }, [searchTerm, filterKampus, filterStatus, filterKategori, filterBulan]);
 
   const totalLaporan = laporanList.length;
   const masukCount = laporanList.filter(
@@ -382,14 +398,49 @@ export default function AdminRiwayatLaporanPage() {
         filterKategori === "Semua" || item.kategori_laporan === filterKategori;
 
       let matchesKampus = true;
-      if (filterKampus !== "Semua Kampus" && item.lokasi) {
-        matchesKampus = item.lokasi
-          .toLowerCase()
-          .includes(filterKampus.toLowerCase());
+      if (filterKampus !== "Semua Kampus") {
+        const lokasi = (item.lokasi || "").toLowerCase();
+        if (filterKampus === "Kampus I") {
+          matchesKampus = /\bkampus\s*(i|1)\b/i.test(lokasi);
+        } else if (filterKampus === "Kampus II") {
+          matchesKampus = /\bkampus\s*(ii|2)\b/i.test(lokasi);
+        } else if (filterKampus === "Kampus III") {
+          matchesKampus = /\bkampus\s*(iii|3)\b/i.test(lokasi);
+        } else if (filterKampus === "Kampus IV") {
+          matchesKampus = /\bkampus\s*(iv|4)\b/i.test(lokasi);
+        } else {
+          matchesKampus = lokasi.includes(filterKampus.toLowerCase());
+        }
+      }
+
+      let matchesBulan = true;
+      if (filterBulan !== "Semua") {
+        const rawTanggal = (
+          item.tanggal_buat ||
+          item.tanggal_kejadian ||
+          ""
+        ).trim();
+        if (!rawTanggal) {
+          matchesBulan = false;
+        } else {
+          const matchIso = rawTanggal.match(/^\d{4}-(\d{2})/);
+          if (matchIso) {
+            matchesBulan = matchIso[1] === filterBulan;
+          } else {
+            const parsedDate = new Date(rawTanggal);
+            matchesBulan = !Number.isNaN(parsedDate.getTime())
+              ? String(parsedDate.getMonth() + 1).padStart(2, "0") === filterBulan
+              : false;
+          }
+        }
       }
 
       return (
-        matchesSearch && matchesStatus && matchesKategori && matchesKampus
+        matchesSearch &&
+        matchesStatus &&
+        matchesKategori &&
+        matchesKampus &&
+        matchesBulan
       );
     });
   }, [
@@ -398,6 +449,7 @@ export default function AdminRiwayatLaporanPage() {
     filterStatus,
     filterKategori,
     filterKampus,
+    filterBulan,
   ]);
 
   const totalPages = Math.ceil(filteredList.length / itemsPerPage) || 1;
@@ -617,7 +669,20 @@ export default function AdminRiwayatLaporanPage() {
                 <option value="Kampus I">Kampus I (Mrican)</option>
                 <option value="Kampus II">Kampus II (Mrican)</option>
                 <option value="Kampus III">Kampus III (Paingan)</option>
-                <option value="Kampus IV">Kampus IV</option>
+                <option value="Kampus IV">Kampus IV (Kentungan)</option>
+              </select>
+
+              <select
+                value={filterBulan}
+                onChange={(e) => setFilterBulan(e.target.value)}
+                className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none cursor-pointer"
+              >
+                <option value="Semua">Bulan: Semua Bulan</option>
+                {BULAN_OPTIONS.map((bln) => (
+                  <option key={bln.value} value={bln.value}>
+                    {bln.label}
+                  </option>
+                ))}
               </select>
 
               <select
