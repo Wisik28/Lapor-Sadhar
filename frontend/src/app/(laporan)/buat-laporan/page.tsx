@@ -33,6 +33,7 @@ export default function BuatLaporanPage() {
   const handleAddAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       addAttachment(e.target.files[0]);
+      e.target.value = '';
     }
   };
 
@@ -181,10 +182,10 @@ export default function BuatLaporanPage() {
                 {/* Upload */}
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-1">
-                    Foto / Lampiran
+                    Foto / Lampiran <span className="text-red-500">*</span>
                   </label>
                   <p className="text-xs text-slate-500 mb-3">
-                    Unggah bukti foto kerusakan (Maksimal 5 foto, format JPG/PNG).
+                    Unggah bukti foto kerusakan (Minimal 1 foto, maksimal 5 foto, format JPG/PNG).
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
                     {state.attachments.map((item) => (

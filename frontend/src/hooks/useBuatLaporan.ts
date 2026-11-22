@@ -1,11 +1,18 @@
 /**
- * Hook untuk Buat Laporan feature
- * Mengelola state dan logic untuk membuat laporan baru
+- Hook untuk Buat Laporan feature
+- Mengelola state dan logic untuk membuat laporan baru
  */
 
 import { useState, useCallback } from 'react';
 import { laporanApi } from '@/lib/api/laporan';
 import { type LaporanItem, type Attachment } from '@/lib/api/types';
+
+const KAMPUS_API_MAP: Record<string, string> = {
+  'Kampus I': 'Kampus 1',
+  'Kampus II': 'Kampus 2',
+  'Kampus III': 'Kampus 3',
+  'Kampus IV': 'Kampus 4',
+};
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -125,6 +132,14 @@ export function useBuatLaporan(today: string) {
         return;
       }
 
+      if (state.attachments.length === 0) {
+        setState((prev) => ({
+          ...prev,
+          error: 'Mohon unggah minimal 1 foto bukti kerusakan!',
+        }));
+        return;
+      }
+
       if (state.tanggal > today) {
         setState((prev) => ({
           ...prev,
@@ -152,14 +167,16 @@ export function useBuatLaporan(today: string) {
             ? JSON.stringify(fotoData)
             : (fotoData[0] ?? undefined);
 
-        const lokasiGabungan = `${state.lokasiKampus.trim()}, ${state.detailLokasi.trim()}`;
+        const kampusTerpilih = state.lokasiKampus.trim();
+        const lokasiKampusApi = KAMPUS_API_MAP[kampusTerpilih] ?? kampusTerpilih;
+        const lokasiGabungan = `${kampusTerpilih}, ${state.detailLokasi.trim()}`;
 
         const res = await laporanApi.create({
           nim,
           kategori_laporan: state.kategori,
           deskripsi: state.deskripsi.trim(),
           tanggal_kejadian: state.tanggal,
-          lokasi_kampus: state.lokasiKampus,
+          lokasi_kampus: lokasiKampusApi,
           lokasi: lokasiGabungan,
           foto: fotoPayload,
         });
