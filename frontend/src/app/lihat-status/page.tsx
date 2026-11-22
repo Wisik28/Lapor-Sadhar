@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
 import ImagePreviewModal from "@/components/ImagePreviewModal";
@@ -22,6 +23,7 @@ import {
   MapPin,
   RefreshCw,
   Search,
+  X,
   XCircle,
 } from "lucide-react";
 
@@ -269,10 +271,22 @@ export default function LihatStatusPage() {
   const [filterStatus, setFilterStatus] = useState<(typeof STATUS_FILTERS)[number]>("Semua");
   const [filterKategori, setFilterKategori] = useState<(typeof KATEGORI_FILTERS)[number]>("Semua");
   const [laporanTerpilih, setLaporanTerpilih] = useState<number | null>(null);
+  const [isMobileDetailOpen, setIsMobileDetailOpen] = useState(false);
   const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  useEffect(() => {
+    if (!isMobileDetailOpen || activePhotoIndex !== null) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsMobileDetailOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isMobileDetailOpen, activePhotoIndex]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setCurrentPage(1), 0);
@@ -497,53 +511,77 @@ export default function LihatStatusPage() {
               })}
             </section>
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-              <div className="mb-4 flex items-center gap-2">
-                <Filter className="h-4 w-4 text-[#7A0C0C]" />
-                <h3 className="text-sm font-bold text-slate-800">Cari dan Filter Laporan</h3>
-              </div>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                <label className="relative block md:col-span-1">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    value={keyword}
-                    onChange={(event) => {
-                      setKeyword(event.target.value);
-                      setCurrentPage(1);
-                    }}
-                    placeholder="Cari ID, lokasi, atau deskripsi..."
-                    className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-[#7A0C0C] focus:ring-2 focus:ring-[#7A0C0C]/10"
-                  />
-                </label>
-                <select
-                  value={filterStatus}
-                  onChange={(event) => {
-                    setFilterStatus(event.target.value as typeof filterStatus);
-                    setCurrentPage(1);
-                  }}
-                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#7A0C0C]"
-                >
-                  {STATUS_FILTERS.map((status) => <option key={status} value={status}>{status === "Semua" ? "Semua Status" : status === "Sedang Diverifikasi" ? "Diverifikasi" : status}</option>)}
-                </select>
-                <select
-                  value={filterKategori}
-                  onChange={(event) => {
-                    setFilterKategori(event.target.value as typeof filterKategori);
-                    setCurrentPage(1);
-                  }}
-                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#7A0C0C]"
-                >
-                  {KATEGORI_FILTERS.map((kategori) => <option key={kategori} value={kategori}>{kategori === "Semua" ? "Semua Kategori" : kategori}</option>)}
-                </select>
-              </div>
-            </section>
-
             <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[0.9fr_1.1fr]">
-              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                <div className="mb-4 flex items-center justify-between gap-2">
+              <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-bold text-slate-800">Daftar Laporan</h3>
                     <p className="mt-0.5 text-xs text-slate-500">{laporanTersaring.length} laporan ditemukan</p>
+                  </div>
+                  {(keyword || filterStatus !== "Semua" || filterKategori !== "Semua") && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setKeyword("");
+                        setFilterStatus("Semua");
+                        setFilterKategori("Semua");
+                        setCurrentPage(1);
+                      }}
+                      className="text-xs font-semibold text-[#7A0C0C] hover:underline cursor-pointer"
+                    >
+                      Reset Filter
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter & Pencarian terintegrasi di dalam card Daftar Laporan */}
+                <div className="mb-4 space-y-2.5 border-b border-slate-100 pb-4">
+                  <label className="relative block">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={keyword}
+                      onChange={(event) => {
+                        setKeyword(event.target.value);
+                        setCurrentPage(1);
+                      }}
+                      placeholder="Cari ID, lokasi, atau deskripsi..."
+                      className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/70 pl-9 pr-3 text-sm outline-none transition focus:border-[#7A0C0C] focus:bg-white focus:ring-2 focus:ring-[#7A0C0C]/10"
+                    />
+                  </label>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div className="relative min-w-0">
+                      <Filter className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                      <select
+                        aria-label="Filter status laporan"
+                        value={filterStatus}
+                        onChange={(event) => {
+                          setFilterStatus(event.target.value as typeof filterStatus);
+                          setCurrentPage(1);
+                        }}
+                        className="h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50/70 pl-8 pr-2.5 text-xs sm:text-sm text-slate-700 outline-none transition focus:border-[#7A0C0C] focus:bg-white cursor-pointer"
+                      >
+                        {STATUS_FILTERS.map((status) => (
+                          <option key={status} value={status}>
+                            {status === "Semua" ? "Semua Status" : status === "Sedang Diverifikasi" ? "Diverifikasi" : status}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <select
+                      aria-label="Filter kategori laporan"
+                      value={filterKategori}
+                      onChange={(event) => {
+                        setFilterKategori(event.target.value as typeof filterKategori);
+                        setCurrentPage(1);
+                      }}
+                      className="h-10 w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-xs sm:text-sm text-slate-700 outline-none transition focus:border-[#7A0C0C] focus:bg-white cursor-pointer"
+                    >
+                      {KATEGORI_FILTERS.map((kategori) => (
+                        <option key={kategori} value={kategori}>
+                          {kategori === "Semua" ? "Semua Kategori" : kategori}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -570,8 +608,9 @@ export default function LihatStatusPage() {
                             onClick={() => {
                               setActivePhotoIndex(null);
                               setLaporanTerpilih(item.id_laporan);
+                              setIsMobileDetailOpen(true);
                             }}
-                            className={`w-full rounded-xl border p-4 text-left transition ${active ? "border-[#7A0C0C] bg-red-50/60 ring-1 ring-[#7A0C0C]/10" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}
+                            className={`w-full rounded-xl border p-4 text-left transition cursor-pointer ${active ? "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 lg:border-[#7A0C0C] lg:bg-red-50/60 lg:ring-1 lg:ring-[#7A0C0C]/10" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}
                           >
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                               <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${item.kategori_laporan === "Fasilitas" ? "bg-blue-50 text-blue-700" : "bg-green-50 text-green-700"}`}>{item.kategori_laporan}</span>
@@ -655,7 +694,7 @@ export default function LihatStatusPage() {
                 )}
               </section>
 
-              <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <section className="hidden min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 lg:block">
                 {!laporanAktif ? (
                   <div className="flex min-h-64 flex-col items-center justify-center text-center">
                     <Eye className="h-9 w-9 text-slate-300" />
@@ -663,93 +702,11 @@ export default function LihatStatusPage() {
                     <p className="mt-1 text-xs text-slate-400">Informasi status dan riwayat akan ditampilkan di sini.</p>
                   </div>
                 ) : (
-                  <div className="space-y-5">
-                    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Detail Laporan #{laporanAktif.id_laporan}</p>
-                        <h3 className="mt-1 text-base font-bold text-slate-800">Informasi Laporan</h3>
-                      </div>
-                      <StatusBadge status={laporanAktif.status_terkini} />
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div><p className="text-xs text-slate-400">Kategori</p><p className="mt-1 text-sm font-semibold text-slate-700">{laporanAktif.kategori_laporan}</p></div>
-                      <div><p className="text-xs text-slate-400">Tanggal Kejadian</p><p className="mt-1 text-sm font-semibold text-slate-700">{formatTanggal(laporanAktif.tanggal_kejadian)}</p></div>
-                      <div className="sm:col-span-2"><p className="text-xs text-slate-400">Lokasi</p><p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-slate-700"><MapPin className="h-4 w-4 text-[#7A0C0C]" />{laporanAktif.lokasi}</p></div>
-                      <div className="sm:col-span-2"><p className="text-xs text-slate-400">Deskripsi</p><p className="mt-1 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm leading-relaxed text-slate-700">{laporanAktif.deskripsi}</p></div>
-                      {fotoLaporanAktif.length > 0 && (
-                        <div className="sm:col-span-2">
-                          <p className="mb-2 text-xs text-slate-400">Foto Pendukung</p>
-                          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                            {fotoLaporanAktif.map((foto, index) => (
-                              <button
-                                type="button"
-                                key={`${foto}-${index}`}
-                                onClick={() => setActivePhotoIndex(index)}
-                                className="text-left overflow-hidden rounded-xl border border-slate-200 bg-slate-50 hover:border-[#7A0C0C] transition-colors cursor-pointer"
-                              >
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={getFotoUrl(foto)}
-                                  alt={`Foto pendukung laporan ${index + 1}`}
-                                  className="max-h-64 w-full object-contain"
-                                  onError={(event) => {
-                                    event.currentTarget.style.display = "none";
-                                    const fallback = event.currentTarget.nextElementSibling;
-                                    if (fallback instanceof HTMLElement) fallback.style.display = "block";
-                                  }}
-                                />
-                                <p className="hidden p-3 text-center text-xs text-red-700">
-                                  Foto tidak dapat dimuat dari penyimpanan.
-                                </p>
-                                <p className="p-2 text-center text-xs text-[#7A0C0C]">Lihat foto</p>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      <div><p className="text-xs text-slate-400">Tanggal Dibuat</p><p className="mt-1 text-sm font-semibold text-slate-700">{formatTanggal(laporanAktif.tanggal_buat)}</p></div>
-                      <div><p className="text-xs text-slate-400">Terakhir Diperbarui</p><p className="mt-1 text-sm font-semibold text-slate-700">{formatTanggal(laporanAktif.tanggal_rubah)}</p></div>
-                    </div>
-
-                    <div className="border-t border-slate-100 pt-4">
-                      <div className="mb-3 flex items-center gap-2"><Clock3 className="h-4 w-4 text-[#7A0C0C]" /><h4 className="text-sm font-bold text-slate-800">Progres Penanganan</h4></div>
-                      <ProgressStatus status={normalisasiStatus(laporanAktif.status_terkini)} />
-                    </div>
-
-                    <div className="border-t border-slate-100 pt-4">
-                      <div className="mb-3 flex items-center gap-2"><Clock3 className="h-4 w-4 text-[#7A0C0C]" /><h4 className="text-sm font-bold text-slate-800">Riwayat Perubahan Status</h4></div>
-                      {laporanAktif.riwayat_status && laporanAktif.riwayat_status.length > 0 ? (
-                        <div className="relative ml-2 space-y-4 border-l-2 border-slate-200 pl-5">
-                          {[...laporanAktif.riwayat_status]
-                            .sort((a, b) => new Date(b.tanggal_merubah).getTime() - new Date(a.tanggal_merubah).getTime())
-                            .map((history: StatusLaporan) => {
-                              const config = STATUS_CONFIG[normalisasiStatus(history.status_laporan)];
-                              return (
-                                <div key={history.id_status} className="relative">
-                                  <span className={`absolute -left-[27px] top-1 h-3 w-3 rounded-full border-2 border-white ${config.dot}`} />
-                                  <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <StatusBadge status={history.status_laporan} />
-                                    <span className="text-xs text-slate-400">{formatTanggalWaktu(history.tanggal_merubah)}</span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      ) : (
-                        <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">Belum ada riwayat perubahan status.</p>
-                      )}
-                    </div>
-
-                    <div className="border-t border-slate-100 pt-4">
-                      <h4 className="mb-2 text-sm font-bold text-slate-800">Tanggapan Admin</h4>
-                      {laporanAktif.pesan_tanggapan ? (
-                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-relaxed text-amber-900">{laporanAktif.pesan_tanggapan}</div>
-                      ) : (
-                        <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">Belum ada tanggapan dari admin untuk laporan ini.</p>
-                      )}
-                    </div>
-                  </div>
+                  <DetailLaporanContent
+                    laporanAktif={laporanAktif}
+                    fotoLaporanAktif={fotoLaporanAktif}
+                    onSelectPhoto={setActivePhotoIndex}
+                  />
                 )}
               </section>
             </div>
@@ -757,12 +714,225 @@ export default function LihatStatusPage() {
         </main>
       </div>
 
+      {/* Popup Detail Laporan untuk tampilan mobile/tablet (< lg) */}
+      <AnimatePresence>
+        {isMobileDetailOpen && laporanAktif && (
+          <motion.div
+            key="mobile-detail-backdrop"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Detail Laporan #${laporanAktif.id_laporan}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setIsMobileDetailOpen(false)}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs sm:p-6 lg:hidden"
+          >
+            <motion.div
+              key="mobile-detail-modal"
+              initial={{ opacity: 0, y: 16, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.96 }}
+              transition={{ type: "spring", stiffness: 320, damping: 28 }}
+              onClick={(event) => event.stopPropagation()}
+              className="flex max-h-[82dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xl sm:rounded-3xl"
+            >
+              {/* Header Popup Sticky */}
+              <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-white px-4 py-3.5 sm:px-5 sm:py-4 shrink-0">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Detail Laporan #{laporanAktif.id_laporan}
+                  </p>
+                  <h3 className="truncate text-base font-bold text-slate-800">
+                    Informasi Laporan
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsMobileDetailOpen(false)}
+                  aria-label="Tutup detail laporan"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-slate-200 hover:text-slate-900 cursor-pointer"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Body Scrollable */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+                <DetailLaporanContent
+                  laporanAktif={laporanAktif}
+                  fotoLaporanAktif={fotoLaporanAktif}
+                  onSelectPhoto={setActivePhotoIndex}
+                  hideHeader
+                />
+              </div>
+
+              {/* Footer Popup */}
+              <div className="border-t border-slate-100 bg-slate-50/80 px-4 py-3 sm:px-5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsMobileDetailOpen(false)}
+                  className="w-full min-h-[42px] rounded-xl bg-[#7A0C0C] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#650909] cursor-pointer"
+                >
+                  Tutup Detail
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <ImagePreviewModal
         images={fotoLaporanAktif.map(getFotoUrl)}
         activeIndex={activePhotoIndex}
         onClose={() => setActivePhotoIndex(null)}
         onChangeIndex={setActivePhotoIndex}
       />
+    </div>
+  );
+}
+
+function DetailLaporanContent({
+  laporanAktif,
+  fotoLaporanAktif,
+  onSelectPhoto,
+  hideHeader = false,
+}: {
+  laporanAktif: LaporanDenganTanggapan;
+  fotoLaporanAktif: string[];
+  onSelectPhoto: (index: number) => void;
+  hideHeader?: boolean;
+}) {
+  return (
+    <div className="space-y-5">
+      {hideHeader ? (
+        <div className="flex items-center justify-between gap-2 pb-1">
+          <span className="text-xs font-medium text-slate-500">Status Terkini</span>
+          <StatusBadge status={laporanAktif.status_terkini} />
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Detail Laporan #{laporanAktif.id_laporan}
+            </p>
+            <h3 className="mt-1 text-base font-bold text-slate-800">Informasi Laporan</h3>
+          </div>
+          <StatusBadge status={laporanAktif.status_terkini} />
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <p className="text-xs text-slate-400">Kategori</p>
+          <p className="mt-1 text-sm font-semibold text-slate-700">{laporanAktif.kategori_laporan}</p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-400">Tanggal Kejadian</p>
+          <p className="mt-1 text-sm font-semibold text-slate-700">{formatTanggal(laporanAktif.tanggal_kejadian)}</p>
+        </div>
+        <div className="sm:col-span-2">
+          <p className="text-xs text-slate-400">Lokasi</p>
+          <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+            <MapPin className="h-4 w-4 text-[#7A0C0C]" />
+            {laporanAktif.lokasi}
+          </p>
+        </div>
+        <div className="sm:col-span-2">
+          <p className="text-xs text-slate-400">Deskripsi</p>
+          <p className="mt-1 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm leading-relaxed text-slate-700">
+            {laporanAktif.deskripsi}
+          </p>
+        </div>
+        {fotoLaporanAktif.length > 0 && (
+          <div className="sm:col-span-2">
+            <p className="mb-2 text-xs text-slate-400">Foto Pendukung</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {fotoLaporanAktif.map((foto, index) => (
+                <button
+                  type="button"
+                  key={`${foto}-${index}`}
+                  onClick={() => onSelectPhoto(index)}
+                  className="text-left overflow-hidden rounded-xl border border-slate-200 bg-slate-50 hover:border-[#7A0C0C] transition-colors cursor-pointer"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={getFotoUrl(foto)}
+                    alt={`Foto pendukung laporan ${index + 1}`}
+                    className="max-h-64 w-full object-contain"
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                      const fallback = event.currentTarget.nextElementSibling;
+                      if (fallback instanceof HTMLElement) fallback.style.display = "block";
+                    }}
+                  />
+                  <p className="hidden p-3 text-center text-xs text-red-700">
+                    Foto tidak dapat dimuat dari penyimpanan.
+                  </p>
+                  <p className="p-2 text-center text-xs text-[#7A0C0C]">Lihat foto</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div>
+          <p className="text-xs text-slate-400">Tanggal Dibuat</p>
+          <p className="mt-1 text-sm font-semibold text-slate-700">{formatTanggal(laporanAktif.tanggal_buat)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-400">Terakhir Diperbarui</p>
+          <p className="mt-1 text-sm font-semibold text-slate-700">{formatTanggal(laporanAktif.tanggal_rubah)}</p>
+        </div>
+      </div>
+
+      <div className="border-t border-slate-100 pt-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Clock3 className="h-4 w-4 text-[#7A0C0C]" />
+          <h4 className="text-sm font-bold text-slate-800">Progres Penanganan</h4>
+        </div>
+        <ProgressStatus status={normalisasiStatus(laporanAktif.status_terkini)} />
+      </div>
+
+      <div className="border-t border-slate-100 pt-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Clock3 className="h-4 w-4 text-[#7A0C0C]" />
+          <h4 className="text-sm font-bold text-slate-800">Riwayat Perubahan Status</h4>
+        </div>
+        {laporanAktif.riwayat_status && laporanAktif.riwayat_status.length > 0 ? (
+          <div className="relative ml-2 space-y-4 border-l-2 border-slate-200 pl-5">
+            {[...laporanAktif.riwayat_status]
+              .sort((a, b) => new Date(b.tanggal_merubah).getTime() - new Date(a.tanggal_merubah).getTime())
+              .map((history: StatusLaporan) => {
+                const config = STATUS_CONFIG[normalisasiStatus(history.status_laporan)];
+                return (
+                  <div key={history.id_status} className="relative">
+                    <span className={`absolute -left-[27px] top-1 h-3 w-3 rounded-full border-2 border-white ${config.dot}`} />
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <StatusBadge status={history.status_laporan} />
+                      <span className="text-xs text-slate-400">{formatTanggalWaktu(history.tanggal_merubah)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        ) : (
+          <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">Belum ada riwayat perubahan status.</p>
+        )}
+      </div>
+
+      <div className="border-t border-slate-100 pt-4">
+        <h4 className="mb-2 text-sm font-bold text-slate-800">Tanggapan Admin</h4>
+        {laporanAktif.pesan_tanggapan ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-relaxed text-amber-900">
+            {laporanAktif.pesan_tanggapan}
+          </div>
+        ) : (
+          <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500">
+            Belum ada tanggapan dari admin untuk laporan ini.
+          </p>
+        )}
+      </div>
     </div>
   );
 }

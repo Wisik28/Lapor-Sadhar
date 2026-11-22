@@ -336,153 +336,388 @@ export default function UserRiwayatLaporanPage() {
           onToggleSidebar={() => setIsSidebarOpen(true)}
         />
 
-        <main className="flex-1 overflow-y-auto px-4 py-5 sm:p-6 md:p-8">
-          <div className="mx-auto max-w-6xl space-y-5">
-            {/* KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    TOTAL LAPORAN
-                  </p>
-                  <h3 className="text-2xl font-extrabold text-slate-900 mt-1">
-                    {totalLaporan}
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mt-1">Semua kampus</p>
-                </div>
-                <div className="w-10 h-10 rounded-xl bg-red-50 text-[#7A0C0C] flex items-center justify-center border border-red-100 shrink-0">
-                  <FileText className="w-5 h-5" />
-                </div>
-              </div>
+        <main className="flex-1 overflow-y-auto bg-[#F3F4F6] p-0 md:p-6 lg:p-8">
+          <div className="mx-auto max-w-6xl space-y-2.5 md:space-y-5">
+            {/* ═══ KELOMPOK 1: STATUS LAPORAN ═══ */}
+            <section aria-label="Ringkasan Status Laporan">
+              {/* Mobile: Tanpa Card, menyatu penuh sebagai kelompok 1 */}
+              <div className="md:hidden bg-white border-b border-slate-200/80 px-2 py-3">
+                <div className="grid grid-cols-4 divide-x divide-slate-100 text-center">
+                  <div className="px-1 flex flex-col items-center">
+                    <div className="w-7 h-7 rounded-lg bg-red-50 text-[#7A0C0C] flex items-center justify-center border border-red-100 mb-1">
+                      <FileText className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="text-base font-extrabold text-slate-900 leading-none">
+                      {totalLaporan}
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-500 mt-1 truncate max-w-full">
+                      Total
+                    </span>
+                  </div>
 
-              <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    SEDANG DIPROSES
-                  </p>
-                  <h3 className="text-2xl font-extrabold text-amber-600 mt-1">
-                    {sedangDiproses}
-                  </h3>
-                  <p className="text-[11px] text-amber-600/80 mt-1">
-                    Verifikasi & Teknisi
-                  </p>
-                </div>
-                <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100 shrink-0">
-                  <Clock className="w-5 h-5" />
-                </div>
-              </div>
+                  <div className="px-1 flex flex-col items-center">
+                    <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100 mb-1">
+                      <Clock className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="text-base font-extrabold text-amber-600 leading-none">
+                      {sedangDiproses}
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-500 mt-1 truncate max-w-full">
+                      Diproses
+                    </span>
+                  </div>
 
-              <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    SELESAI
-                  </p>
-                  <h3 className="text-2xl font-extrabold text-emerald-600 mt-1">
-                    {selesaiCount}
-                  </h3>
-                  <p className="text-[11px] text-emerald-600/80 mt-1">
-                    Masalah tuntas
-                  </p>
-                </div>
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shrink-0">
-                  <CheckCircle2 className="w-5 h-5" />
-                </div>
-              </div>
+                  <div className="px-1 flex flex-col items-center">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 mb-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="text-base font-extrabold text-emerald-600 leading-none">
+                      {selesaiCount}
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-500 mt-1 truncate max-w-full">
+                      Selesai
+                    </span>
+                  </div>
 
-              <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
-                <div>
-                  <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    DITOLAK
-                  </p>
-                  <h3 className="text-2xl font-extrabold text-red-700 mt-1">
-                    {ditolakCount}
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Duplikasi / Tidak valid
-                  </p>
-                </div>
-                <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center border border-red-100 shrink-0">
-                  <XCircle className="w-5 h-5" />
+                  <div className="px-1 flex flex-col items-center">
+                    <div className="w-7 h-7 rounded-lg bg-red-50 text-red-600 flex items-center justify-center border border-red-100 mb-1">
+                      <XCircle className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="text-base font-extrabold text-red-700 leading-none">
+                      {ditolakCount}
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-500 mt-1 truncate max-w-full">
+                      Ditolak
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Panel Pencarian & Filter */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Cari id laporan, deskripsi laporan, atau lokasi..."
-                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm outline-none focus:border-[#7A0C0C] transition-colors"
-                />
+              {/* Desktop: 4 KPI Cards (dipertahankan) */}
+              <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      TOTAL LAPORAN
+                    </p>
+                    <h3 className="text-2xl font-extrabold text-slate-900 mt-1">
+                      {totalLaporan}
+                    </h3>
+                    <p className="text-[11px] text-slate-400 mt-1">Semua kampus</p>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-red-50 text-[#7A0C0C] flex items-center justify-center border border-red-100 shrink-0">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                </div>
+
+                <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      SEDANG DIPROSES
+                    </p>
+                    <h3 className="text-2xl font-extrabold text-amber-600 mt-1">
+                      {sedangDiproses}
+                    </h3>
+                    <p className="text-[11px] text-amber-600/80 mt-1">
+                      Verifikasi & Teknisi
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100 shrink-0">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                </div>
+
+                <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      SELESAI
+                    </p>
+                    <h3 className="text-2xl font-extrabold text-emerald-600 mt-1">
+                      {selesaiCount}
+                    </h3>
+                    <p className="text-[11px] text-emerald-600/80 mt-1">
+                      Masalah tuntas
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shrink-0">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                </div>
+
+                <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      DITOLAK
+                    </p>
+                    <h3 className="text-2xl font-extrabold text-red-700 mt-1">
+                      {ditolakCount}
+                    </h3>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Duplikasi / Tidak valid
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center border border-red-100 shrink-0">
+                    <XCircle className="w-5 h-5" />
+                  </div>
+                </div>
               </div>
+            </section>
 
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* Filter Waktu */}
-                <select
-                  value={filterWaktu}
-                  onChange={(e) => setFilterWaktu(e.target.value)}
-                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none cursor-pointer"
-                >
-                  <option value="Semua Waktu">Waktu: Semua Waktu</option>
-                  {LIST_BULAN.map((b) => (
-                    <option key={b.value} value={b.value}>
-                      {b.label}
-                    </option>
-                  ))}
-                </select>
-
-                {/* Filter Status */}
-                <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none cursor-pointer"
-                >
-                  <option value="Semua">Status: Semua</option>
-                  {STATUS_OPTIONS.map((st) => (
-                    <option key={st} value={st}>
-                      {st}
-                    </option>
-                  ))}
-                </select>
-
-                {/* Filter Kategori */}
-                <select
-                  value={filterKategori}
-                  onChange={(e) => setFilterKategori(e.target.value)}
-                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none cursor-pointer"
-                >
-                  <option value="Semua">Kategori: Semua</option>
-                  <option value="Fasilitas">Fasilitas</option>
-                  <option value="Kebersihan">Kebersihan</option>
-                </select>
-
-                <button
-                  onClick={fetchLaporan}
-                  disabled={loading}
-                  className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-600 transition-colors cursor-pointer"
-                  title="Muat ulang data"
-                >
-                  <RefreshCw
-                    className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+            {/* ═══ KELOMPOK 2: PENCARIAN, FILTER & DAFTAR LAPORAN ═══ */}
+            <section
+              aria-label="Filter dan Daftar Laporan"
+              className="bg-white border-t border-slate-200/80 md:rounded-2xl md:border md:border-slate-200/80 md:shadow-2xs overflow-hidden w-full"
+            >
+              {/* Panel Pencarian & Filter — Desktop tergabung di bagian atas Kelompok 2 */}
+              <div className="hidden md:flex p-4 border-b border-slate-200/80 flex-row items-center justify-between gap-3">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Cari id laporan, deskripsi laporan, atau lokasi..."
+                    className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm outline-none focus:border-[#7A0C0C] transition-colors"
                   />
-                </button>
-              </div>
-            </div>
+                </div>
 
-            {/* Tabel Data */}
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden w-full">
-              <div className="overflow-x-auto w-full">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Filter Waktu */}
+                  <select
+                    value={filterWaktu}
+                    onChange={(e) => setFilterWaktu(e.target.value)}
+                    className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none cursor-pointer"
+                  >
+                    <option value="Semua Waktu">Waktu: Semua Waktu</option>
+                    {LIST_BULAN.map((b) => (
+                      <option key={b.value} value={b.value}>
+                        {b.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Filter Status */}
+                  <select
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none cursor-pointer"
+                  >
+                    <option value="Semua">Status: Semua</option>
+                    {STATUS_OPTIONS.map((st) => (
+                      <option key={st} value={st}>
+                        {st}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* Filter Kategori */}
+                  <select
+                    value={filterKategori}
+                    onChange={(e) => setFilterKategori(e.target.value)}
+                    className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none cursor-pointer"
+                  >
+                    <option value="Semua">Kategori: Semua</option>
+                    <option value="Fasilitas">Fasilitas</option>
+                    <option value="Kebersihan">Kebersihan</option>
+                  </select>
+
+                  <button
+                    onClick={fetchLaporan}
+                    disabled={loading}
+                    aria-label="Muat ulang data"
+                    className="w-8 h-8 inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors cursor-pointer shrink-0"
+                    title="Muat ulang data"
+                  >
+                    <RefreshCw
+                      className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* Search Bar + Refresh Ikon Kecil + Filter — Mobile tergabung di bagian atas Kelompok 2 */}
+              <div className="md:hidden px-3 py-3 border-b border-slate-100 space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1 min-w-0">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="Cari ID, deskripsi, atau lokasi..."
+                      className="w-full h-8 pl-8 pr-3 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-[#7A0C0C] focus:bg-white transition-colors"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={fetchLaporan}
+                    disabled={loading}
+                    aria-label="Muat ulang data"
+                    title="Muat ulang data"
+                    className="w-8 h-8 shrink-0 inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 active:bg-slate-200 rounded-lg text-slate-600 transition-colors cursor-pointer"
+                  >
+                    <RefreshCw
+                      className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
+                    />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5">
+                  <select
+                    aria-label="Filter waktu"
+                    value={filterWaktu}
+                    onChange={(e) => setFilterWaktu(e.target.value)}
+                    className="w-full min-w-0 h-8 px-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 outline-none focus:border-[#7A0C0C] cursor-pointer"
+                  >
+                    <option value="Semua Waktu">Waktu</option>
+                    {LIST_BULAN.map((b) => (
+                      <option key={b.value} value={b.value}>
+                        {b.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    aria-label="Filter status"
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="w-full min-w-0 h-8 px-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 outline-none focus:border-[#7A0C0C] cursor-pointer"
+                  >
+                    <option value="Semua">Status</option>
+                    {STATUS_OPTIONS.map((st) => (
+                      <option key={st} value={st}>
+                        {st}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    aria-label="Filter kategori"
+                    value={filterKategori}
+                    onChange={(e) => setFilterKategori(e.target.value)}
+                    className="w-full min-w-0 h-8 px-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 outline-none focus:border-[#7A0C0C] cursor-pointer"
+                  >
+                    <option value="Semua">Kategori</option>
+                    <option value="Fasilitas">Fasilitas</option>
+                    <option value="Kebersihan">Kebersihan</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Tabel Mobile — fit 1 layar tanpa scroll horizontal, klik baris untuk detail */}
+              <div className="md:hidden w-full">
+                <div className="px-3 py-2.5 bg-slate-50/80 border-b border-slate-200/80">
+                  <h3 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                    LAPORAN
+                  </h3>
+                </div>
+                <table className="w-full table-fixed text-left border-collapse">
+                  <colgroup>
+                    <col />
+                    <col className="w-[106px]" />
+                  </colgroup>
+                  <tbody className="divide-y divide-slate-100">
+                    {loading ? (
+                      <tr>
+                        <td
+                          colSpan={2}
+                          className="py-10 text-center text-xs text-slate-400"
+                        >
+                          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-[#7A0C0C]" />
+                          Memuat riwayat laporan...
+                        </td>
+                      </tr>
+                    ) : paginatedData.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={2}
+                          className="py-10 text-center text-xs text-slate-400"
+                        >
+                          Belum ada data riwayat laporan.
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedData.map((lap) => {
+                        const rawFoto = lap.foto as
+                          | string
+                          | string[]
+                          | null
+                          | undefined;
+                        const rowFotos = getFotoList(rawFoto)
+                          .map(resolveFotoUrl)
+                          .filter((url) => url.length > 0);
+                        const statusNorm = normalizeLaporanStatus(lap.status_terkini);
+                        const statusStyle = getStatusBadgeStyle(statusNorm);
+
+                        return (
+                          <tr
+                            key={`mobile-${lap.id_laporan}`}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => setSelectedDetail(lap)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                setSelectedDetail(lap);
+                              }
+                            }}
+                            className="active:bg-red-50/60 hover:bg-slate-50/90 transition-colors cursor-pointer"
+                          >
+                            <td className="px-3 py-3 align-middle min-w-0">
+                              <p className="font-bold text-slate-900 text-xs flex items-center gap-1 min-w-0">
+                                <MapPin className="w-3.5 h-3.5 shrink-0 text-[#7A0C0C]" />
+                                <span className="truncate">{lap.lokasi || "-"}</span>
+                              </p>
+                              <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+                                {lap.deskripsi}
+                              </p>
+                              <div className="mt-1.5 flex items-center gap-1.5 flex-wrap text-[10px] text-slate-400">
+                                <span className="font-medium text-slate-500">
+                                  {lap.tanggal_kejadian || "-"}
+                                </span>
+                                <span>•</span>
+                                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold border border-slate-200/70">
+                                  {lap.kategori_laporan}
+                                </span>
+                                {rowFotos.length > 0 && (
+                                  <span className="inline-flex items-center gap-0.5 text-slate-500">
+                                    <Paperclip className="w-2.5 h-2.5" />
+                                    <span>{rowFotos.length}</span>
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 align-middle text-right">
+                              <span
+                                className={`inline-flex max-w-full items-center gap-1 px-2 py-1 rounded-full text-[10px] font-semibold border ${statusStyle.badge}`}
+                              >
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusStyle.dot}`}
+                                />
+                                <span className="truncate">
+                                  {statusNorm === "Sedang Diverifikasi"
+                                    ? "Diverifikasi"
+                                    : statusNorm}
+                                </span>
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Tabel Desktop (dipertahankan) */}
+              <div className="hidden md:block overflow-x-auto w-full">
                 <table className="w-full text-left text-xs sm:text-sm border-collapse">
                   <thead className="bg-slate-50/90 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                     <tr>
                       <th className="px-4 py-3.5 whitespace-nowrap">
                         Tanggal & Waktu
                       </th>
-                      <th className="px-4 py-3.5">Judul & Lokasi Kejadian</th>
+                      <th className="px-4 py-3.5">Lokasi & Deskripsi Kejadian</th>
                       <th className="px-4 py-3.5 whitespace-nowrap text-center">
                         Kategori
                       </th>
@@ -540,12 +775,12 @@ export default function UserRiwayatLaporanPage() {
                               </span>
                             </td>
                             <td className="px-4 py-3.5 align-middle">
-                              <p className="font-bold text-slate-900 line-clamp-1 text-xs sm:text-sm">
-                                {lap.deskripsi}
+                              <p className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-1.5 min-w-0">
+                                <MapPin className="w-3.5 h-3.5 shrink-0 text-[#7A0C0C]" />
+                                <span className="truncate">{lap.lokasi || "-"}</span>
                               </p>
-                              <p className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-1">
-                                <span className="shrink-0 text-red-500">📍</span>
-                                <span className="truncate">{lap.lokasi}</span>
+                              <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
+                                {lap.deskripsi}
                               </p>
                             </td>
                             <td className="px-4 py-3.5 align-middle text-center whitespace-nowrap">
@@ -606,7 +841,7 @@ export default function UserRiwayatLaporanPage() {
               </div>
 
               {/* Pagination */}
-              <div className="px-4 py-3 bg-slate-50/50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+              <div className="px-3 md:px-4 py-3 bg-white md:bg-slate-50/50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2.5 sm:gap-3 text-xs text-slate-500">
                 <p>
                   Menampilkan{" "}
                   {paginatedData.length > 0
@@ -650,7 +885,7 @@ export default function UserRiwayatLaporanPage() {
                   </button>
                 </div>
               </div>
-            </div>
+            </section>
           </div>
         </main>
       </div>
@@ -659,8 +894,14 @@ export default function UserRiwayatLaporanPage() {
           MODAL POP-UP DETAIL LAPORAN
       ════════════════════════════════════════════════════════════════════ */}
       {selectedDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden my-8 max-h-[90vh] flex flex-col border border-slate-100">
+        <div
+          onClick={() => setSelectedDetail(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-2xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[84dvh] sm:max-h-[90vh] flex flex-col border border-slate-100"
+          >
             {/* Header Modal */}
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
               <div>

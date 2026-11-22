@@ -5,6 +5,40 @@
 
 import { useState, useCallback } from 'react';
 import { laporanApi, LaporanItem } from '@/lib/api';
+import { getFotoList, getFotoUrl } from '@/lib/laporanPhoto';
+
+export const MAX_EDIT_PHOTOS = 5;
+
+export interface EditablePhoto {
+  id: string;
+  name: string;
+  previewUrl: string;
+  existingValue?: string;
+  file?: File;
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Foto gagal dibaca. Silakan pilih ulang foto.'));
+      }
+    };
+    reader.onerror = () => reject(new Error('Foto gagal dibaca. Silakan pilih ulang foto.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function revokeNewPhotoUrls(photos: EditablePhoto[]) {
+  photos.forEach((photo) => {
+    if (photo.file && photo.previewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(photo.previewUrl);
+    }
+  });
+}
 
 export interface UbahPengajuanState {
   selectedLaporan: LaporanItem | null;
@@ -13,6 +47,8 @@ export interface UbahPengajuanState {
   editLokasiKampus: string;
   editLokasi: string;
   editDeskripsi: string;
+  editPhotos: EditablePhoto[];
+  photoChanged: boolean;
   saveLoading: boolean;
   deleteLoading: number | null;
   error: string;
@@ -27,6 +63,8 @@ export function useUbahPengajuan() {
     editLokasiKampus: '',
     editLokasi: '',
     editDeskripsi: '',
+    editPhotos: [],
+    photoChanged: false,
     saveLoading: false,
     deleteLoading: null,
     error: '',
@@ -50,33 +88,102 @@ export function useUbahPengajuan() {
   }, []);
 
   const selectForEdit = useCallback((laporan: LaporanItem, today: string) => {
-    setState((prev) => ({
-      ...prev,
-      selectedLaporan: laporan,
-      editKategori: laporan.kategori_laporan,
-      editTanggal: laporan.tanggal_kejadian?.split('T')[0] ?? today,
-      editLokasiKampus: laporan.lokasi_kampus ?? '',
-      editLokasi: laporan.lokasi,
-      editDeskripsi: laporan.deskripsi,
-      error: '',
-      success: '',
-    }));
+    const existingPhotos: EditablePhoto[] = getFotoList(laporan.foto)
+      .filter((raw) => !raw.trim().startsWith('blob:'))
+      .slice(0, MAX_EDIT_PHOTOS)
+      .map((raw, idx) => {
+        const normalized = raw.trim().startsWith('/storage/')
+          ? raw.trim().replace(/^\/+/, '')
+          : raw.trim();
+        return {
+          id: `existing-${laporan.id_laporan}-${idx}`,
+          name: `Foto ${idx + 1}`,
+          previewUrl: getFotoUrl(normalized),
+          existingValue: normalized,
+        };
+      });
+
+    setState((prev) => {
+      revokeNewPhotoUrls(prev.editPhotos);
+      return {
+        ...prev,
+        selectedLaporan: laporan,
+        editKategori: laporan.kategori_laporan,
+        editTanggal: laporan.tanggal_kejadian?.split('T')[0] ?? today,
+        editLokasiKampus: laporan.lokasi_kampus ?? '',
+        editLokasi: laporan.lokasi,
+        editDeskripsi: laporan.deskripsi,
+        editPhotos: existingPhotos,
+        photoChanged: false,
+        error: '',
+        success: '',
+      };
+    });
   }, []);
 
   const clearSelection = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      selectedLaporan: null,
-      editKategori: '',
-      editTanggal: '',
-      editLokasiKampus: '',
-      editLokasi: '',
-      editDeskripsi: '',
-    }));
+    setState((prev) => {
+      revokeNewPhotoUrls(prev.editPhotos);
+      return {
+        ...prev,
+        selectedLaporan: null,
+        editKategori: '',
+        editTanggal: '',
+        editLokasiKampus: '',
+        editLokasi: '',
+        editDeskripsi: '',
+        editPhotos: [],
+        photoChanged: false,
+      };
+    });
   }, []);
 
-  const updateEditField = useCallback((field: 'editKategori' | 'editTanggal' | 'editLokasiKampus' | 'editLokasi' | 'editDeskripsi', value: string) => {
-    setState((prev) => ({ ...prev, [field]: value }));
+  const updateEditField = useCallback(
+    (
+      field: 'editKategori' | 'editTanggal' | 'editLokasiKampus' | 'editLokasi' | 'editDeskripsi',
+      value: string
+    ) => {
+      setState((prev) => ({ ...prev, [field]: value }));
+    },
+    []
+  );
+
+  const addEditPhotos = useCallback((files: FileList | File[]) => {
+    const fileArray = Array.from(files).filter((file) => file.type.startsWith('image/'));
+    if (fileArray.length === 0) return;
+
+    setState((prev) => {
+      const remainingSlots = Math.max(0, MAX_EDIT_PHOTOS - prev.editPhotos.length);
+      if (remainingSlots === 0) return prev;
+
+      const added: EditablePhoto[] = fileArray.slice(0, remainingSlots).map((file, idx) => ({
+        id: `new-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`,
+        name: file.name,
+        previewUrl: URL.createObjectURL(file),
+        file,
+      }));
+
+      return {
+        ...prev,
+        editPhotos: [...prev.editPhotos, ...added],
+        photoChanged: true,
+        error: '',
+      };
+    });
+  }, []);
+
+  const removeEditPhoto = useCallback((id: string) => {
+    setState((prev) => {
+      const target = prev.editPhotos.find((item) => item.id === id);
+      if (target) {
+        revokeNewPhotoUrls([target]);
+      }
+      return {
+        ...prev,
+        editPhotos: prev.editPhotos.filter((item) => item.id !== id),
+        photoChanged: true,
+      };
+    });
   }, []);
 
   const save = useCallback(
@@ -91,15 +198,37 @@ export function useUbahPengajuan() {
         return;
       }
 
+      if (state.photoChanged && state.editPhotos.length === 0) {
+        setError('Mohon unggah minimal 1 foto bukti laporan!');
+        return;
+      }
+
       setState((prev) => ({ ...prev, saveLoading: true }));
 
       try {
+        let fotoPayload: string | undefined;
+        if (state.photoChanged) {
+          const resolvedPhotos = await Promise.all(
+            state.editPhotos.map((photo) =>
+              photo.file ? fileToDataUrl(photo.file) : Promise.resolve(photo.existingValue ?? '')
+            )
+          );
+          const validPhotos = resolvedPhotos.filter((item) => item.trim().length > 0);
+          if (validPhotos.length === 0) {
+            setError('Mohon unggah minimal 1 foto bukti laporan!');
+            return;
+          }
+          fotoPayload =
+            validPhotos.length > 1 ? JSON.stringify(validPhotos) : validPhotos[0];
+        }
+
         const res = await laporanApi.update(state.selectedLaporan.id_laporan, {
           kategori_laporan: state.editKategori,
           deskripsi: state.editDeskripsi,
           tanggal_kejadian: state.editTanggal,
           lokasi_kampus: state.editLokasiKampus,
           lokasi: state.editLokasi,
+          ...(fotoPayload !== undefined ? { foto: fotoPayload } : {}),
         });
 
         if (res.status === 'success') {
@@ -109,13 +238,25 @@ export function useUbahPengajuan() {
         } else {
           setError(res.message || 'Gagal memperbarui laporan.');
         }
-      } catch {
-        setError('Terjadi kesalahan. Coba lagi.');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Terjadi kesalahan. Coba lagi.');
       } finally {
         setState((prev) => ({ ...prev, saveLoading: false }));
       }
     },
-    [state.selectedLaporan, state.editKategori, state.editLokasiKampus, state.editLokasi, state.editDeskripsi, state.editTanggal, setError, setSuccess, clearSelection]
+    [
+      state.selectedLaporan,
+      state.editKategori,
+      state.editLokasiKampus,
+      state.editLokasi,
+      state.editDeskripsi,
+      state.editTanggal,
+      state.editPhotos,
+      state.photoChanged,
+      setError,
+      setSuccess,
+      clearSelection,
+    ]
   );
 
   const delete_ = useCallback(
@@ -154,6 +295,8 @@ export function useUbahPengajuan() {
     selectForEdit,
     clearSelection,
     updateEditField,
+    addEditPhotos,
+    removeEditPhoto,
     save,
     delete: delete_,
   };
