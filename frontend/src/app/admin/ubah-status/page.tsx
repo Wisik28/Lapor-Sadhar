@@ -201,6 +201,31 @@ function getRiwayatTanggal(item: RiwayatStatus): string {
   return item.tanggal_merubah ?? item.tanggal ?? "";
 }
 
+function getStatusUpdateErrorMessage(err: unknown): string {
+  const pesanBaku = "Gagal menyimpan pembaruan. Silakan coba kembali.";
+
+  if (!(err instanceof Error)) {
+    return pesanBaku;
+  }
+
+  const pesan = err.message.toLowerCase();
+  const indikatorKegagalanKoneksi =
+    pesan.includes("network") ||
+    pesan.includes("fetch") ||
+    pesan.includes("koneksi") ||
+    pesan.includes("database") ||
+    pesan.includes("connection") ||
+    pesan.includes("connection refused") ||
+    pesan.includes("failed") ||
+    pesan.includes("http 500") ||
+    pesan.includes("http 502") ||
+    pesan.includes("http 503") ||
+    pesan.includes("http 504") ||
+    pesan.includes("terjadi kesalahan server");
+
+  return indikatorKegagalanKoneksi ? pesanBaku : err.message;
+}
+
 export default function UbahStatusLaporanPage() {
   const [laporan, setLaporan] = useState<Laporan[]>([]);
   const [laporanTerpilih, setLaporanTerpilih] =
@@ -537,16 +562,14 @@ export default function UbahStatusLaporanPage() {
       );
 
       setSukses("Status laporan berhasil diperbarui.");
-      await muatLaporan();
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Gagal menyimpan perubahan status."
-      );
+      setError(getStatusUpdateErrorMessage(err));
+      return;
     } finally {
       setMenyimpan(false);
     }
+
+    await muatLaporan();
   }
 
   function pilihLaporan(item: Laporan) {

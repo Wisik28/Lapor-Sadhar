@@ -615,21 +615,35 @@ export const adminLaporanApi = {
     status: string,
     pesan_tanggapan?: string
   ) {
-    const response = await fetch(
-      `${API_BASE_URL}/admin/laporan/${id}/status`,
-      {
-        method: "PATCH",
-        headers: getAuthHeaders(true),
-        body: JSON.stringify({
-          status_laporan: status,
-          pesan_tanggapan: pesan_tanggapan ?? "",
-        }),
-      }
-    );
+    let response: Response;
+
+    try {
+      response = await fetch(
+        `${API_BASE_URL}/admin/laporan/${id}/status`,
+        {
+          method: "PATCH",
+          headers: getAuthHeaders(true),
+          body: JSON.stringify({
+            status_laporan: status,
+            pesan_tanggapan: pesan_tanggapan ?? "",
+          }),
+        }
+      );
+    } catch {
+      throw new Error(
+        "Gagal menyimpan pembaruan. Silakan coba kembali."
+      );
+    }
 
     const result = await response.json().catch(() => null);
 
     if (!response.ok) {
+      if (response.status >= 500) {
+        throw new Error(
+          "Gagal menyimpan pembaruan. Silakan coba kembali."
+        );
+      }
+
       throw new Error(
         result?.message ||
           `Gagal memperbarui status. HTTP ${response.status}`
