@@ -72,14 +72,14 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="h-screen w-full flex flex-col font-sans antialiased overflow-hidden">
+    <div className="h-[100svh] w-full flex flex-col font-sans antialiased overflow-hidden">
       {/* ═══════════ TOP BANNER: Maroon Header (compact) ═══════════ */}
       <header className="relative bg-[#7A0C0C] w-full shrink-0">
         <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-transparent pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col items-center py-4 sm:py-5 px-4">
+        <div className="relative z-10 flex flex-col items-center py-2 sm:py-5 px-4">
           {/* University Logo */}
-          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/10 backdrop-blur-sm border-2 border-white/20 p-1 mb-2.5 shadow-lg shadow-black/20">
+          <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-white/10 backdrop-blur-sm border-2 border-white/20 p-1 mb-1 sm:mb-2.5 shadow-lg shadow-black/20">
             <Image
               src="/assets/logo_usd.png"
               alt="Logo Universitas Sanata Dharma"
@@ -100,7 +100,7 @@ export default function LoginPage() {
 
       {/* ═══════════ MAIN CONTENT: Campus BG + Login Card ═══════════ */}
       <main
-        className="relative flex-1 flex items-center justify-center px-4"
+        className="relative flex-1 min-h-0 flex items-center justify-center px-4"
         style={{
           backgroundImage: "url('/assets/bg_kampus.jpg')",
           backgroundSize: "cover",
