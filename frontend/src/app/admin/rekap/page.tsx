@@ -6,8 +6,10 @@ import PeriodFilter from "@/components/PeriodFilter";
 import { authApi, adminLaporanApi } from "@/lib/api";
 import {
   Send, Search, X, CheckCircle2, Settings, Flag,
-  RefreshCw, AlertCircle,
+  RefreshCw, AlertCircle, Download, FileSpreadsheet, FileText,
 } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,7 +37,7 @@ interface LaporanItem {
   tanggal_rubah?: string | null;
   lokasi_kampus?: string | null;
   lokasi: string;
-  foto?: string | null;
+  foto?: string | string[] | null;
   status_terkini: string;
 }
 
@@ -411,6 +413,8 @@ export default function AdminRekapPage() {
   const [laporanTerbaru, setLaporanTerbaru] = useState<LaporanItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<"pdf" | "excel" | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
   const [adminUser] = useState(() => {
     const user = authApi.getCurrentUser();
     if (user && (user.role === "Admin" || user.admin_id)) {
@@ -562,6 +566,124 @@ export default function AdminRekapPage() {
 
   const categoryTotal = d ? (d.per_kategori.Fasilitas + d.per_kategori.Kebersihan) || 1 : 1;
 
+  const handleExport = async (format: "pdf" | "excel") => {
+    setExporting(format);
+    setExportError(null);
+    try {
+      const firstPage = await adminLaporanApi.getAllWithPagination({ page: 1, per_page: 100 });
+      const reports = [...firstPage.data];
+      for (let page = 2; page <= firstPage.last_page; page++) {
+        const result = await adminLaporanApi.getAllWithPagination({ page, per_page: 100 });
+        reports.push(...result.data);
+      }
+
+      const filteredReports = reports.filter((report) => {
+        const date = report.tanggal_buat.slice(0, 10);
+        if (selectedYear !== "Semua" && date.slice(0, 4) !== selectedYear) return false;
+        if (selectedMonth !== "Semua" && date.slice(5, 7) !== selectedMonth) return false;
+        return true;
+      });
+
+      if (filteredReports.length === 0) {
+        throw new Error("Tidak ada laporan pada periode yang dipilih.");
+      }
+
+      const filenamePeriod = periodLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+      if (format === "pdf") {
+        const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+        pdf.setFontSize(15);
+        pdf.text("Rekap Laporan", 10, 14);
+        pdf.setFontSize(9);
+        pdf.text(`Periode: ${periodLabel} | Total: ${filteredReports.length} laporan`, 10, 20);
+        let pageNumber = 0;
+        autoTable(pdf, {
+          startY: 25,
+          head: [[
+            "ID", "NIM", "Nama Pelapor", "Kategori", "Deskripsi",
+            "Tgl. Kejadian", "Tgl. Dibuat", "Kampus", "Lokasi", "Status",
+          ]],
+          body: filteredReports.map((report) => [
+            report.id_laporan,
+            report.nim,
+            report.nama_pelapor || "-",
+            report.kategori_laporan,
+            report.deskripsi,
+            report.tanggal_kejadian,
+            report.tanggal_buat,
+            report.lokasi_kampus || "-",
+            report.lokasi,
+            report.status_terkini,
+          ]),
+          styles: { fontSize: 7, cellPadding: 2, overflow: "linebreak" },
+          headStyles: { fillColor: [122, 12, 12] },
+          didDrawPage: () => {
+            pageNumber += 1;
+            pdf.setFontSize(8);
+            pdf.text(
+              `Halaman ${pageNumber}`,
+              pdf.internal.pageSize.getWidth() - 10,
+              pdf.internal.pageSize.getHeight() - 5,
+              { align: "right" },
+            );
+          },
+        });
+        pdf.save(`rekap-laporan-${filenamePeriod}.pdf`);
+      } else {
+        const ExcelJS = await import("exceljs");
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = "Lapor Sadhar";
+        const worksheet = workbook.addWorksheet("Rekap Laporan");
+        worksheet.columns = [
+          { header: "ID Laporan", key: "id", width: 14 },
+          { header: "NIM", key: "nim", width: 18 },
+          { header: "Nama Pelapor", key: "nama", width: 28 },
+          { header: "Kategori", key: "kategori", width: 18 },
+          { header: "Deskripsi", key: "deskripsi", width: 45 },
+          { header: "Tanggal Kejadian", key: "tanggalKejadian", width: 22 },
+          { header: "Tanggal Dibuat", key: "tanggalDibuat", width: 22 },
+          { header: "Kampus", key: "kampus", width: 20 },
+          { header: "Lokasi", key: "lokasi", width: 28 },
+          { header: "Status", key: "status", width: 22 },
+        ];
+        worksheet.addRows(filteredReports.map((report) => ({
+          id: report.id_laporan,
+          nim: report.nim,
+          nama: report.nama_pelapor || "-",
+          kategori: report.kategori_laporan,
+          deskripsi: report.deskripsi,
+          tanggalKejadian: report.tanggal_kejadian,
+          tanggalDibuat: report.tanggal_buat,
+          kampus: report.lokasi_kampus || "-",
+          lokasi: report.lokasi,
+          status: report.status_terkini,
+        })));
+        worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+        worksheet.getRow(1).fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FF7A0C0C" },
+        };
+        worksheet.views = [{ state: "frozen", ySplit: 1 }];
+        worksheet.autoFilter = "A1:J1";
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `rekap-laporan-${filenamePeriod}.xlsx`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+    } catch (err: unknown) {
+      setExportError(err instanceof Error ? err.message : "Gagal mengekspor laporan.");
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <div className="min-h-screen w-full bg-[#F8F9FA] flex flex-col font-sans text-slate-800 antialiased">
       <AdminNavbar
@@ -586,7 +708,29 @@ export default function AdminRekapPage() {
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
             </button>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500">Ekspor laporan</span>
+            <button
+              onClick={() => void handleExport("pdf")}
+              disabled={loading || exporting !== null}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-[#7A0C0C] transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {exporting === "pdf" ? <Download className="h-3.5 w-3.5 animate-bounce" /> : <FileText className="h-3.5 w-3.5" />}
+              PDF
+            </button>
+            <button
+              onClick={() => void handleExport("excel")}
+              disabled={loading || exporting !== null}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {exporting === "excel" ? <Download className="h-3.5 w-3.5 animate-bounce" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
+              Excel
+            </button>
+          </div>
         </div>
+        {exportError && (
+          <p role="alert" className="text-xs font-medium text-red-600">{exportError}</p>
+        )}
 
         {/* Loading / Error */}
         {loading ? (
