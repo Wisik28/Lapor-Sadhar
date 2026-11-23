@@ -35,11 +35,11 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <main className="relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-[url('/assets/bg_kampus.jpg')] bg-cover bg-center p-3 sm:p-6 md:p-10">
+    <main className="relative flex h-dvh min-h-0 items-center justify-center overflow-hidden bg-[url('/assets/bg_kampus.jpg')] bg-cover bg-center p-2 sm:p-3 md:p-5">
       <div className="absolute inset-0 bg-black/40" />
 
-      <section className="relative grid w-full max-w-4xl overflow-hidden rounded-2xl border border-white/50 bg-white/95 shadow-2xl shadow-black/30 backdrop-blur-md md:grid-cols-[0.9fr_1.1fr]">
-        <div className="flex flex-col justify-center bg-[#7a171b] p-3 text-white md:justify-between md:p-10">
+      <section className="relative grid max-h-full w-full max-w-4xl overflow-hidden rounded-2xl border border-white/50 bg-white/95 shadow-2xl shadow-black/30 backdrop-blur-md md:grid-cols-[0.9fr_1.1fr]">
+        <div className="flex flex-col justify-center bg-[#7a171b] p-3 text-white md:justify-between md:p-6 lg:p-8">
           <div className="flex items-center gap-3">
             <div className="grid h-10 w-10 place-items-center rounded-xl border border-white/20 bg-white/10 md:h-11 md:w-11">
               <Image src="/assets/logo_usd.png" alt="Logo Universitas Sanata Dharma" width={32} height={32} className="h-7 w-7 object-contain md:h-8 md:w-8" />
@@ -50,13 +50,13 @@ export default function AdminLoginPage() {
             </div>
           </div>
 
-          <div className="my-12 hidden md:block">
-            <div className="mb-5 grid h-12 w-12 place-items-center rounded-xl border border-white/20 bg-white/10">
+          <div className="my-3 hidden md:my-6 md:block lg:my-8">
+            <div className="mb-3 grid h-10 w-10 place-items-center rounded-xl border border-white/20 bg-white/10 lg:mb-4 lg:h-12 lg:w-12">
               <ShieldCheck className="h-6 w-6" />
             </div>
-            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-white/70">Akses terbatas</p>
-            <h1 className="max-w-xs text-3xl font-semibold leading-tight">Portal Admin BLU &amp; BPS</h1>
-            <p className="mt-4 max-w-sm text-sm leading-6 text-white/75">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-white/70 lg:mb-3">Akses terbatas</p>
+            <h1 className="max-w-xs text-2xl font-semibold leading-tight lg:text-3xl">Portal Admin BLU &amp; BPS</h1>
+            <p className="mt-2 max-w-sm text-sm leading-5 text-white/75 lg:mt-3 lg:leading-6">
               Masuk menggunakan akun dan jabatan yang telah ditetapkan untuk Anda.
             </p>
           </div>
@@ -64,11 +64,11 @@ export default function AdminLoginPage() {
           <p className="hidden text-xs text-white/60 md:block">Akses hanya untuk admin terdaftar.</p>
         </div>
 
-        <div className="p-4 md:p-10">
-          <div className="mb-3 md:mb-7">
+        <div className="p-3 sm:p-4 md:p-5 lg:p-6">
+          <div className="mb-2 md:mb-4">
             <p className="text-sm font-medium text-[#7a171b]">Masuk ke akun</p>
             <h2 className="mt-0.5 text-xl font-semibold text-slate-900 md:mt-1 md:text-2xl">Login admin</h2>
-            <p className="mt-1 text-xs text-slate-500 md:mt-2 md:text-sm">Pilih jabatan sesuai akun admin Anda.</p>
+            <p className="mt-1 text-xs text-slate-500 md:text-sm">Pilih jabatan sesuai akun admin Anda.</p>
           </div>
 
           {error && (
@@ -77,42 +77,42 @@ export default function AdminLoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-2 md:space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-2">
             <div>
-              <label htmlFor="admin-position" className="mb-1 block text-sm font-medium text-slate-700 md:mb-1.5">Jabatan admin</label>
-              <select id="admin-position" value={jabatan} onChange={(event) => setJabatan(event.target.value as AdminPosition)} className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15 md:h-11">
+              <label htmlFor="admin-position" className="mb-1 block text-sm font-medium text-slate-700">Jabatan admin</label>
+              <select id="admin-position" value={jabatan} onChange={(event) => setJabatan(event.target.value as AdminPosition)} className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15">
                 {adminPositions.map((position) => <option key={position.value} value={position.value}>{position.label}</option>)}
               </select>
             </div>
 
             <div>
-              <label htmlFor="username" className="mb-1 block text-sm font-medium text-slate-700 md:mb-1.5">Username</label>
+              <label htmlFor="username" className="mb-1 block text-sm font-medium text-slate-700">Username</label>
               <div className="relative">
                 <UserRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input id="username" autoComplete="username" required value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username admin" className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15 md:h-11" />
+                <input id="username" autoComplete="username" required value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username admin" className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15" />
               </div>
             </div>
 
             <div>
-              <label htmlFor="password" className="mb-1 block text-sm font-medium text-slate-700 md:mb-1.5">Kata sandi</label>
+              <label htmlFor="password" className="mb-1 block text-sm font-medium text-slate-700">Kata sandi</label>
               <div className="relative">
                 <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input id="password" type={showPassword ? "text" : "password"} autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Masukkan kata sandi" className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-11 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15 md:h-11" />
+                <input id="password" type={showPassword ? "text" : "password"} autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Masukkan kata sandi" className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-11 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#7a171b] focus:ring-2 focus:ring-[#7a171b]/15" />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"} className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded text-slate-500 hover:bg-slate-100">
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
-            <button type="submit" disabled={isLoading} className="mt-1 flex h-10 w-full items-center justify-center rounded-lg bg-[#7a171b] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#641216] disabled:cursor-wait disabled:opacity-60 md:mt-2 md:h-11">
+            <button type="submit" disabled={isLoading} className="mt-1 flex h-10 w-full items-center justify-center rounded-lg bg-[#7a171b] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#641216] disabled:cursor-wait disabled:opacity-60">
               {isLoading ? "Memeriksa akun..." : "Masuk sebagai admin"}
             </button>
           </form>
 
-          <div className="mt-3 text-center md:mt-4">
+          <div className="mt-2 text-center md:mt-3">
             <Link href="/admin/forgot-password" className="text-sm font-medium text-[#7a171b] hover:underline">Lupa kata sandi admin?</Link>
           </div>
-          <div className="mt-4 border-t border-slate-100 pt-3 text-center md:mt-6 md:pt-4">
+          <div className="mt-3 border-t border-slate-100 pt-2 text-center md:mt-4 md:pt-3">
             <Link href="/login" className="text-sm font-medium text-slate-500 hover:text-[#7a171b]">Kembali ke login civitas</Link>
           </div>
         </div>
