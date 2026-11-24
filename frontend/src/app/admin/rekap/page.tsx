@@ -3,10 +3,12 @@
 import React, { useState, useEffect, useCallback } from "react";
 import AdminNavbar from "@/components/AdminNavbar";
 import PeriodFilter from "@/components/PeriodFilter";
+import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { authApi, adminLaporanApi } from "@/lib/api";
+import { formatUserFriendlyError } from "@/lib/networkError";
 import {
   Send, Search, X, CheckCircle2, Settings, Flag,
-  RefreshCw, AlertCircle, Download, FileSpreadsheet, FileText,
+  RefreshCw, Download, FileSpreadsheet, FileText,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -66,6 +68,7 @@ interface RekapData {
   per_bulan: BulanData[];
   top_lokasi: LokasiData[];
   dominasi_lokasi: string | null;
+  laporan_terbaru?: LaporanItem[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -432,18 +435,15 @@ export default function AdminRekapPage() {
       else if (selectedYear !== "Semua") params.tahun = selectedYear;
       const data = await adminLaporanApi.getRekap(Object.keys(params).length > 0 ? params : undefined);
       setRekapData(data);
-
-      try {
-        const all: LaporanItem[] = await adminLaporanApi.getAll();
-        const sorted = [...all].sort((a, b) =>
-          new Date(b.tanggal_buat).getTime() - new Date(a.tanggal_buat).getTime()
-        );
-        setLaporanTerbaru(sorted.slice(0, 5));
-      } catch {
-        // laporan terbaru optional
-      }
+      setLaporanTerbaru(Array.isArray(data?.laporan_terbaru) ? data.laporan_terbaru : []);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Gagal memuat data rekap.");
+      setError(
+        formatUserFriendlyError(
+          err,
+          "load",
+          "Gagal memuat data rekap. Silakan coba lagi."
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -459,19 +459,17 @@ export default function AdminRekapPage() {
         const data = await adminLaporanApi.getRekap(Object.keys(params).length > 0 ? params : undefined);
         if (!active) return;
         setRekapData(data);
-
-        try {
-          const all: LaporanItem[] = await adminLaporanApi.getAll();
-          if (!active) return;
-          const sorted = [...all].sort((a, b) =>
-            new Date(b.tanggal_buat).getTime() - new Date(a.tanggal_buat).getTime()
-          );
-          setLaporanTerbaru(sorted.slice(0, 5));
-        } catch {
-          // optional
-        }
+        setLaporanTerbaru(Array.isArray(data?.laporan_terbaru) ? data.laporan_terbaru : []);
       } catch (err: unknown) {
-        if (active) setError(err instanceof Error ? err.message : "Gagal memuat data rekap.");
+        if (active) {
+          setError(
+            formatUserFriendlyError(
+              err,
+              "load",
+              "Gagal memuat data rekap. Silakan coba lagi."
+            )
+          );
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -570,10 +568,18 @@ export default function AdminRekapPage() {
     setExporting(format);
     setExportError(null);
     try {
-      const firstPage = await adminLaporanApi.getAllWithPagination({ page: 1, per_page: 100 });
+      const firstPage = await adminLaporanApi.getAllWithPagination({
+        page: 1,
+        per_page: 100,
+        include_foto: false,
+      });
       const reports = [...firstPage.data];
       for (let page = 2; page <= firstPage.last_page; page++) {
-        const result = await adminLaporanApi.getAllWithPagination({ page, per_page: 100 });
+        const result = await adminLaporanApi.getAllWithPagination({
+          page,
+          per_page: 100,
+          include_foto: false,
+        });
         reports.push(...result.data);
       }
 
@@ -739,15 +745,13 @@ export default function AdminRekapPage() {
             <p className="text-sm text-gray-500">Memuat data rekap...</p>
           </div>
         ) : error ? (
-          <div className="flex flex-col items-center justify-center py-20 gap-4">
-            <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center">
-              <AlertCircle className="w-7 h-7 text-red-500" />
-            </div>
-            <h3 className="text-base font-bold text-gray-800">Gagal Memuat Data</h3>
-            <p className="text-sm text-gray-500 text-center max-w-sm">{error}</p>
-            <button onClick={fetchRekap} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#7A0C0C] text-white text-sm font-semibold">
-              <RefreshCw className="w-4 h-4" /> Coba Lagi
-            </button>
+          <div className="py-12 max-w-xl mx-auto">
+            <NetworkErrorAlert
+              title="Gagal Memuat Data Rekap"
+              message={error}
+              onRetry={fetchRekap}
+              retrying={loading}
+            />
           </div>
         ) : !d ? null : (
           <>

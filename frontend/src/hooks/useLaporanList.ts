@@ -6,6 +6,7 @@
 import { useState, useCallback } from 'react';
 import { laporanApi, LaporanItem } from '@/lib/api';
 import { normalizeLaporanStatus } from '@/lib/laporanStatus';
+import { formatUserFriendlyError } from '@/lib/networkError';
 
 export interface LaporanListState {
   allLaporan: LaporanItem[];
@@ -15,15 +16,11 @@ export interface LaporanListState {
 }
 
 function getFetchErrorMessage(err: unknown): string {
-  if (err instanceof TypeError && err.message.toLowerCase().includes('fetch')) {
-    return 'Gagal terhubung ke server. Silakan cek koneksi internet atau status backend.';
-  }
-
-  if (err instanceof Error) {
-    return err.message;
-  }
-
-  return 'Terjadi kesalahan saat mengambil data laporan.';
+  return formatUserFriendlyError(
+    err,
+    'load',
+    'Gagal memuat data laporan. Silakan coba lagi.'
+  );
 }
 
 export function useLaporanList() {
@@ -46,12 +43,17 @@ export function useLaporanList() {
         setState((prev) => ({
           ...prev,
           allLaporan: res.data as LaporanItem[],
+          error: '',
           loading: false,
         }));
       } else {
         setState((prev) => ({
           ...prev,
-          error: res.message || 'Gagal mengambil data laporan.',
+          error: formatUserFriendlyError(
+            res.message,
+            'load',
+            'Gagal memuat data laporan. Silakan coba lagi.'
+          ),
           loading: false,
         }));
       }

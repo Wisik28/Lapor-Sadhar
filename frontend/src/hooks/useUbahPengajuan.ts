@@ -6,6 +6,7 @@
 import { useState, useCallback } from 'react';
 import { laporanApi, LaporanItem } from '@/lib/api';
 import { getFotoList, getFotoUrl } from '@/lib/laporanPhoto';
+import { formatUserFriendlyError } from '@/lib/networkError';
 
 export const MAX_EDIT_PHOTOS = 5;
 
@@ -236,10 +237,22 @@ export function useUbahPengajuan() {
           clearSelection();
           if (onSuccess) onSuccess();
         } else {
-          setError(res.message || 'Gagal memperbarui laporan.');
+          setError(
+            formatUserFriendlyError(
+              res.message,
+              'submit',
+              'Gagal memperbarui laporan. Silakan coba lagi.'
+            )
+          );
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Terjadi kesalahan. Coba lagi.');
+        setError(
+          formatUserFriendlyError(
+            err,
+            'submit',
+            'Gagal memperbarui laporan. Silakan coba lagi.'
+          )
+        );
       } finally {
         setState((prev) => ({ ...prev, saveLoading: false }));
       }
@@ -275,10 +288,22 @@ export function useUbahPengajuan() {
           }
           if (onSuccess) onSuccess();
         } else {
-          setError(res.message || 'Gagal menghapus laporan.');
+          setError(
+            formatUserFriendlyError(
+              res.message,
+              'action',
+              'Gagal menghapus laporan. Silakan coba lagi.'
+            )
+          );
         }
-      } catch {
-        setError('Terjadi kesalahan. Coba lagi.');
+      } catch (err) {
+        setError(
+          formatUserFriendlyError(
+            err,
+            'action',
+            'Gagal menghapus laporan. Silakan coba lagi.'
+          )
+        );
       } finally {
         setState((prev) => ({ ...prev, deleteLoading: null }));
       }

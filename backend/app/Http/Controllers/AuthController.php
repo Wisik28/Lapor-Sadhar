@@ -16,6 +16,8 @@ use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
+    private const SESSION_TTL_HOURS = 12;
+
     /**
      * Registrasi Akun Mahasiswa atau Karyawan
      */
@@ -107,12 +109,13 @@ class AuthController extends Controller
 
             $token = Str::random(60);
             $userIdentifier = $tipeUser === 'karyawan' ? $user->nomor_identitas : $user->nim;
-            $this->createUserSession($tipeUser, $userIdentifier, $token);
+            $session = $this->createUserSession($tipeUser, $userIdentifier, $token);
 
             return response()->json([
                 'status' => 'success',
                 'message' => 'Registrasi berhasil! Selamat datang di Lapor Sadhar.',
                 'token' => $token,
+                'expires_at' => $session->expires_at?->toIso8601String(),
                 'user' => [
                     'nomor_identitas' => $userIdentifier,
                     'nim' => $userIdentifier,
@@ -188,12 +191,13 @@ class AuthController extends Controller
                 $roleLabel = $tipe === 'karyawan' ? 'Karyawan' : 'Mahasiswa';
                 $token = Str::random(60);
                 $userIdentifier = $tipe === 'karyawan' ? $user->nomor_identitas : $user->nim;
-                $this->createUserSession($tipe, $userIdentifier, $token);
+                $session = $this->createUserSession($tipe, $userIdentifier, $token);
 
                 return response()->json([
                     'status' => 'success',
                     'message' => "Login berhasil! Selamat datang, {$user->nama}.",
                     'token' => $token,
+                    'expires_at' => $session->expires_at?->toIso8601String(),
                     'user' => [
                         'nomor_identitas' => $userIdentifier,
                         'nim' => $userIdentifier,
@@ -261,6 +265,7 @@ class AuthController extends Controller
 
         return response()->json([
             'status' => 'success',
+            'expires_at' => $session->expires_at?->toIso8601String(),
             'user' => [
                 'nomor_identitas' => $identifier,
                 'nim' => $identifier,
@@ -406,13 +411,13 @@ class AuthController extends Controller
         ]);
     }
 
-    private function createUserSession(string $type, string $identifier, string $token): void
+    private function createUserSession(string $type, string $identifier, string $token): UserSession
     {
-        UserSession::create([
+        return UserSession::create([
             'account_type' => $type,
             'account_id' => $identifier,
             'token_hash' => hash('sha256', $token),
-            'expires_at' => now()->addHours(12),
+            'expires_at' => now()->addHours(self::SESSION_TTL_HOURS),
         ]);
     }
 }

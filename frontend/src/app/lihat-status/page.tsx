@@ -1,15 +1,17 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
 import ImagePreviewModal from "@/components/ImagePreviewModal";
+import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { laporanApi, type LaporanItem, type StatusLaporan } from "@/lib/api";
+import { formatUserFriendlyError, isOffline } from "@/lib/networkError";
 import { clearAuthSession } from "@/lib/auth";
 import { useAuthProtection } from "@/lib/useAuth";
-import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
+import { getFotoList, getFotoUrl, getThumbnailFotoUrl } from "@/lib/laporanPhoto";
 import { useDebounce } from "@/hooks/useDebounce";
 import {
   AlertCircle,
@@ -295,6 +297,8 @@ export default function LihatStatusPage() {
 
   const identifier = user?.nim || user?.nomor_identitas || "";
 
+  const lastEtagRef = useRef<string | null>(null);
+
   const muatLaporan = useCallback(async (showRefresh = false, silent = false) => {
     if (!identifier) {
       setLoading(false);
@@ -302,15 +306,33 @@ export default function LihatStatusPage() {
       return;
     }
 
+    // Hindari background polling ketika perangkat sedang offline
+    if (silent && isOffline()) {
+      return;
+    }
+
     if (showRefresh) setRefreshing(true);
     else if (!silent) setLoading(true);
-    setError("");
+    if (!silent) setError("");
 
     try {
-      const response = await laporanApi.getAll(identifier);
+      const response = await laporanApi.getAll(identifier, {
+        ifNoneMatch: silent ? lastEtagRef.current : undefined,
+      });
+
+      if (response.not_modified) {
+        if (response.etag) {
+          lastEtagRef.current = response.etag;
+        }
+        return;
+      }
+
       if (response.status !== "success" || !Array.isArray(response.data)) {
         throw new Error(response.message || "Data laporan gagal dimuat.");
       }
+
+      lastEtagRef.current = response.etag ?? null;
+      setError("");
       const data = response.data as LaporanDenganTanggapan[];
       setLaporan(data);
       setLaporanTerpilih((current) => {
@@ -318,7 +340,13 @@ export default function LihatStatusPage() {
         return data.length > 0 ? data[0].id_laporan : null;
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan saat mengambil data laporan.");
+      setError(
+        formatUserFriendlyError(
+          err,
+          "load",
+          "Gagal memuat data laporan. Silakan coba lagi."
+        )
+      );
     } finally {
       if (!silent) setLoading(false);
       if (showRefresh) setRefreshing(false);
@@ -484,11 +512,12 @@ export default function LihatStatusPage() {
             </section>
 
             {error && (
-              <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <div className="flex-1">{error}</div>
-                <button onClick={() => setError("")} aria-label="Tutup pesan"><XCircle className="h-4 w-4" /></button>
-              </div>
+              <NetworkErrorAlert
+                message={error}
+                onRetry={() => void muatLaporan(true)}
+                retrying={loading || refreshing}
+                onDismiss={() => setError("")}
+              />
             )}
 
             <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -858,8 +887,10 @@ function DetailLaporanContent({
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={getFotoUrl(foto)}
+                    src={getThumbnailFotoUrl(foto, 640)}
                     alt={`Foto pendukung laporan ${index + 1}`}
+                    loading="lazy"
+                    decoding="async"
                     className="max-h-64 w-full object-contain"
                     onError={(event) => {
                       event.currentTarget.style.display = "none";

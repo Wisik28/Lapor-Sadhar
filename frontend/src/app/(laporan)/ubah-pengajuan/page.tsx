@@ -6,11 +6,13 @@ import { Edit3, RefreshCw, FileText, Loader2, AlertCircle, CheckCircle2, X, MapP
 import Sidebar from '@/components/Sidebar';
 import Navbar from '@/components/Navbar';
 import ImagePreviewModal from '@/components/ImagePreviewModal';
+import { NetworkErrorAlert } from '@/components/NetworkErrorAlert';
 import { useAuthProtection } from '@/lib/useAuth';
 import { useLaporanList } from '@/hooks/useLaporanList';
 import { useUbahPengajuan, MAX_EDIT_PHOTOS } from '@/hooks/useUbahPengajuan';
 import { LaporanItem } from '@/lib/api';
 import { LOKASI_KAMPUS_OPTIONS } from '@/lib/laporanCampus';
+import { getThumbnailFotoUrl } from '@/lib/laporanPhoto';
 
 export default function UbahPengajuanPage() {
   // All hooks at top level
@@ -170,8 +172,10 @@ export default function UbahPengajuanPage() {
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={photo.previewUrl}
+                src={getThumbnailFotoUrl(photo.previewUrl, 400)}
                 alt={photo.name}
+                loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
               />
               <button
@@ -273,14 +277,25 @@ export default function UbahPengajuanPage() {
             </div>
 
             {/* Error Alert */}
+            {laporanState.error && (
+              <NetworkErrorAlert
+                message={laporanState.error}
+                onRetry={() => void fetchLaporan(currentUser.nim)}
+                retrying={laporanState.loading}
+              />
+            )}
+
             {ubahPengajuan.state.error && (
-              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{ubahPengajuan.state.error}</span>
-                <button onClick={() => ubahPengajuan.clearError()} className="ml-auto">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+              <NetworkErrorAlert
+                message={ubahPengajuan.state.error}
+                onRetry={
+                  ubahPengajuan.state.selectedLaporan
+                    ? () => void handleSave()
+                    : undefined
+                }
+                retrying={ubahPengajuan.state.saveLoading}
+                onDismiss={() => ubahPengajuan.clearError()}
+              />
             )}
 
             {/* Success Alert */}

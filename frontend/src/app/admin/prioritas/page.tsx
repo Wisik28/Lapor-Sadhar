@@ -4,10 +4,14 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import AdminNavbar from "@/components/AdminNavbar";
 import { AdminStatusBadge, normalizeAdminStatus } from "@/components/AdminStatusBadge";
 import PeriodFilter from "@/components/PeriodFilter";
+import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { useAdminProtection } from "@/lib/useAuth";
+import { adminLaporanApi } from "@/lib/api";
+import { formatUserFriendlyError, isAbortError } from "@/lib/networkError";
 import { useDebounce } from "@/hooks/useDebounce";
 import {
   loadSeenReportIds,
+  mergeSeenReportIds,
   persistSeenReportId,
   resolveAdminSeenKey,
 } from "@/lib/adminSeenReports";
@@ -179,6 +183,18 @@ export default function AdminPriorityDashboardPage() {
         setSeenReportIds(loadSeenReportIds(adminSeenKey));
       }
     });
+
+    adminLaporanApi
+      .getSeenReportIds()
+      .then((serverIds) => {
+        if (active && serverIds.length > 0) {
+          setSeenReportIds((prev) => mergeSeenReportIds(adminSeenKey, serverIds, prev));
+        }
+      })
+      .catch(() => {
+        // Fallback cache lokal saat offline atau server tidak dapat dijangkau
+      });
+
     return () => {
       active = false;
     };
@@ -237,14 +253,16 @@ export default function AdminPriorityDashboardPage() {
           setSummary(fallbackSummary);
         }
       } catch (err: unknown) {
-        if (err instanceof Error && err.name === "AbortError") {
+        if (isAbortError(err)) {
           return;
         }
         if (signal?.aborted) return;
         setErrorMessage(
-          err instanceof Error
-            ? err.message
-            : "Gagal memuat data prioritas laporan."
+          formatUserFriendlyError(
+            err,
+            "load",
+            "Gagal memuat data prioritas laporan. Silakan coba lagi."
+          )
         );
       } finally {
         if (!signal?.aborted) {
@@ -397,6 +415,7 @@ export default function AdminPriorityDashboardPage() {
     setSelectedReport(item);
     setIsModalOpen(true);
     setSeenReportIds((prev) => persistSeenReportId(adminSeenKey, item.id_laporan, prev));
+    void adminLaporanApi.markReportSeen(item.id_laporan).catch(() => {});
   };
 
   if (authLoading) {
@@ -542,12 +561,12 @@ export default function AdminPriorityDashboardPage() {
           })()}
 
           {errorMessage && (
-            <div
-              role="alert"
-              className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-semibold"
-            >
-              {errorMessage}
-            </div>
+            <NetworkErrorAlert
+              message={errorMessage}
+              onRetry={fetchData}
+              retrying={loading}
+              onDismiss={() => setErrorMessage(null)}
+            />
           )}
 
           {/* Filter Bar (Card Terpisah dari Card Daftar Laporan) */}

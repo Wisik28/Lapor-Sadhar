@@ -6,14 +6,17 @@ import AdminNavbar from "@/components/AdminNavbar";
 import { AdminStatusBadge } from "@/components/AdminStatusBadge";
 import PeriodFilter from "@/components/PeriodFilter";
 import ImagePreviewModal from "@/components/ImagePreviewModal";
+import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { useAdminProtection } from "@/lib/useAuth";
 import { adminLaporanApi } from "@/lib/api";
+import { formatUserFriendlyError } from "@/lib/networkError";
 import {
   loadSeenReportIds,
+  mergeSeenReportIds,
   persistSeenReportId,
   resolveAdminSeenKey,
 } from "@/lib/adminSeenReports";
-import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
+import { getFotoList, getFotoUrl, getThumbnailFotoUrl } from "@/lib/laporanPhoto";
 import { LOKASI_KAMPUS_OPTIONS, resolveLokasiKampus } from "@/lib/laporanCampus";
 import {
   KATEGORI_LAPORAN_OPTIONS,
@@ -336,6 +339,18 @@ export default function AdminDashboardPage() {
         setSeenReportIds(loadSeenReportIds(adminSeenKey));
       }
     });
+
+    adminLaporanApi
+      .getSeenReportIds()
+      .then((serverIds) => {
+        if (active && serverIds.length > 0) {
+          setSeenReportIds((prev) => mergeSeenReportIds(adminSeenKey, serverIds, prev));
+        }
+      })
+      .catch(() => {
+        // Fallback cache lokal saat offline atau server tidak dapat dijangkau
+      });
+
     return () => {
       active = false;
     };
@@ -349,6 +364,7 @@ export default function AdminDashboardPage() {
       setTransferNote("");
       setTransferError(null);
       setSeenReportIds((prev) => persistSeenReportId(adminSeenKey, report.idRaw, prev));
+      void adminLaporanApi.markReportSeen(report.idRaw).catch(() => {});
     },
     [adminSeenKey]
   );
@@ -443,12 +459,13 @@ export default function AdminDashboardPage() {
 
       setReports(mapped);
     } catch (err: unknown) {
-      console.error("Gagal memuat data laporan admin:", err);
-      const msg =
-        err instanceof Error
-          ? err.message
-          : "Gagal memuat data laporan dari database.";
-      setFetchError(msg);
+      setFetchError(
+        formatUserFriendlyError(
+          err,
+          "load",
+          "Gagal memuat data laporan. Silakan coba lagi."
+        )
+      );
     } finally {
       setLoadingReports(false);
     }
@@ -495,11 +512,13 @@ export default function AdminDashboardPage() {
       );
       void fetchReports();
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : "Gagal memindahkan laporan ke unit tujuan.";
-      setTransferError(msg);
+      setTransferError(
+        formatUserFriendlyError(
+          err,
+          "action",
+          "Gagal memindahkan laporan ke unit tujuan. Silakan coba lagi."
+        )
+      );
     } finally {
       setTransferLoading(false);
     }
@@ -691,19 +710,12 @@ export default function AdminDashboardPage() {
           <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
             {/* Banner Notifikasi Error jika Gagal Fetch */}
             {fetchError && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-red-700 shadow-2xs">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-                  <span>{fetchError}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={fetchReports}
-                  className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition-colors shrink-0 w-fit cursor-pointer"
-                >
-                  Coba Lagi
-                </button>
-              </div>
+              <NetworkErrorAlert
+                message={fetchError}
+                onRetry={fetchReports}
+                retrying={loadingReports}
+                onDismiss={() => setFetchError(null)}
+              />
             )}
 
             {/* Banner Notifikasi Sukses Pemindahan Kategori */}
@@ -1748,7 +1760,7 @@ export default function AdminDashboardPage() {
                     {selectedReport.fotoList.length > 0 ? (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         {selectedReport.fotoList.map((fotoItem, idx) => {
-                          const fullUrl = getFotoUrl(fotoItem);
+                          const thumbUrl = getThumbnailFotoUrl(fotoItem, 480);
                           return (
                             <button
                               key={idx}
@@ -1758,8 +1770,10 @@ export default function AdminDashboardPage() {
                             >
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
-                                src={fullUrl}
+                                src={thumbUrl}
                                 alt={`Foto bukti ${idx + 1}`}
+                                loading="lazy"
+                                decoding="async"
                                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                               />
                               <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/60 text-[10px] text-white font-medium">

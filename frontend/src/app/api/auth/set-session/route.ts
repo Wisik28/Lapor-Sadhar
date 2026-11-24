@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { user, token, isAdmin } = body;
+    const { user, token, isAdmin, expiryTime, expiresAt } = body;
 
     if (!user || !token) {
       return NextResponse.json(
@@ -12,14 +12,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const defaultMaxAgeSeconds = isAdmin ? 8 * 60 * 60 : 12 * 60 * 60;
+    const parsedExpiryMs =
+      typeof expiryTime === 'number' && Number.isFinite(expiryTime)
+        ? expiryTime
+        : typeof expiresAt === 'string' && Number.isFinite(Date.parse(expiresAt))
+          ? Date.parse(expiresAt)
+          : null;
+    const maxAge =
+      parsedExpiryMs !== null
+        ? Math.max(1, Math.floor((parsedExpiryMs - Date.now()) / 1000))
+        : defaultMaxAgeSeconds;
+
     const response = NextResponse.json({ success: true });
 
-    // Set cookies dengan secure flags
+    // Set cookies dengan secure flags dan maxAge selaras masa berlaku sesi backend
     const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax' as const,
-      maxAge: 7 * 24 * 60 * 60, // 7 days
+      maxAge,
       path: '/',
     };
 

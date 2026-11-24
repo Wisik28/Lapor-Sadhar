@@ -9,6 +9,8 @@ use App\Http\Requests\Laporan\UpdateLaporanRequest;
 use App\Http\Requests\Laporan\UpdateStatusLaporanRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Response as HttpResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 /**
@@ -17,11 +19,102 @@ use Illuminate\Support\Facades\Validator;
  */
 class LaporanController extends Controller
 {
+    private const DEFAULT_PER_PAGE = 20;
+    private const MAX_PER_PAGE = 100;
+
     private LaporanService $laporanService;
 
     public function __construct(LaporanService $laporanService)
     {
         $this->laporanService = $laporanService;
+    }
+
+    private function resolvePerPage(Request $request): int
+    {
+        $perPage = (int) $request->input('per_page', self::DEFAULT_PER_PAGE);
+
+        return min(self::MAX_PER_PAGE, max(1, $perPage > 0 ? $perPage : self::DEFAULT_PER_PAGE));
+    }
+
+    /**
+     * Kolom tabel laporan untuk endpoint daftar (opsional menyertakan kolom `foto`).
+     *
+     * @return array<int, string>
+     */
+    private function listLaporanColumns(bool $includeFoto = true): array
+    {
+        $columns = [
+            'id_laporan',
+            'nim',
+            'kategori_laporan',
+            'deskripsi',
+            'tanggal_kejadian',
+            'tanggal_buat',
+            'tanggal_rubah',
+            'lokasi_kampus',
+            'lokasi',
+            'kategori_lokasi',
+            'tingkat_keparahan',
+            'skala_keparahan',
+            'pesan_tanggapan',
+        ];
+
+        if ($includeFoto) {
+            $columns[] = 'foto';
+        }
+
+        return $columns;
+    }
+
+    private function buildUserLaporanEtag(
+        string $identifier,
+        bool $hasPage,
+        int $page,
+        int $perPage,
+        bool $includeFoto
+    ): string {
+        $laporanStats = DB::table('laporan')
+            ->where('nim', $identifier)
+            ->selectRaw('COUNT(*) AS total, MAX(id_laporan) AS max_id, MAX(updated_at) AS max_updated, MAX(tanggal_rubah) AS max_rubah')
+            ->first();
+
+        $statusStats = DB::table('status')
+            ->join('laporan', 'laporan.id_laporan', '=', 'status.id_laporan')
+            ->where('laporan.nim', $identifier)
+            ->selectRaw('COUNT(*) AS total, MAX(status.id_status) AS max_status_id, MAX(status.tanggal_merubah) AS max_status_date')
+            ->first();
+
+        $fingerprint = implode('|', [
+            $identifier,
+            $hasPage ? "p{$page}:{$perPage}" : 'all',
+            $includeFoto ? 'f1' : 'f0',
+            (string) ($laporanStats->total ?? 0),
+            (string) ($laporanStats->max_id ?? ''),
+            (string) ($laporanStats->max_updated ?? ''),
+            (string) ($laporanStats->max_rubah ?? ''),
+            (string) ($statusStats->total ?? 0),
+            (string) ($statusStats->max_status_id ?? ''),
+            (string) ($statusStats->max_status_date ?? ''),
+        ]);
+
+        return '"' . sha1($fingerprint) . '"';
+    }
+
+    private function ifNoneMatchMatches(?string $header, string $etag): bool
+    {
+        if (! $header) {
+            return false;
+        }
+
+        $normalizedTarget = ltrim(trim($etag), 'W/');
+        foreach (explode(',', $header) as $candidate) {
+            $trimmed = trim($candidate);
+            if ($trimmed === '*' || ltrim($trimmed, 'W/') === $normalizedTarget) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -47,7 +140,7 @@ class LaporanController extends Controller
      * GET /api/laporan
      * Ambil semua laporan milik user yang sedang login (dari bearer token)
      */
-    public function index(Request $request): JsonResponse
+    public function index(Request $request): HttpResponse|JsonResponse
     {
         try {
             // Ambil identitas pengguna dari sesi login (user_session middleware)
@@ -62,30 +155,41 @@ class LaporanController extends Controller
                 ], 401);
             }
 
-            // Ambil laporan berdasarkan identitas pengguna
-            $query = Laporan::with([
-                'statuses' => function ($query) {
-                    $query->orderBy('tanggal_merubah', 'desc');
-                    $query->orderBy('id_status', 'desc');
-                }
-            ])
+            $includeFoto = $request->has('include_foto') ? $request->boolean('include_foto') : true;
+            $perPage = $this->resolvePerPage($request);
+            $page = max(1, (int) $request->input('page', 1));
+            $hasPage = $request->has('page');
+
+            $etag = $this->buildUserLaporanEtag($identifier, $hasPage, $page, $perPage, $includeFoto);
+            if ($this->ifNoneMatchMatches($request->header('If-None-Match'), $etag)) {
+                return response('', 304)
+                    ->header('ETag', $etag)
+                    ->header('Cache-Control', 'private, no-cache');
+            }
+
+            // Ambil laporan berdasarkan identitas pengguna dengan kolom selektif
+            $query = Laporan::query()
+                ->select($this->listLaporanColumns($includeFoto))
+                ->with([
+                    'statuses' => function ($query) {
+                        $query->select(['id_status', 'id_laporan', 'status_laporan', 'tanggal_merubah']);
+                        $query->orderBy('tanggal_merubah', 'desc');
+                        $query->orderBy('id_status', 'desc');
+                    }
+                ])
                 ->where('nim', $identifier)
                 ->orderBy('tanggal_buat', 'desc');
 
-            $total = $query->count();
-            $perPage = (int) $request->input('per_page', 10);
-            $perPage = $perPage > 0 ? $perPage : 10;
-            $page = (int) $request->input('page', 1);
-            $page = $page > 0 ? $page : 1;
+            $total = (clone $query)->count();
             $lastPage = (int) max(1, ceil($total / $perPage));
 
-            if ($request->has('page')) {
+            if ($hasPage) {
                 $rawLaporans = $query->forPage($page, $perPage)->get();
             } else {
                 $rawLaporans = $query->get();
             }
 
-            $laporans = $rawLaporans->map(function ($laporan) {
+            $laporans = $rawLaporans->map(function ($laporan) use ($includeFoto) {
                 $latestStatus = $laporan->statuses->first();
 
                 return [
@@ -101,7 +205,7 @@ class LaporanController extends Controller
                     'kategori_lokasi'   => $laporan->kategori_lokasi ?? 'Tidak Diketahui',
                     'tingkat_keparahan' => $laporan->tingkat_keparahan ?? 'Sedang',
                     'skala_keparahan'   => (int) ($laporan->skala_keparahan ?? 2),
-                    'foto'              => $laporan->foto,
+                    'foto'              => $includeFoto ? $laporan->foto : null,
 
                     // Status terbaru laporan
                     'status_terkini' => $latestStatus?->status_laporan ?? 'Terkirim',
@@ -123,7 +227,9 @@ class LaporanController extends Controller
                 'current_page' => $page,
                 'last_page'    => $lastPage,
                 'data'         => $laporans,
-            ], 200);
+            ], 200)
+                ->header('ETag', $etag)
+                ->header('Cache-Control', 'private, no-cache');
 
         } catch (\Throwable $e) {
             report($e);
@@ -242,23 +348,26 @@ class LaporanController extends Controller
     {
         try {
             $admin = $request->attributes->get('admin_session')?->admin;
+            $includeFoto = $request->has('include_foto') ? $request->boolean('include_foto') : true;
 
-            $query = Laporan::with([
-                'statuses' => function ($query) {
-                    $query->orderBy('tanggal_merubah', 'desc');
-                    $query->orderBy('id_status', 'desc');
-                },
-                'pelapor.mahasiswa',
-                'pelapor.pegawai',
-            ])
+            $query = Laporan::query()
+                ->select($this->listLaporanColumns($includeFoto))
+                ->with([
+                    'statuses' => function ($query) {
+                        $query->select(['id_status', 'id_laporan', 'status_laporan', 'tanggal_merubah']);
+                        $query->orderBy('tanggal_merubah', 'desc');
+                        $query->orderBy('id_status', 'desc');
+                    },
+                    'pelapor:nomor_identitas,tipe_user',
+                    'pelapor.mahasiswa:nim,nama',
+                    'pelapor.pegawai:nomor_identitas,nama',
+                ])
                 ->visibleToAdmin($admin)
                 ->orderBy('tanggal_buat', 'desc');
 
-            $total = $query->count();
-            $perPage = (int) $request->input('per_page', 10);
-            $perPage = $perPage > 0 ? $perPage : 10;
-            $page = (int) $request->input('page', 1);
-            $page = $page > 0 ? $page : 1;
+            $total = (clone $query)->count();
+            $perPage = $this->resolvePerPage($request);
+            $page = max(1, (int) $request->input('page', 1));
             $lastPage = (int) max(1, ceil($total / $perPage));
 
             if ($request->has('page')) {
@@ -267,7 +376,7 @@ class LaporanController extends Controller
                 $rawLaporans = $query->get();
             }
 
-            $laporans = $rawLaporans->map(function ($laporan) {
+            $laporans = $rawLaporans->map(function ($laporan) use ($includeFoto) {
                 $statusTerbaru = $laporan->statuses->first();
 
                 return [
@@ -285,7 +394,7 @@ class LaporanController extends Controller
                     'kategori_lokasi'   => $laporan->kategori_lokasi ?? 'Tidak Diketahui',
                     'tingkat_keparahan' => $laporan->tingkat_keparahan ?? 'Sedang',
                     'skala_keparahan'   => (int) ($laporan->skala_keparahan ?? 2),
-                    'foto'              => $laporan->foto,
+                    'foto'              => $includeFoto ? $laporan->foto : null,
                     'pesan_tanggapan'  => $laporan->pesan_tanggapan ?? '',
                     'status_terkini'   => $statusTerbaru?->status_laporan ?? 'Terkirim',
                     'riwayat_status'   => $laporan->statuses,
@@ -311,8 +420,105 @@ class LaporanController extends Controller
     }
 
     /**
+     * GET /api/admin/laporan/seen
+     * Admin: Ambil daftar ID laporan yang sudah pernah dibaca oleh admin saat ini
+     */
+    public function adminSeenIndex(Request $request): JsonResponse
+    {
+        try {
+            $admin = $request->attributes->get('admin_session')?->admin;
+            if (! $admin) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Sesi admin tidak valid.',
+                ], 401);
+            }
+
+            $seenIds = DB::table('admin_report_reads')
+                ->where('admin_id', $admin->admin_id)
+                ->orderByDesc('read_at')
+                ->pluck('id_laporan')
+                ->map(fn ($id) => (int) $id)
+                ->values();
+
+            return response()->json([
+                'status' => 'success',
+                'data'   => $seenIds,
+            ]);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Gagal memuat status baca laporan.',
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /api/admin/laporan/{id}/seen
+     * Admin: Tandai laporan sebagai sudah dibaca oleh admin saat ini (lintas perangkat)
+     */
+    public function adminMarkSeen(Request $request, $id): JsonResponse
+    {
+        try {
+            $admin = $request->attributes->get('admin_session')?->admin;
+            if (! $admin) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Sesi admin tidak valid.',
+                ], 401);
+            }
+
+            $laporan = Laporan::query()
+                ->select(['id_laporan', 'lokasi_kampus', 'kategori_laporan'])
+                ->findOrFail($id);
+
+            if (! $admin->canAccessLaporan($laporan)) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Anda tidak memiliki akses ke laporan dari kampus atau unit lain.',
+                ], 403);
+            }
+
+            $now = now();
+            DB::table('admin_report_reads')->upsert(
+                [
+                    [
+                        'admin_id'   => $admin->admin_id,
+                        'id_laporan' => $laporan->id_laporan,
+                        'read_at'    => $now,
+                    ],
+                ],
+                ['admin_id', 'id_laporan'],
+                ['read_at']
+            );
+
+            return response()->json([
+                'status' => 'success',
+                'data'   => [
+                    'id_laporan' => (int) $laporan->id_laporan,
+                    'read_at'    => $now->toIso8601String(),
+                ],
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Laporan tidak ditemukan.',
+            ], 404);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Gagal menyimpan status baca laporan.',
+            ], 500);
+        }
+    }
+
+    /**
      * GET /api/admin/rekap
-     * Admin: Rekap & Analitik Laporan untuk Admin (seluruh data)
+     * Admin: Rekap & Analitik Laporan untuk Admin (kolom ringan tanpa foto + 5 laporan terbaru)
      */
     public function adminRekap(Request $request): JsonResponse
     {
@@ -321,11 +527,18 @@ class LaporanController extends Controller
             $bulan = $request->query('bulan'); // format: "2026-10"
             $tahun = $request->query('tahun'); // format: "2026"
 
-            // Rekap hanya memakai status terbaru; relasi pelapor tidak dipakai sehingga tidak di-eager-load.
-            $query = Laporan::with(['statuses' => function ($q) {
-                $q->orderBy('tanggal_merubah', 'desc');
-                $q->orderBy('id_status', 'desc');
-            }])->visibleToAdmin($admin);
+            // Tarik hanya kolom ringan yang diperlukan untuk agregasi + status terbaru via subquery terindeks
+            // (tidak menarik kolom longText `foto`, `deskripsi`, `pesan_tanggapan`, maupun seluruh riwayat status).
+            $query = Laporan::query()
+                ->select([
+                    'laporan.id_laporan',
+                    'laporan.kategori_laporan',
+                    'laporan.lokasi',
+                    'laporan.tanggal_buat',
+                    'laporan.tanggal_rubah',
+                    DB::raw('(SELECT s.status_laporan FROM status s WHERE s.id_laporan = laporan.id_laporan ORDER BY s.tanggal_merubah DESC, s.id_status DESC LIMIT 1) AS latest_status'),
+                ])
+                ->visibleToAdmin($admin);
 
             // Filter periode jika ada
             if ($bulan) {
@@ -362,7 +575,7 @@ class LaporanController extends Controller
 
             foreach ($laporans as $laporan) {
                 // Status terkini — normalisasi semua varian nama status ke bucket rekap
-                $terkini = $laporan->statuses->first()?->status_laporan ?? 'Terkirim';
+                $terkini = $laporan->latest_status ?? 'Terkirim';
                 $bucket  = $this->normalizeBucketStatus($terkini);
                 if (isset($statusCounts[$bucket])) {
                     $statusCounts[$bucket]++;
@@ -466,6 +679,36 @@ class LaporanController extends Controller
             // Dominasi lokasi (lokasi terbanyak)
             $dominasiLokasi = count($lokasiFormatted) > 0 ? $lokasiFormatted[0]['nama'] : null;
 
+            // 5 laporan terbaru dalam cakupan admin (kolom ringan tanpa foto agar halaman rekap cukup 1 request)
+            $laporanTerbaru = Laporan::query()
+                ->select([
+                    'laporan.id_laporan',
+                    'laporan.nim',
+                    'laporan.kategori_laporan',
+                    'laporan.deskripsi',
+                    'laporan.tanggal_kejadian',
+                    'laporan.tanggal_buat',
+                    'laporan.lokasi_kampus',
+                    'laporan.lokasi',
+                    DB::raw('(SELECT s.status_laporan FROM status s WHERE s.id_laporan = laporan.id_laporan ORDER BY s.tanggal_merubah DESC, s.id_status DESC LIMIT 1) AS latest_status'),
+                ])
+                ->visibleToAdmin($admin)
+                ->orderBy('laporan.tanggal_buat', 'desc')
+                ->limit(5)
+                ->get()
+                ->map(fn ($item) => [
+                    'id_laporan'       => $item->id_laporan,
+                    'nim'              => $item->nim,
+                    'kategori_laporan' => $item->kategori_laporan,
+                    'deskripsi'        => $item->deskripsi,
+                    'tanggal_kejadian' => $item->tanggal_kejadian,
+                    'tanggal_buat'     => $item->tanggal_buat,
+                    'lokasi_kampus'    => $item->lokasi_kampus,
+                    'lokasi'           => $item->lokasi,
+                    'status_terkini'   => $item->latest_status ?? 'Terkirim',
+                ])
+                ->values();
+
             return response()->json([
                 'status' => 'success',
                 'data'   => [
@@ -490,6 +733,7 @@ class LaporanController extends Controller
                     'per_bulan'          => $bulanFormatted,
                     'top_lokasi'         => $lokasiFormatted,
                     'dominasi_lokasi'    => $dominasiLokasi,
+                    'laporan_terbaru'    => $laporanTerbaru,
                 ],
             ]);
         } catch (\Throwable $e) {

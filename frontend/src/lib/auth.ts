@@ -16,21 +16,61 @@ export interface AuthUser {
   role: "Mahasiswa" | "Karyawan" | "Admin" | string;
 }
 
-// Session timeout: 60 menit (dalam milliseconds)
-const SESSION_TIMEOUT_MS = 60 * 60 * 1000;
+// Fallback TTL selaras dengan backend (8 jam admin, 12 jam pelapor)
+const ADMIN_SESSION_TIMEOUT_MS = 8 * 60 * 60 * 1000;
+const USER_SESSION_TIMEOUT_MS = 12 * 60 * 60 * 1000;
+
+function resolveExpiryTimestamp(
+  isAdmin: boolean,
+  expiresAt?: string | null,
+  preserveExisting: boolean = false
+): number {
+  if (expiresAt) {
+    const parsed = Date.parse(expiresAt);
+    if (Number.isFinite(parsed) && parsed > Date.now()) {
+      return parsed;
+    }
+  }
+
+  if (preserveExisting && typeof window !== "undefined") {
+    const existing = Number(localStorage.getItem("session_expiry_time"));
+    if (Number.isFinite(existing) && existing > Date.now()) {
+      return existing;
+    }
+  }
+
+  return Date.now() + (isAdmin ? ADMIN_SESSION_TIMEOUT_MS : USER_SESSION_TIMEOUT_MS);
+}
+
+/**
+ * Sinkronkan timestamp kedaluwarsa lokal dari respons server (/me).
+ */
+export function syncSessionExpiry(expiresAt?: string | null): void {
+  if (typeof window === "undefined" || !expiresAt) return;
+  const parsed = Date.parse(expiresAt);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    localStorage.setItem("session_expiry_time", parsed.toString());
+  }
+}
 
 /**
  * Set auth session di localStorage dan cookies (via API route untuk cookies)
- * Tambahkan timestamp login untuk tracking session expiry
+ * Menggunakan expires_at dari backend sebagai satu sumber kebenaran masa berlaku sesi.
  */
-export async function setAuthSession(user: AuthUser, token: string, isAdmin: boolean = false) {
+export async function setAuthSession(
+  user: AuthUser,
+  token: string,
+  isAdmin: boolean = false,
+  expiresAt?: string | null
+) {
   if (typeof window === "undefined") return;
 
   const now = Date.now();
+  const expiryTime = resolveExpiryTimestamp(isAdmin, expiresAt, !expiresAt);
   const sessionData = {
     user,
     loginTime: now,
-    expiryTime: now + SESSION_TIMEOUT_MS,
+    expiryTime,
   };
 
   // Simpan di localStorage
@@ -42,7 +82,7 @@ export async function setAuthSession(user: AuthUser, token: string, isAdmin: boo
   localStorage.setItem(tokenKey, token);
   localStorage.removeItem(otherTokenKey);
 
-  // Simpan ke cookies via API route (untuk middleware)
+  // Simpan ke cookies via API route (untuk middleware) dengan maxAge selaras expiryTime
   try {
     await fetch("/api/auth/set-session", {
       method: "POST",
@@ -53,6 +93,7 @@ export async function setAuthSession(user: AuthUser, token: string, isAdmin: boo
         isAdmin,
         loginTime: now,
         expiryTime: sessionData.expiryTime,
+        expiresAt: expiresAt ?? new Date(sessionData.expiryTime).toISOString(),
       }),
     });
   } catch (error) {
