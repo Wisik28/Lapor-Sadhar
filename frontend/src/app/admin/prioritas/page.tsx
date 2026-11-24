@@ -1,9 +1,17 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import AdminNavbar from "@/components/AdminNavbar";
+import { AdminStatusBadge, normalizeAdminStatus } from "@/components/AdminStatusBadge";
+import PeriodFilter from "@/components/PeriodFilter";
 import { useAdminProtection } from "@/lib/useAuth";
 import { useDebounce } from "@/hooks/useDebounce";
+import {
+  loadSeenReportIds,
+  persistSeenReportId,
+  resolveAdminSeenKey,
+} from "@/lib/adminSeenReports";
+import { LOKASI_KAMPUS_OPTIONS, resolveLokasiKampus } from "@/lib/laporanCampus";
 import {
   ShieldAlert,
   AlertTriangle,
@@ -11,9 +19,12 @@ import {
   CheckCircle2,
   FileText,
   RotateCcw,
+  RefreshCw,
+  Calendar,
   Search,
   Building,
   Inbox,
+  X,
 } from "lucide-react";
 import {
   priorityApi,
@@ -22,6 +33,12 @@ import {
 } from "@/lib/priorityApi";
 import { PriorityScoreBadge } from "@/components/priority/PriorityScoreBadge";
 import { PriorityDetailModal } from "@/components/priority/PriorityDetailModal";
+import {
+  KATEGORI_LAPORAN_OPTIONS,
+  isReadOnlyAdmin,
+  isWakilRektorII,
+  normalizeKategoriLaporan,
+} from "@/lib/admin-positions";
 
 function formatTanggal(dateStr?: string | null): string {
   if (!dateStr) return "-";
@@ -53,8 +70,38 @@ function formatTanggal(dateStr?: string | null): string {
   }
 }
 
+function extractReportDateParts(rawDate?: string | null): {
+  year: string;
+  month: string;
+  day: string;
+} | null {
+  if (!rawDate) return null;
+
+  const d = new Date(rawDate);
+  if (!Number.isNaN(d.getTime())) {
+    return {
+      year: String(d.getFullYear()),
+      month: String(d.getMonth() + 1).padStart(2, "0"),
+      day: String(d.getDate()).padStart(2, "0"),
+    };
+  }
+
+  const match = rawDate.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (match) {
+    return {
+      year: match[1],
+      month: match[2].padStart(2, "0"),
+      day: match[3].padStart(2, "0"),
+    };
+  }
+
+  return null;
+}
+
 export default function AdminPriorityDashboardPage() {
   const { isLoading: authLoading, user: authUser } = useAdminProtection();
+  const isReadOnly = useMemo(() => isReadOnlyAdmin(authUser), [authUser]);
+  const isWR2 = useMemo(() => isWakilRektorII(authUser), [authUser]);
 
   // Data state
   const [reports, setReports] = useState<PriorityReportItem[]>([]);
@@ -65,23 +112,99 @@ export default function AdminPriorityDashboardPage() {
   // Filter state
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 500);
+  const [selectedDay, setSelectedDay] = useState("Semua");
+  const [selectedMonth, setSelectedMonth] = useState("Semua");
+  const [selectedYear, setSelectedYear] = useState("Semua");
+  const [lokasiFilter, setLokasiFilter] = useState("Semua");
   const [kategoriFilter, setKategoriFilter] = useState("Semua");
   const [severityFilter, setSeverityFilter] = useState("Semua");
   const [statusFilter, setStatusFilter] = useState("Semua");
+  const [bacaFilter, setBacaFilter] = useState<
+    "Semua" | "Sudah Dibaca" | "Belum Dibaca"
+  >("Semua");
   const [onlyNeedsReview] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  // Detail modal
+  const todayParts = useMemo(() => {
+    const now = new Date();
+    return {
+      year: String(now.getFullYear()),
+      month: String(now.getMonth() + 1).padStart(2, "0"),
+      day: String(now.getDate()).padStart(2, "0"),
+    };
+  }, []);
+
+  const isTodayFilterActive =
+    selectedDay === todayParts.day &&
+    selectedMonth === todayParts.month &&
+    selectedYear === todayParts.year;
+
+  const handleToggleTodayFilter = () => {
+    if (isTodayFilterActive) {
+      setSelectedDay("Semua");
+      setSelectedMonth("Semua");
+      setSelectedYear("Semua");
+    } else {
+      setSelectedDay(todayParts.day);
+      setSelectedMonth(todayParts.month);
+      setSelectedYear(todayParts.year);
+    }
+    setCurrentPage(1);
+  };
+
+  const handleResetReadOnlyFilter = () => {
+    setSearch("");
+    setSelectedDay("Semua");
+    setSelectedMonth("Semua");
+    setSelectedYear("Semua");
+    setLokasiFilter("Semua");
+    setKategoriFilter("Semua");
+    setSeverityFilter("Semua");
+    setStatusFilter("Semua");
+    setBacaFilter("Semua");
+    setCurrentPage(1);
+  };
+
+  // Detail modal & tracking laporan Terkirim yang sudah dibuka
   const [selectedReport, setSelectedReport] = useState<PriorityReportItem | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const adminSeenKey = useMemo(() => resolveAdminSeenKey(authUser), [authUser]);
+  const [seenReportIds, setSeenReportIds] = useState<Set<number>>(() => new Set());
+
+  useEffect(() => {
+    let active = true;
+    Promise.resolve().then(() => {
+      if (active) {
+        setSeenReportIds(loadSeenReportIds(adminSeenKey));
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [adminSeenKey]);
 
   const activeAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setCurrentPage(1), 0);
     return () => window.clearTimeout(timer);
-  }, [debouncedSearch, kategoriFilter, severityFilter, statusFilter]);
+  }, [
+    debouncedSearch,
+    selectedDay,
+    selectedMonth,
+    selectedYear,
+    lokasiFilter,
+    kategoriFilter,
+    severityFilter,
+    statusFilter,
+    bacaFilter,
+  ]);
+
+  const apiSearchQuery = isReadOnly ? "" : debouncedSearch;
+  const apiKategoriFilter = isReadOnly ? "Semua" : kategoriFilter;
+  const apiSeverityFilter = isReadOnly ? "Semua" : severityFilter;
+  const apiStatusFilter = isReadOnly ? "Semua" : statusFilter;
 
   const loadPriorityData = useCallback(
     async (searchQuery: string, signal?: AbortSignal) => {
@@ -91,13 +214,15 @@ export default function AdminPriorityDashboardPage() {
       try {
         const { reports: reportsData, summary: inlineSummary } =
           await priorityApi.getReportsWithSummary(
-            {
-              kategori: kategoriFilter,
-              severity: severityFilter,
-              status: statusFilter,
-              needs_review: onlyNeedsReview,
-              search: searchQuery.trim() || undefined,
-            },
+            isReadOnly
+              ? undefined
+              : {
+                  kategori: apiKategoriFilter,
+                  severity: apiSeverityFilter,
+                  status: apiStatusFilter,
+                  needs_review: onlyNeedsReview,
+                  search: searchQuery.trim() || undefined,
+                },
             signal
           );
 
@@ -127,15 +252,21 @@ export default function AdminPriorityDashboardPage() {
         }
       }
     },
-    [kategoriFilter, severityFilter, statusFilter, onlyNeedsReview]
+    [
+      isReadOnly,
+      apiKategoriFilter,
+      apiSeverityFilter,
+      apiStatusFilter,
+      onlyNeedsReview,
+    ]
   );
 
   const fetchData = useCallback(() => {
     activeAbortRef.current?.abort();
     const controller = new AbortController();
     activeAbortRef.current = controller;
-    void loadPriorityData(debouncedSearch, controller.signal);
-  }, [loadPriorityData, debouncedSearch]);
+    void loadPriorityData(apiSearchQuery, controller.signal);
+  }, [loadPriorityData, apiSearchQuery]);
 
   useEffect(() => {
     if (authLoading || !authUser) {
@@ -148,18 +279,124 @@ export default function AdminPriorityDashboardPage() {
 
     Promise.resolve().then(() => {
       if (!controller.signal.aborted) {
-        void loadPriorityData(debouncedSearch, controller.signal);
+        void loadPriorityData(apiSearchQuery, controller.signal);
       }
     });
 
     return () => {
       controller.abort();
     };
-  }, [authLoading, authUser, debouncedSearch, loadPriorityData]);
+  }, [authLoading, authUser, apiSearchQuery, loadPriorityData]);
+
+  const hasPeriodFilter =
+    isReadOnly &&
+    (selectedDay !== "Semua" ||
+      selectedMonth !== "Semua" ||
+      selectedYear !== "Semua");
+
+  const periodReports = useMemo(() => {
+    if (!hasPeriodFilter) {
+      return reports;
+    }
+
+    return reports.filter((item) => {
+      const parts = extractReportDateParts(
+        item.tanggal_buat || item.tanggal_kejadian
+      );
+      if (!parts) return false;
+
+      const matchesDay = selectedDay === "Semua" || parts.day === selectedDay;
+      const matchesMonth =
+        selectedMonth === "Semua" || parts.month === selectedMonth;
+      const matchesYear =
+        selectedYear === "Semua" || parts.year === selectedYear;
+
+      return matchesDay && matchesMonth && matchesYear;
+    });
+  }, [reports, hasPeriodFilter, selectedDay, selectedMonth, selectedYear]);
+
+  const displayedReports = useMemo(() => {
+    if (!isReadOnly) {
+      return reports;
+    }
+
+    const searchLower = debouncedSearch.trim().toLowerCase();
+
+    return periodReports.filter((item) => {
+      const kampus = resolveLokasiKampus(item.lokasi_kampus, item.lokasi);
+      const normalizedStatus = normalizeAdminStatus(item.status_terkini);
+      const formattedId = String(item.id_laporan).padStart(3, "0");
+
+      const matchesSearch =
+        searchLower === "" ||
+        formattedId.includes(searchLower) ||
+        String(item.id_laporan).includes(searchLower) ||
+        (item.nama_pelapor || "").toLowerCase().includes(searchLower) ||
+        (item.nim || "").toLowerCase().includes(searchLower) ||
+        (item.deskripsi || "").toLowerCase().includes(searchLower) ||
+        (item.kategori_laporan || "").toLowerCase().includes(searchLower) ||
+        kampus.toLowerCase().includes(searchLower) ||
+        (item.lokasi || "").toLowerCase().includes(searchLower);
+
+      const matchesLokasi =
+        lokasiFilter === "Semua" ||
+        kampus === lokasiFilter ||
+        (item.lokasi || "").toLowerCase().includes(lokasiFilter.toLowerCase());
+
+      const matchesKategori =
+        !isWR2 ||
+        kategoriFilter === "Semua" ||
+        normalizeKategoriLaporan(item.kategori_laporan) === kategoriFilter;
+
+      const matchesSeverity =
+        severityFilter === "Semua" || item.severity_level === severityFilter;
+
+      const matchesStatus =
+        statusFilter === "Semua" || normalizedStatus === statusFilter;
+
+      const isUnread =
+        normalizedStatus === "Terkirim" && !seenReportIds.has(item.id_laporan);
+      const matchesBaca =
+        bacaFilter === "Semua" ||
+        (bacaFilter === "Belum Dibaca" ? isUnread : !isUnread);
+
+      return (
+        matchesSearch &&
+        matchesLokasi &&
+        matchesKategori &&
+        matchesSeverity &&
+        matchesStatus &&
+        matchesBaca
+      );
+    });
+  }, [
+    isReadOnly,
+    reports,
+    periodReports,
+    debouncedSearch,
+    lokasiFilter,
+    isWR2,
+    kategoriFilter,
+    severityFilter,
+    statusFilter,
+    bacaFilter,
+    seenReportIds,
+  ]);
+
+  const unreadDisplayedCount = useMemo(
+    () =>
+      displayedReports.filter(
+        (item) =>
+          normalizeAdminStatus(item.status_terkini) === "Terkirim" &&
+          !seenReportIds.has(item.id_laporan)
+      ).length,
+    [displayedReports, seenReportIds]
+  );
 
   const handleOpenDetail = (item: PriorityReportItem) => {
     setSelectedReport(item);
     setIsModalOpen(true);
+    setSeenReportIds((prev) => persistSeenReportId(adminSeenKey, item.id_laporan, prev));
   };
 
   if (authLoading) {
@@ -185,26 +422,34 @@ export default function AdminPriorityDashboardPage() {
         <div className="max-w-7xl mx-auto space-y-6">
           {/* Kartu Ringkasan Jumlah Laporan Berdasarkan Prioritas */}
           {(() => {
-            const totalCount = summary?.total_laporan ?? reports.length;
-            const tinggiCount = summary
-              ? (summary.kritis_berat ?? 0) + (summary.tinggi ?? 0)
-              : reports.filter(
+            const summarySource = hasPeriodFilter ? periodReports : reports;
+            const useServerSummary = !hasPeriodFilter && Boolean(summary);
+            const totalCount = useServerSummary
+              ? (summary?.total_laporan ?? summarySource.length)
+              : summarySource.length;
+            const tinggiCount = useServerSummary
+              ? (summary?.kritis_berat ?? 0) + (summary?.tinggi ?? 0)
+              : summarySource.filter(
                   (r) =>
                     r.priority_level === "tinggi" ||
                     r.priority_level === "kritis" ||
                     r.severity_level === "berat"
                 ).length;
-            const sedangCount = summary
-              ? (summary.sedang ?? 0)
-              : reports.filter(
-                  (r) => r.priority_level === "sedang" && r.severity_level !== "berat"
-                ).length;
-            const rendahCount = summary
-              ? (summary.rendah ?? 0)
-              : reports.filter(
+            const sedangCount = useServerSummary
+              ? (summary?.sedang ?? 0)
+              : summarySource.filter(
                   (r) =>
-                    (r.priority_level === "rendah" || !r.priority_level) &&
+                    r.priority_level === "sedang" &&
                     r.severity_level !== "berat"
+                ).length;
+            const rendahCount = useServerSummary
+              ? (summary?.rendah ?? 0)
+              : summarySource.filter(
+                  (r) =>
+                    r.severity_level !== "berat" &&
+                    r.priority_level !== "kritis" &&
+                    r.priority_level !== "tinggi" &&
+                    r.priority_level !== "sedang"
                 ).length;
 
             return (
@@ -305,97 +550,329 @@ export default function AdminPriorityDashboardPage() {
             </div>
           )}
 
-          {/* Filter Bar */}
-          <div className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-              {/* Pencarian */}
-              <div className="relative sm:col-span-2">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Cari deskripsi, lokasi, pelapor, atau nomor laporan..."
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full text-xs pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-slate-50 focus:bg-white transition-all font-medium"
-                />
+          {/* Filter Bar (Card Terpisah dari Card Daftar Laporan) */}
+          {isReadOnly ? (
+            <div className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
+              {/* Baris 1: Pencarian + Periode (Tanggal/Bulan/Tahun), Hari Ini & Segarkan */}
+              <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Cari ID laporan, nama pelapor, NIM, lokasi, atau deskripsi..."
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="w-full min-h-[42px] text-xs sm:text-sm pl-10 pr-9 py-2 rounded-xl border border-gray-200 bg-white text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] transition-all"
+                  />
+                  {search && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearch("");
+                        setCurrentPage(1);
+                      }}
+                      aria-label="Hapus kata kunci pencarian"
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+                  <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                    Periode:
+                  </span>
+                  <PeriodFilter
+                    selectedDay={selectedDay}
+                    selectedMonth={selectedMonth}
+                    selectedYear={selectedYear}
+                    onDayChange={(d) => {
+                      setSelectedDay(d);
+                      setCurrentPage(1);
+                    }}
+                    onMonthChange={(m) => {
+                      setSelectedMonth(m);
+                      if (selectedDay !== "Semua" && m !== "Semua") {
+                        const y = selectedYear !== "Semua" ? Number(selectedYear) : 2024;
+                        const maxDay = new Date(y, Number(m), 0).getDate();
+                        if (Number(selectedDay) > maxDay) {
+                          setSelectedDay("Semua");
+                        }
+                      }
+                      setCurrentPage(1);
+                    }}
+                    onYearChange={(y) => {
+                      setSelectedYear(y);
+                      if (selectedDay !== "Semua" && selectedMonth !== "Semua") {
+                        const yearNum = y !== "Semua" ? Number(y) : 2024;
+                        const maxDay = new Date(yearNum, Number(selectedMonth), 0).getDate();
+                        if (Number(selectedDay) > maxDay) {
+                          setSelectedDay("Semua");
+                        }
+                      }
+                      setCurrentPage(1);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleToggleTodayFilter}
+                    aria-pressed={isTodayFilterActive}
+                    title={
+                      isTodayFilterActive
+                        ? "Klik untuk menampilkan semua periode"
+                        : "Tampilkan laporan yang masuk hari ini"
+                    }
+                    className={`inline-flex items-center gap-1.5 min-h-[38px] px-3 py-1.5 rounded-xl border text-xs font-semibold transition-colors cursor-pointer shadow-2xs ${
+                      isTodayFilterActive
+                        ? "bg-[#7A0C0C] border-[#7A0C0C] text-white hover:bg-[#650909]"
+                        : "bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                    }`}
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>Hari Ini</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={fetchData}
+                    disabled={loading}
+                    title="Perbarui data dari database"
+                    className="inline-flex items-center justify-center min-h-[38px] px-3 py-1.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-100 text-xs font-semibold text-gray-700 hover:text-gray-900 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
+                  >
+                    <RefreshCw
+                      className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
+                    />
+                  </button>
+                </div>
               </div>
 
-              {/* Filter Kategori */}
-              <div>
-                <select
-                  value={kategoriFilter}
-                  onChange={(e) => {
-                    setKategoriFilter(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white font-semibold text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]"
+              {/* Baris 2: Filter Dropdowns (Lokasi, Kategori WR2, Tingkat, Status, Status Baca) & Reset */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Filter Lokasi Kampus */}
+                <div className="w-full sm:w-auto">
+                  <select
+                    value={lokasiFilter}
+                    onChange={(e) => {
+                      setLokasiFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    aria-label="Filter berdasarkan lokasi kampus"
+                    className="w-full sm:w-auto min-h-[42px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
+                  >
+                    <option value="Semua">Semua Lokasi</option>
+                    {LOKASI_KAMPUS_OPTIONS.map((kampus) => (
+                      <option key={kampus} value={kampus}>
+                        {kampus}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Filter Kategori Laporan (khusus Wakil Rektor II) */}
+                {isWR2 && (
+                  <div className="w-full sm:w-auto">
+                    <select
+                      value={kategoriFilter}
+                      onChange={(e) => {
+                        setKategoriFilter(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      aria-label="Filter berdasarkan kategori laporan"
+                      className="w-full sm:w-auto min-h-[42px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
+                    >
+                      <option value="Semua">Semua Kategori</option>
+                      {KATEGORI_LAPORAN_OPTIONS.map((kategori) => (
+                        <option key={kategori} value={kategori}>
+                          {kategori}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Filter Tingkat Kerusakan */}
+                <div className="w-full sm:w-auto">
+                  <select
+                    value={severityFilter}
+                    onChange={(e) => {
+                      setSeverityFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    aria-label="Filter berdasarkan tingkat kerusakan"
+                    className="w-full sm:w-auto min-h-[42px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
+                  >
+                    <option value="Semua">Semua Tingkat</option>
+                    <option value="berat">Berat (Bobot 100)</option>
+                    <option value="sedang">Sedang (Bobot 50)</option>
+                    <option value="ringan">Ringan (Bobot 20)</option>
+                  </select>
+                </div>
+
+                {/* Filter Status Laporan */}
+                <div className="w-full sm:w-auto">
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    aria-label="Filter berdasarkan status laporan"
+                    className="w-full sm:w-auto min-h-[42px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
+                  >
+                    <option value="Semua">Semua Status</option>
+                    <option value="Terkirim">Terkirim</option>
+                    <option value="Diverifikasi">Diverifikasi</option>
+                    <option value="Diproses">Diproses</option>
+                    <option value="Ditolak">Ditolak</option>
+                    <option value="Selesai">Selesai</option>
+                  </select>
+                </div>
+
+                {/* Filter Status Baca (Semua / Belum Dibaca / Sudah Dibaca) */}
+                <div className="w-full sm:w-auto">
+                  <select
+                    value={bacaFilter}
+                    onChange={(e) => {
+                      setBacaFilter(
+                        e.target.value as "Semua" | "Sudah Dibaca" | "Belum Dibaca"
+                      );
+                      setCurrentPage(1);
+                    }}
+                    aria-label="Filter berdasarkan status baca laporan"
+                    className="w-full sm:w-auto min-h-[42px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
+                  >
+                    <option value="Semua">Semua Laporan</option>
+                    <option value="Belum Dibaca">Belum Dibaca</option>
+                    <option value="Sudah Dibaca">Sudah Dibaca</option>
+                  </select>
+                </div>
+
+                {/* Tombol Reset */}
+                <button
+                  type="button"
+                  onClick={handleResetReadOnlyFilter}
+                  className="text-xs sm:text-sm font-semibold text-slate-500 hover:text-slate-900 px-3 py-2 transition-colors cursor-pointer"
+                  title="Reset seluruh filter"
                 >
-                  <option value="Semua">Semua Kategori</option>
-                  <option value="Fasilitas">Kerusakan Fasilitas</option>
-                  <option value="Kebersihan">Kebersihan</option>
-                </select>
+                  Reset
+                </button>
               </div>
 
-              {/* Filter Tingkat Kerusakan */}
-              <div>
-                <select
-                  value={severityFilter}
-                  onChange={(e) => {
-                    setSeverityFilter(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white font-semibold text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]"
-                >
-                  <option value="Semua">Semua Tingkat</option>
-                  <option value="berat">Berat (Bobot 100)</option>
-                  <option value="sedang">Sedang (Bobot 50)</option>
-                  <option value="ringan">Ringan (Bobot 20)</option>
-                </select>
-              </div>
-
-              {/* Filter Status */}
-              <div>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => {
-                    setStatusFilter(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white font-semibold text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]"
-                >
-                  <option value="Semua">Semua Status</option>
-                  <option value="Terkirim">Terkirim</option>
-                  <option value="Diverifikasi">Diverifikasi</option>
-                  <option value="Diproses">Diproses</option>
-                  <option value="Selesai">Selesai</option>
-                  <option value="Ditolak">Ditolak</option>
-                </select>
+              {/* Ringkasan Jumlah Hasil */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-slate-100 text-xs">
+                <span className="text-slate-500 font-medium">
+                  Menampilkan{" "}
+                  <span className="font-bold text-slate-900">
+                    {displayedReports.length}
+                  </span>{" "}
+                  laporan
+                  <span className="hidden sm:inline text-slate-400 ml-2">
+                    • Klik baris laporan untuk melihat detail
+                  </span>
+                </span>
+                {unreadDisplayedCount > 0 && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/80 text-[11px] font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6]" />
+                    {unreadDisplayedCount} belum dibaca
+                  </span>
+                )}
               </div>
             </div>
+          ) : (
+            <div className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200/80 shadow-2xs space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                {/* Pencarian */}
+                <div className="relative sm:col-span-2">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Cari deskripsi, lokasi, pelapor, atau nomor laporan..."
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="w-full text-xs pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-slate-50 focus:bg-white transition-all font-medium"
+                  />
+                </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
-              <span className="text-slate-500 font-medium">
-                Menampilkan <span className="font-bold text-slate-900">{reports.length}</span> laporan
-                <span className="hidden sm:inline text-slate-400 ml-2">• Klik baris laporan untuk melihat detail</span>
-              </span>
-              <button
-                type="button"
-                onClick={fetchData}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-              >
-                <RotateCcw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-                <span>Segarkan</span>
-              </button>
+                {/* Filter Kategori */}
+                <div>
+                  <select
+                    value={kategoriFilter}
+                    onChange={(e) => {
+                      setKategoriFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white font-semibold text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]"
+                  >
+                    <option value="Semua">Semua Kategori</option>
+                    <option value="Fasilitas">Kerusakan Fasilitas</option>
+                    <option value="Kebersihan">Kebersihan</option>
+                  </select>
+                </div>
+
+                {/* Filter Tingkat Kerusakan */}
+                <div>
+                  <select
+                    value={severityFilter}
+                    onChange={(e) => {
+                      setSeverityFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white font-semibold text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]"
+                  >
+                    <option value="Semua">Semua Tingkat</option>
+                    <option value="berat">Berat (Bobot 100)</option>
+                    <option value="sedang">Sedang (Bobot 50)</option>
+                    <option value="ringan">Ringan (Bobot 20)</option>
+                  </select>
+                </div>
+
+                {/* Filter Status */}
+                <div>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => {
+                      setStatusFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="w-full text-xs px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white font-semibold text-slate-800 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]"
+                  >
+                    <option value="Semua">Semua Status</option>
+                    <option value="Terkirim">Terkirim</option>
+                    <option value="Diverifikasi">Diverifikasi</option>
+                    <option value="Diproses">Diproses</option>
+                    <option value="Selesai">Selesai</option>
+                    <option value="Ditolak">Ditolak</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                <span className="text-slate-500 font-medium">
+                  Menampilkan <span className="font-bold text-slate-900">{displayedReports.length}</span> laporan
+                  <span className="hidden sm:inline text-slate-400 ml-2">• Klik baris laporan untuk melihat detail</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={fetchData}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+                  <span>Segarkan</span>
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Tabel Prioritas Laporan */}
           {(() => {
-            const totalPages = Math.ceil(reports.length / itemsPerPage) || 1;
-            const paginatedReports = reports.slice(
+            const totalPages = Math.ceil(displayedReports.length / itemsPerPage) || 1;
+            const paginatedReports = displayedReports.slice(
               (currentPage - 1) * itemsPerPage,
               currentPage * itemsPerPage
             );
@@ -407,7 +884,7 @@ export default function AdminPriorityDashboardPage() {
                     <div className="w-8 h-8 rounded-full border-4 border-[#7A0C0C]/20 border-t-[#7A0C0C] animate-spin" />
                     <p className="text-xs font-bold text-slate-500">Memuat urutan prioritas laporan...</p>
                   </div>
-                ) : reports.length === 0 ? (
+                ) : displayedReports.length === 0 ? (
                   <div className="py-20 flex flex-col items-center justify-center text-center px-4">
                     <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
                       <Inbox className="w-7 h-7" />
@@ -434,6 +911,10 @@ export default function AdminPriorityDashboardPage() {
                         <tbody className="divide-y divide-slate-100 text-xs">
                           {paginatedReports.map((item, index) => {
                             const isTopPriority = item.priority_level === "kritis" || item.severity_level === "berat";
+                            const isUnread =
+                              normalizeAdminStatus(item.status_terkini) === "Terkirim" &&
+                              !seenReportIds.has(item.id_laporan);
+
                             return (
                               <tr
                                 key={item.id_laporan}
@@ -448,17 +929,34 @@ export default function AdminPriorityDashboardPage() {
                                 role="button"
                                 title="Klik untuk melihat detail laporan"
                                 className={`cursor-pointer transition-colors outline-none focus-visible:bg-slate-100 ${
-                                  isTopPriority
-                                    ? "bg-red-50/30 hover:bg-red-50/70 active:bg-red-100/60"
-                                    : "hover:bg-slate-50 active:bg-slate-100/80"
+                                  isUnread
+                                    ? "bg-blue-50/35 hover:bg-blue-50/65 active:bg-blue-100/50"
+                                    : isTopPriority
+                                      ? "bg-red-50/30 hover:bg-red-50/70 active:bg-red-100/60"
+                                      : "hover:bg-slate-50 active:bg-slate-100/80"
                                 }`}
                               >
                                 {/* Kolom Peringkat & Skor */}
-                                <td className="py-4 px-4 sm:px-6">
+                                <td
+                                  className={`py-4 px-4 sm:px-6 ${
+                                    isUnread ? "border-l-[3px] border-l-[#3B82F6]" : ""
+                                  }`}
+                                >
                                   <div className="flex items-center gap-3">
-                                    <span className="w-6 text-center font-bold text-gray-400 text-xs font-mono">
-                                      #{(currentPage - 1) * itemsPerPage + index + 1}
-                                    </span>
+                                    <div className="flex items-center gap-1.5 min-w-[34px]">
+                                      {isUnread && (
+                                        <span
+                                          title="Laporan baru belum dibuka"
+                                          className="relative flex h-2 w-2 shrink-0"
+                                        >
+                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                                          <span className="relative inline-flex rounded-full h-2 w-2 bg-[#3B82F6]" />
+                                        </span>
+                                      )}
+                                      <span className="w-6 text-center font-bold text-gray-400 text-xs font-mono">
+                                        #{(currentPage - 1) * itemsPerPage + index + 1}
+                                      </span>
+                                    </div>
                                     <PriorityScoreBadge
                                       score={item.priority_score}
                                       level={item.priority_level}
@@ -524,11 +1022,9 @@ export default function AdminPriorityDashboardPage() {
                                   </p>
                                 </td>
 
-                                {/* Kolom Status */}
+                                {/* Kolom Status (konsisten dengan /admin/dashboard) */}
                                 <td className="py-4 px-4 sm:pr-6">
-                                  <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-gray-100 text-gray-800 border border-gray-200">
-                                    {item.status_terkini}
-                                  </span>
+                                  <AdminStatusBadge status={item.status_terkini} />
                                 </td>
                               </tr>
                             );
@@ -541,9 +1037,9 @@ export default function AdminPriorityDashboardPage() {
                     <div className="px-6 py-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 bg-white">
                       <p>
                         Menampilkan{" "}
-                        {reports.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}–
-                        {Math.min(currentPage * itemsPerPage, reports.length)} dari{" "}
-                        {reports.length} laporan
+                        {displayedReports.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0}–
+                        {Math.min(currentPage * itemsPerPage, displayedReports.length)} dari{" "}
+                        {displayedReports.length} laporan
                       </p>
 
                       <div className="flex items-center gap-1.5">
@@ -618,6 +1114,7 @@ export default function AdminPriorityDashboardPage() {
         hideAiAnalysis={true}
         hideScoreBreakdown={true}
         hideHandlingInfo={true}
+        readOnly={isReadOnly}
       />
     </div>
   );

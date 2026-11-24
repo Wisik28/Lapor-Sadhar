@@ -344,10 +344,10 @@ class PriorityDashboardController extends Controller
             $adminId = $session?->admin_id;
 
             $laporan = Laporan::findOrFail($id);
-            if ($admin && ! $admin->canAccessLaporan($laporan)) {
+            if ($admin && ! $admin->canEditLaporan($laporan)) {
                 return response()->json([
                     'status'  => 'error',
-                    'message' => 'Anda tidak memiliki akses untuk mengubah prioritas laporan dari kampus atau unit lain.',
+                    'message' => 'Anda tidak memiliki wewenang untuk mengubah prioritas laporan ini.',
                 ], 403);
             }
 

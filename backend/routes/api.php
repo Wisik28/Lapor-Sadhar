@@ -32,6 +32,7 @@ Route::middleware('admin.session')->prefix('admin')->group(function () {
     Route::post('/email-change/confirm', [EmailSecurityController::class, 'confirmAdminEmailChange'])->middleware('throttle:10,1');
     Route::get('/laporan', [LaporanController::class, 'adminIndex']);
     Route::patch('/laporan/{id}/status', [LaporanController::class, 'adminUpdateStatus']);
+    Route::patch('/laporan/{id}/kategori', [LaporanController::class, 'adminTransferKategori']);
     Route::get('/rekap', [LaporanController::class, 'adminRekap']);
 });
 

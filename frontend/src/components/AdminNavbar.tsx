@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -11,6 +11,7 @@ import {
   User,
 } from "lucide-react";
 import { authApi } from "@/lib/api";
+import { isReadOnlyAdmin } from "@/lib/admin-positions";
 
 export interface AdminNavbarProps {
   adminName?: string;
@@ -50,14 +51,45 @@ export default function AdminNavbar({
     }
   };
 
-  const navLinks = [
-    { label: "Dashboard", href: "/admin/dashboard" },
-    { label: "Prioritas", href: "/admin/prioritas" }, // sementara dlu, nanti dihapus kl jadi satu sm dashboard
-    { label: "Ubah Status", href: "/admin/ubah-status" }, 
-    { label: "Riwayat", href: "/admin/riwayat" },
-    { label: "Rekap", href: "/admin/rekap" },
-    { label: "Akun", href: "/admin/account" },
-  ];
+  const [sessionUser, setSessionUser] = useState<ReturnType<typeof authApi.getCurrentUser>>(null);
+
+  useEffect(() => {
+    let active = true;
+    Promise.resolve().then(() => {
+      if (active) {
+        setSessionUser(authApi.getCurrentUser());
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const isReadOnly = useMemo(() => {
+    return isReadOnlyAdmin(sessionUser) || isReadOnlyAdmin({ jabatan_label: adminRole });
+  }, [sessionUser, adminRole]);
+
+  const navLinks = useMemo(() => {
+    const allLinks = [
+      { label: "Dashboard", href: "/admin/dashboard" },
+      { label: "Prioritas", href: "/admin/prioritas" }, // sementara dlu, nanti dihapus kl jadi satu sm dashboard
+      { label: "Ubah Status", href: "/admin/ubah-status" },
+      { label: "Riwayat", href: "/admin/riwayat" },
+      { label: "Rekap", href: "/admin/rekap" },
+      { label: "Akun", href: "/admin/account" },
+    ];
+
+    if (isReadOnly) {
+      return allLinks.filter(
+        (item) =>
+          item.href !== "/admin/dashboard" &&
+          item.href !== "/admin/ubah-status" &&
+          item.href !== "/admin/riwayat"
+      );
+    }
+
+    return allLinks;
+  }, [isReadOnly]);
 
   return (
     <header className="sticky top-0 z-30 w-full bg-white border-b border-slate-200/80 shadow-2xs">
@@ -66,7 +98,7 @@ export default function AdminNavbar({
           {/* Sisi Kiri: Logo Lapor Sadhar */}
           <div className="flex items-center gap-3">
             <Link
-              href="/admin/dashboard"
+              href={isReadOnly ? "/admin/prioritas" : "/admin/dashboard"}
               className="flex items-center gap-2.5 group focus:outline-none"
             >
               <div className="w-9 h-9 rounded-full bg-amber-50 border border-amber-200/80 flex items-center justify-center p-1 shadow-2xs transition-transform group-hover:scale-105">

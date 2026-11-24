@@ -62,7 +62,7 @@ class AdminAuthController extends Controller
             'message' => 'Login admin berhasil.',
             'token' => $plainToken,
             'user' => $this->adminData($admin),
-            'redirect_to' => '/admin/dashboard',
+            'redirect_to' => $admin->isReadOnlyAdmin() ? '/admin/prioritas' : '/admin/dashboard',
         ]);
     }
 

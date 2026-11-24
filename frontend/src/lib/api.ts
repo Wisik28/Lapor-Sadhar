@@ -653,6 +653,50 @@ export const adminLaporanApi = {
     return result;
   },
 
+  /** Memindahkan laporan ke kategori/unit lain (BPS <-> BLU) jika pelapor salah memilih kategori */
+  async transferKategori(
+    id: number,
+    kategori_laporan: "Fasilitas" | "Kebersihan",
+    catatan_pemindahan?: string
+  ) {
+    let response: Response;
+
+    try {
+      response = await fetch(
+        `${API_BASE_URL}/admin/laporan/${id}/kategori`,
+        {
+          method: "PATCH",
+          headers: getAuthHeaders(true),
+          body: JSON.stringify({
+            kategori_laporan,
+            catatan_pemindahan: catatan_pemindahan?.trim() || undefined,
+          }),
+        }
+      );
+    } catch {
+      throw new Error(
+        "Gagal memindahkan laporan. Silakan coba kembali."
+      );
+    }
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      if (response.status >= 500) {
+        throw new Error(
+          "Gagal memindahkan laporan. Silakan coba kembali."
+        );
+      }
+
+      throw new Error(
+        result?.message ||
+          `Gagal memindahkan laporan. HTTP ${response.status}`
+      );
+    }
+
+    return result;
+  },
+
   /** Mengambil data rekap & analitik laporan untuk admin */
   async getRekap(params?: { bulan?: string; tahun?: string }) {
     const searchParams = new URLSearchParams();

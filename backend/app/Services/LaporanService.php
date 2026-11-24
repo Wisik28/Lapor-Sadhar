@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Admin;
 use App\Models\Laporan;
+use App\Models\Priority\PriorityAssessment;
 use App\Models\Status;
 use App\Services\Priority\LocationCategorizer;
 use App\Services\Priority\LocationSeverityAssessor;
@@ -363,6 +364,73 @@ class LaporanService
             return [
                 'laporan' => $laporan,
                 'status'  => $statusRecord,
+            ];
+        });
+    }
+
+    /**
+     * Pindahkan kategori laporan antar unit (BPS <-> BLU) apabila salah masuk kategori.
+     */
+    public function transferKategoriLaporan(
+        int $id,
+        string $targetKategori,
+        ?Admin $admin = null,
+        ?string $catatan = null
+    ): array {
+        return DB::transaction(function () use ($id, $targetKategori, $catatan) {
+            $laporan = Laporan::with([
+                'statuses' => function ($query) {
+                    $query->orderBy('tanggal_merubah', 'desc');
+                    $query->orderBy('id_status', 'desc');
+                },
+            ])->findOrFail($id);
+
+            $oldKategori = (string) $laporan->kategori_laporan;
+
+            if (strcasecmp($oldKategori, $targetKategori) === 0) {
+                throw new \InvalidArgumentException(
+                    "Laporan sudah berada pada kategori {$targetKategori}."
+                );
+            }
+
+            $latestStatus = (string) ($laporan->statuses->first()?->status_laporan ?? 'Terkirim');
+            if (in_array(strtolower(trim($latestStatus)), ['selesai', 'ditolak'], true)) {
+                throw new \InvalidArgumentException(
+                    "Laporan yang sudah berstatus {$latestStatus} tidak dapat dipindahkan ke unit lain."
+                );
+            }
+
+            $unitAsal = strcasecmp($oldKategori, 'Kebersihan') === 0 ? 'BLU' : 'BPS';
+            $unitTujuan = strcasecmp($targetKategori, 'Kebersihan') === 0 ? 'BLU' : 'BPS';
+
+            $laporan->kategori_laporan = $targetKategori;
+            $laporan->tanggal_rubah = now();
+
+            $trimmedCatatan = trim((string) ($catatan ?? ''));
+            if ($trimmedCatatan !== '') {
+                $transferLine = "[Dipindahkan dari {$unitAsal} ke {$unitTujuan}] {$trimmedCatatan}";
+                $existingNote = trim((string) ($laporan->pesan_tanggapan ?? ''));
+                $laporan->pesan_tanggapan = $existingNote !== ''
+                    ? $existingNote . "\n" . $transferLine
+                    : $transferLine;
+            }
+
+            $laporan->save();
+
+            if (Schema::hasTable('priority_assessments')) {
+                PriorityAssessment::where('id_laporan', $laporan->id_laporan)
+                    ->update(['kategori' => $targetKategori]);
+            }
+
+            return [
+                'id_laporan'          => $laporan->id_laporan,
+                'kategori_sebelumnya' => $oldKategori,
+                'kategori_laporan'    => $laporan->kategori_laporan,
+                'unit_asal'           => $unitAsal,
+                'unit_tujuan'         => $unitTujuan,
+                'lokasi_kampus'       => $laporan->lokasi_kampus,
+                'pesan_tanggapan'     => $laporan->pesan_tanggapan ?? '',
+                'tanggal_rubah'       => $laporan->tanggal_rubah,
             ];
         });
     }

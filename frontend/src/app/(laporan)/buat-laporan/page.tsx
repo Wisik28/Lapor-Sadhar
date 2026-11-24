@@ -336,9 +336,6 @@ export default function BuatLaporanPage() {
 
                     {/* Kategori Interactive Buttons */}
                     <div className="pl-0 sm:pl-11">
-                      <label className="block text-sm font-semibold text-slate-800 mb-2.5">
-                        Kategori Laporan <span className="text-red-500">*</span>
-                      </label>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                         {KATEGORI_OPTIONS.map((option) => {
                           const Icon = option.icon;

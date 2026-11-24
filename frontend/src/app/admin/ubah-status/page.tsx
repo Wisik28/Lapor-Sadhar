@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Lock, UserCheck } from "lucide-react";
 import AdminNavbar from "@/components/AdminNavbar";
 import { adminLaporanApi } from "@/lib/api";
 import { getCurrentAuthUser } from "@/lib/auth";
+import { isReadOnlyAdmin } from "@/lib/admin-positions";
 import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
 
 type StatusValue =
@@ -227,9 +229,17 @@ function getStatusUpdateErrorMessage(err: unknown): string {
 }
 
 export default function UbahStatusLaporanPage() {
+  const router = useRouter();
+  const [isRestrictedRole] = useState(() => isReadOnlyAdmin(getCurrentAuthUser()));
   const [laporan, setLaporan] = useState<Laporan[]>([]);
   const [laporanTerpilih, setLaporanTerpilih] =
     useState<Laporan | null>(null);
+
+  useEffect(() => {
+    if (isRestrictedRole) {
+      router.replace("/admin/prioritas");
+    }
+  }, [isRestrictedRole, router]);
 
   const [adminName] = useState(() => {
     const currentUser = getCurrentAuthUser();
@@ -364,6 +374,7 @@ export default function UbahStatusLaporanPage() {
   }, []);
 
   useEffect(() => {
+    if (isRestrictedRole) return;
     let aktif = true;
 
     const ambilData = async () => {
@@ -421,7 +432,7 @@ export default function UbahStatusLaporanPage() {
     return () => {
       aktif = false;
     };
-  }, []);
+  }, [isRestrictedRole]);
 
   const daftarTahun = useMemo(() => {
     const tahun = laporan
@@ -595,6 +606,10 @@ export default function UbahStatusLaporanPage() {
   }
 
   const fotoList = getFotoList(laporanTerpilih?.foto);
+
+  if (isRestrictedRole) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-slate-800 flex flex-col font-sans">

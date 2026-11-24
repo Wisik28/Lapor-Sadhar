@@ -82,6 +82,94 @@ export function isWakilRektorII(user?: AdminIdentity | null): boolean {
 }
 
 /**
+ * Memeriksa apakah akun admin yang aktif merupakan role pemantau (read-only):
+ * Wakil Rektor II, Kepala Biro Layanan Umum, dan Kepala Biro Sarana dan Prasarana.
+ * Role ini hanya berhak melihat/memantau laporan dan tidak memiliki akses ke
+ * /admin/riwayat, /admin/ubah-status, maupun aksi perubahan laporan.
+ */
+export function isReadOnlyAdmin(user?: AdminIdentity | null): boolean {
+  if (!user) return false;
+  if (isWakilRektorII(user)) return true;
+
+  const jabatan = (user.jabatan ?? "").trim().toLowerCase();
+  const label = (user.jabatan_label ?? "").trim().toLowerCase();
+  const username = (user.username ?? "").trim().toLowerCase();
+
+  return (
+    jabatan === "kepala_blu" ||
+    jabatan === "kepala_bps" ||
+    label.includes("kepala biro") ||
+    username === "kepala.blu" ||
+    username === "kepala.bps" ||
+    username === "admin.kepala_blu" ||
+    username === "admin.kepala_bps"
+  );
+}
+
+/**
+ * Mengembalikan halaman awal (landing route) admin sesuai hak aksesnya.
+ * Role pemantau (WR II, Kepala BLU, Kepala BPS) langsung diarahkan ke /admin/prioritas.
+ */
+export function getAdminHomeRoute(user?: AdminIdentity | null): string {
+  return isReadOnlyAdmin(user) ? "/admin/prioritas" : "/admin/dashboard";
+}
+
+/**
+ * Mengembalikan unit admin ("BPS" atau "BLU"), atau null untuk Wakil Rektor II / lintas unit.
+ */
+export function resolveAdminUnit(user?: AdminIdentity | null): "BPS" | "BLU" | null {
+  if (!user || isWakilRektorII(user)) return null;
+
+  const roleDetail = (user.role_detail ?? "").trim().toUpperCase();
+  if (roleDetail === "BPS" || roleDetail === "BLU") {
+    return roleDetail;
+  }
+
+  const jabatan = (user.jabatan ?? "").trim().toLowerCase();
+  if (jabatan.includes("_bps") || jabatan === "kepala_bps") return "BPS";
+  if (jabatan.includes("_blu") || jabatan === "kepala_blu") return "BLU";
+
+  const label = (user.jabatan_label ?? "").trim().toLowerCase();
+  if (label.includes("bps") || label.includes("sarana")) return "BPS";
+  if (label.includes("blu") || label.includes("layanan umum")) return "BLU";
+
+  const username = (user.username ?? "").trim().toLowerCase();
+  if (username.includes("bps")) return "BPS";
+  if (username.includes("blu")) return "BLU";
+
+  return null;
+}
+
+/**
+ * Mengembalikan informasi unit & kategori tujuan ketika admin BPS/BLU memindahkan laporan salah kategori.
+ */
+export function getTransferTarget(unit: "BPS" | "BLU"): {
+  sourceUnit: "BPS" | "BLU";
+  sourceKategori: KategoriLaporanOption;
+  targetUnit: "BPS" | "BLU";
+  targetUnitFull: string;
+  targetKategori: KategoriLaporanOption;
+} {
+  if (unit === "BPS") {
+    return {
+      sourceUnit: "BPS",
+      sourceKategori: "Fasilitas",
+      targetUnit: "BLU",
+      targetUnitFull: "Biro Layanan Umum (BLU)",
+      targetKategori: "Kebersihan",
+    };
+  }
+
+  return {
+    sourceUnit: "BLU",
+    sourceKategori: "Kebersihan",
+    targetUnit: "BPS",
+    targetUnitFull: "Biro Prasarana dan Sarana (BPS)",
+    targetKategori: "Fasilitas",
+  };
+}
+
+/**
  * Menormalkan label kategori laporan menjadi Kebersihan atau Fasilitas.
  */
 export function normalizeKategoriLaporan(kategori?: string | null): KategoriLaporanOption {
