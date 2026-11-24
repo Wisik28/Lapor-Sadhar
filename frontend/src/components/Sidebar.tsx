@@ -101,6 +101,8 @@ export default function Sidebar({
                 <img
                   src="/assets/logo_usd.png"
                   alt="Logo USD"
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-contain"
                 />
               </div>

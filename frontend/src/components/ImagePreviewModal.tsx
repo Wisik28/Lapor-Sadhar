@@ -81,6 +81,8 @@ export default function ImagePreviewModal({
           <img
             src={currentSrc}
             alt={`${titlePrefix} #${activeIndex + 1}`}
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-contain rounded-lg select-none"
           />
         </div>

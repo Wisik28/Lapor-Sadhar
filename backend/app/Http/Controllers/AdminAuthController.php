@@ -12,6 +12,8 @@ use Illuminate\Support\Str;
 
 class AdminAuthController extends Controller
 {
+    private const SESSION_TTL_HOURS = 8;
+
     public function login(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
@@ -51,16 +53,18 @@ class AdminAuthController extends Controller
         }
 
         $plainToken = Str::random(80);
+        $expiresAt = now()->addHours(self::SESSION_TTL_HOURS);
         AdminSession::create([
             'admin_id' => $admin->admin_id,
             'token_hash' => hash('sha256', $plainToken),
-            'expires_at' => now()->addHours(8),
+            'expires_at' => $expiresAt,
         ]);
 
         return response()->json([
             'status' => 'success',
             'message' => 'Login admin berhasil.',
             'token' => $plainToken,
+            'expires_at' => $expiresAt->toIso8601String(),
             'user' => $this->adminData($admin),
             'redirect_to' => $admin->isReadOnlyAdmin() ? '/admin/prioritas' : '/admin/dashboard',
         ]);
@@ -68,9 +72,12 @@ class AdminAuthController extends Controller
 
     public function me(Request $request): JsonResponse
     {
+        $session = $request->attributes->get('admin_session');
+
         return response()->json([
             'status' => 'success',
-            'user' => $this->adminData($request->attributes->get('admin_session')->admin),
+            'expires_at' => $session->expires_at?->toIso8601String(),
+            'user' => $this->adminData($session->admin),
         ]);
     }
 

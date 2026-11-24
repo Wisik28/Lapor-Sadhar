@@ -3,10 +3,16 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import AdminNavbar from "@/components/AdminNavbar";
+import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { adminLaporanApi } from "@/lib/api";
+import { formatUserFriendlyError } from "@/lib/networkError";
 import { getCurrentAuthUser } from "@/lib/auth";
 import { isReadOnlyAdmin } from "@/lib/admin-positions";
-import { getFotoList, getFotoUrl as getBaseFotoUrl } from "@/lib/laporanPhoto";
+import {
+  getFotoList,
+  getFotoUrl as getBaseFotoUrl,
+  getThumbnailFotoUrl,
+} from "@/lib/laporanPhoto";
 import {
   Search,
   FileText,
@@ -240,6 +246,7 @@ export default function AdminRiwayatLaporanPage() {
 
   const [laporanList, setLaporanList] = useState<LaporanItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
 
   const [searchTerm, setSearchTerm] = useState("");
   const [filterKampus, setFilterKampus] = useState("Semua Kampus");
@@ -328,6 +335,7 @@ export default function AdminRiwayatLaporanPage() {
 
   const fetchAllLaporanAdmin = useCallback(async () => {
     setLoading(true);
+    setFetchError("");
     try {
       const res = await adminLaporanApi.getAll();
       const data = Array.isArray(res)
@@ -360,8 +368,13 @@ export default function AdminRiwayatLaporanPage() {
         );
       });
     } catch (error) {
-      console.error("Gagal mengambil data riwayat laporan admin:", error);
-      setLaporanList([]);
+      setFetchError(
+        formatUserFriendlyError(
+          error,
+          "load",
+          "Gagal memuat data laporan. Silakan coba lagi."
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -527,9 +540,12 @@ export default function AdminRiwayatLaporanPage() {
       setModalSuccess("Status laporan berhasil diperbarui.");
       await fetchAllLaporanAdmin();
     } catch (err) {
-      console.error(err);
       setModalError(
-        err instanceof Error ? err.message : "Gagal memperbarui status laporan."
+        formatUserFriendlyError(
+          err,
+          "submit",
+          "Gagal memperbarui status laporan. Silakan coba lagi."
+        )
       );
     } finally {
       setUpdateLoading(false);
@@ -581,6 +597,16 @@ export default function AdminRiwayatLaporanPage() {
               <span>Sinkronkan Data</span>
             </button>
           </div>
+
+          {/* Banner Error Koneksi / Gagal Memuat */}
+          {fetchError && (
+            <NetworkErrorAlert
+              message={fetchError}
+              onRetry={() => void fetchAllLaporanAdmin()}
+              retrying={loading}
+              onDismiss={() => setFetchError("")}
+            />
+          )}
 
           {/* Stat Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1151,8 +1177,10 @@ export default function AdminRiwayatLaporanPage() {
                           title="Klik untuk memperbesar foto"
                         >
                           <img
-                            src={fotoUrl}
+                            src={getThumbnailFotoUrl(fotoUrl, 640)}
                             alt={`Foto pendukung laporan ${idx + 1}`}
+                            loading="lazy"
+                            decoding="async"
                             className="w-full max-h-64 object-contain rounded-xl transition-opacity group-hover:opacity-90"
                             onError={(e) => {
                               const parentBtn = e.currentTarget.parentElement;
@@ -1382,6 +1410,8 @@ export default function AdminRiwayatLaporanPage() {
             <img
               src={previewFoto}
               alt="Pratinjau foto ukuran penuh"
+              loading="lazy"
+              decoding="async"
               className="max-h-[82vh] w-auto max-w-full object-contain rounded-2xl shadow-2xl border border-white/10"
             />
           </div>

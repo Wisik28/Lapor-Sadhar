@@ -4,10 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, UserCheck } from "lucide-react";
 import AdminNavbar from "@/components/AdminNavbar";
+import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { adminLaporanApi } from "@/lib/api";
+import { formatUserFriendlyError } from "@/lib/networkError";
 import { getCurrentAuthUser } from "@/lib/auth";
 import { isReadOnlyAdmin } from "@/lib/admin-positions";
-import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
+import { getFotoList, getFotoUrl, getThumbnailFotoUrl } from "@/lib/laporanPhoto";
 
 type StatusValue =
   | "Terkirim"
@@ -204,28 +206,11 @@ function getRiwayatTanggal(item: RiwayatStatus): string {
 }
 
 function getStatusUpdateErrorMessage(err: unknown): string {
-  const pesanBaku = "Gagal menyimpan pembaruan. Silakan coba kembali.";
-
-  if (!(err instanceof Error)) {
-    return pesanBaku;
-  }
-
-  const pesan = err.message.toLowerCase();
-  const indikatorKegagalanKoneksi =
-    pesan.includes("network") ||
-    pesan.includes("fetch") ||
-    pesan.includes("koneksi") ||
-    pesan.includes("database") ||
-    pesan.includes("connection") ||
-    pesan.includes("connection refused") ||
-    pesan.includes("failed") ||
-    pesan.includes("http 500") ||
-    pesan.includes("http 502") ||
-    pesan.includes("http 503") ||
-    pesan.includes("http 504") ||
-    pesan.includes("terjadi kesalahan server");
-
-  return indikatorKegagalanKoneksi ? pesanBaku : err.message;
+  return formatUserFriendlyError(
+    err,
+    "submit",
+    "Gagal menyimpan pembaruan. Silakan coba kembali."
+  );
 }
 
 export default function UbahStatusLaporanPage() {
@@ -364,9 +349,11 @@ export default function UbahStatusLaporanPage() {
       });
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "Gagal mengambil data laporan."
+        formatUserFriendlyError(
+          err,
+          "load",
+          "Gagal memuat data laporan. Silakan coba lagi."
+        )
       );
     } finally {
       setLoading(false);
@@ -418,9 +405,11 @@ export default function UbahStatusLaporanPage() {
         if (!aktif) return;
 
         setError(
-          err instanceof Error
-            ? err.message
-            : "Gagal mengambil data laporan."
+          formatUserFriendlyError(
+            err,
+            "load",
+            "Gagal memuat data laporan. Silakan coba lagi."
+          )
         );
       } finally {
         if (aktif) setLoading(false);
@@ -640,12 +629,12 @@ export default function UbahStatusLaporanPage() {
         </div>
 
         {error && (
-          <div
-            role="alert"
-            className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-          >
-            {error}
-          </div>
+          <NetworkErrorAlert
+            message={error}
+            onRetry={() => void muatLaporan()}
+            retrying={loading}
+            onDismiss={() => setError("")}
+          />
         )}
 
         {sukses && (
@@ -975,8 +964,10 @@ export default function UbahStatusLaporanPage() {
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
-                              src={getFotoUrl(foto)}
+                              src={getThumbnailFotoUrl(foto, 480)}
                               alt={`Bukti laporan ${index + 1}`}
+                              loading="lazy"
+                              decoding="async"
                               className="h-36 w-full object-cover transition group-hover:scale-105"
                               onError={(event) => {
                                 event.currentTarget.style.display = "none";

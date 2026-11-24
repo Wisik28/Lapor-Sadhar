@@ -30,7 +30,9 @@ Route::middleware('admin.session')->prefix('admin')->group(function () {
     Route::put('/profile', [AdminAuthController::class, 'updateProfile']);
     Route::post('/email-change/request', [EmailSecurityController::class, 'requestAdminEmailChange'])->middleware('throttle:3,1');
     Route::post('/email-change/confirm', [EmailSecurityController::class, 'confirmAdminEmailChange'])->middleware('throttle:10,1');
+    Route::get('/laporan/seen', [LaporanController::class, 'adminSeenIndex']);
     Route::get('/laporan', [LaporanController::class, 'adminIndex']);
+    Route::post('/laporan/{id}/seen', [LaporanController::class, 'adminMarkSeen']);
     Route::patch('/laporan/{id}/status', [LaporanController::class, 'adminUpdateStatus']);
     Route::patch('/laporan/{id}/kategori', [LaporanController::class, 'adminTransferKategori']);
     Route::get('/rekap', [LaporanController::class, 'adminRekap']);

@@ -1,11 +1,21 @@
 // Client API Helper untuk terhubung ke Backend Laravel
 
-import { setAuthSession, clearAuthSession } from './auth';
+import { setAuthSession, clearAuthSession, syncSessionExpiry } from './auth';
+import {
+  extractResponseErrorMessage,
+  formatUserFriendlyError,
+  safeFetch,
+  type ErrorContext,
+} from './networkError';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
-function getErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
+function getErrorMessage(
+  error: unknown,
+  fallback: string,
+  context: ErrorContext = 'action'
+): string {
+  return formatUserFriendlyError(error, context, fallback);
 }
 
 export interface UserSession {
@@ -29,6 +39,7 @@ export interface AuthResponse {
   message: string;
   email?: string;
   token?: string;
+  expires_at?: string;
   user?: UserSession;
   redirect_to?: string;
   errors?: Record<string, string[]>;
@@ -66,6 +77,8 @@ export interface LaporanResponse {
   current_page?: number;
   last_page?: number;
   per_page?: number;
+  not_modified?: boolean;
+  etag?: string | null;
   errors?: Record<string, string[]>;
 }
 
@@ -78,24 +91,31 @@ export const authApi = {
     jabatan: string;
   }): Promise<AuthResponse> {
     try {
-      const response = await fetch(`${API_BASE_URL}/admin/login`, {
+      const response = await safeFetch(`${API_BASE_URL}/admin/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
         },
         body: JSON.stringify(credentials),
-      });
+      }, 'submit');
 
-      const result = await response.json();
-      if (response.ok && result.status === "success" && result.user && result.token) {
-        await setAuthSession(result.user, result.token, true);
+      const result = await response.json().catch(() => null);
+      if (response.ok && result?.status === "success" && result.user && result.token) {
+        await setAuthSession(result.user, result.token, true, result.expires_at);
+        return result;
+      }
+      if (!response.ok || !result) {
+        return {
+          status: "error",
+          message: extractResponseErrorMessage(response, result, 'submit', "Username atau kata sandi admin tidak valid."),
+        };
       }
       return result;
     } catch (error: unknown) {
       return {
         status: "error",
-        message: getErrorMessage(error, "Gagal menghubungi server backend."),
+        message: getErrorMessage(error, "Gagal masuk ke sistem. Periksa koneksi internet Anda dan coba lagi.", 'submit'),
       };
     }
   },
@@ -105,20 +125,26 @@ export const authApi = {
       const token = localStorage.getItem("admin_token");
       if (!token) return { status: "error", message: "Sesi admin tidak ditemukan." };
 
-      const response = await fetch(`${API_BASE_URL}/admin/me`, {
+      const response = await safeFetch(`${API_BASE_URL}/admin/me`, {
         headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
-      });
-      const result = await response.json();
-      if (response.ok && result.status === "success" && result.user) {
+      }, 'load');
+      const result = await response.json().catch(() => null);
+      if (response.ok && result?.status === "success" && result.user) {
         localStorage.setItem("user_session", JSON.stringify(result.user));
+        syncSessionExpiry(result.expires_at);
         return result;
       }
 
-      localStorage.removeItem("user_session");
-      localStorage.removeItem("admin_token");
-      return result;
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem("user_session");
+        localStorage.removeItem("admin_token");
+      }
+      return {
+        status: "error",
+        message: extractResponseErrorMessage(response, result, 'load', "Gagal memeriksa sesi admin."),
+      };
     } catch (error: unknown) {
-      return { status: "error", message: getErrorMessage(error, "Gagal memeriksa sesi admin.") };
+      return { status: "error", message: getErrorMessage(error, "Gagal memeriksa sesi admin.", 'load') };
     }
   },
 
@@ -144,7 +170,7 @@ export const authApi = {
   }): Promise<AuthResponse> {
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
-      const response = await fetch(`${API_BASE_URL}/admin/password`, {
+      const response = await safeFetch(`${API_BASE_URL}/admin/password`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -152,17 +178,25 @@ export const authApi = {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(data),
-      });
-      return await response.json();
+      }, 'submit');
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result) {
+        return {
+          status: "error",
+          message: extractResponseErrorMessage(response, result, 'submit', "Gagal mengubah kata sandi."),
+          errors: result?.errors,
+        };
+      }
+      return result;
     } catch (error: unknown) {
-      return { status: "error", message: getErrorMessage(error, "Gagal mengubah kata sandi.") };
+      return { status: "error", message: getErrorMessage(error, "Gagal mengubah kata sandi.", 'submit') };
     }
   },
 
   async updateAdminProfile(data: { nama: string }): Promise<AuthResponse> {
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("admin_token") : null;
-      const response = await fetch(`${API_BASE_URL}/admin/profile`, {
+      const response = await safeFetch(`${API_BASE_URL}/admin/profile`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -170,10 +204,18 @@ export const authApi = {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(data),
-      });
-      return await response.json();
+      }, 'submit');
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result) {
+        return {
+          status: "error",
+          message: extractResponseErrorMessage(response, result, 'submit', "Gagal memperbarui profil admin."),
+          errors: result?.errors,
+        };
+      }
+      return result;
     } catch (error: unknown) {
-      return { status: "error", message: getErrorMessage(error, "Gagal memperbarui profil admin.") };
+      return { status: "error", message: getErrorMessage(error, "Gagal memperbarui profil admin.", 'submit') };
     }
   },
 
@@ -197,24 +239,32 @@ export const authApi = {
     password_confirmation: string;
   }): Promise<AuthResponse> {
     try {
-      const response = await fetch(`${API_BASE_URL}/register`, {
+      const response = await safeFetch(`${API_BASE_URL}/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
         },
         body: JSON.stringify(data),
-      });
+      }, 'submit');
 
-      const result = await response.json();
-      if (response.ok && result.status === "success" && result.user && result.token) {
-        await setAuthSession(result.user, result.token, false);
+      const result = await response.json().catch(() => null);
+      if (response.ok && result?.status === "success" && result.user && result.token) {
+        await setAuthSession(result.user, result.token, false, result.expires_at);
+        return result;
+      }
+      if (!response.ok || !result) {
+        return {
+          status: "error",
+          message: extractResponseErrorMessage(response, result, 'submit', "Pendaftaran belum dapat diproses. Silakan coba lagi."),
+          errors: result?.errors,
+        };
       }
       return result;
     } catch (error: unknown) {
       return {
         status: "error",
-        message: getErrorMessage(error, "Gagal menghubungi server backend. Pastikan server Laravel aktif di port 8000."),
+        message: getErrorMessage(error, "Gagal mendaftar. Periksa koneksi internet Anda dan coba lagi.", 'submit'),
       };
     }
   },
@@ -225,24 +275,31 @@ export const authApi = {
     role?: "mahasiswa" | "karyawan" | "semua";
   }): Promise<AuthResponse> {
     try {
-      const response = await fetch(`${API_BASE_URL}/login`, {
+      const response = await safeFetch(`${API_BASE_URL}/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
         },
         body: JSON.stringify(credentials),
-      });
+      }, 'submit');
 
-      const result = await response.json();
-      if (response.ok && result.status === "success" && result.user && result.token) {
-        await setAuthSession(result.user, result.token, false);
+      const result = await response.json().catch(() => null);
+      if (response.ok && result?.status === "success" && result.user && result.token) {
+        await setAuthSession(result.user, result.token, false, result.expires_at);
+        return result;
+      }
+      if (!response.ok || !result) {
+        return {
+          status: "error",
+          message: extractResponseErrorMessage(response, result, 'submit', "Gagal masuk. Periksa kembali data login Anda."),
+        };
       }
       return result;
     } catch (error: unknown) {
       return {
         status: "error",
-        message: getErrorMessage(error, "Gagal menghubungi server backend. Pastikan server Laravel aktif di port 8000."),
+        message: getErrorMessage(error, "Gagal masuk ke sistem. Periksa koneksi internet Anda dan coba lagi.", 'submit'),
       };
     }
   },
@@ -279,17 +336,21 @@ export const authApi = {
       const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
       if (!token) return { status: "error", message: "Sesi pengguna tidak ditemukan." };
 
-      const response = await fetch(`${API_BASE_URL}/profile/me`, {
+      const response = await safeFetch(`${API_BASE_URL}/profile/me`, {
         headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
-      });
-      const result = await response.json();
-      if (response.ok && result.status === "success" && result.user) {
+      }, 'load');
+      const result = await response.json().catch(() => null);
+      if (response.ok && result?.status === "success" && result.user) {
         localStorage.setItem("user_session", JSON.stringify(result.user));
+        syncSessionExpiry(result.expires_at);
         return result;
       }
-      return result;
+      return {
+        status: "error",
+        message: extractResponseErrorMessage(response, result, 'load', "Gagal memeriksa sesi pengguna."),
+      };
     } catch (error: unknown) {
-      return { status: "error", message: getErrorMessage(error, "Gagal memeriksa sesi pengguna.") };
+      return { status: "error", message: getErrorMessage(error, "Gagal memeriksa sesi pengguna.", 'load') };
     }
   },
 
@@ -300,7 +361,7 @@ export const authApi = {
   }): Promise<AuthResponse> {
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-      const response = await fetch(`${API_BASE_URL}/profile`, {
+      const response = await safeFetch(`${API_BASE_URL}/profile`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -308,10 +369,18 @@ export const authApi = {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(data),
-      });
-      return await response.json();
+      }, 'submit');
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result) {
+        return {
+          status: "error",
+          message: extractResponseErrorMessage(response, result, 'submit', "Gagal memperbarui profil pengguna."),
+          errors: result?.errors,
+        };
+      }
+      return result;
     } catch (error: unknown) {
-      return { status: "error", message: getErrorMessage(error, "Gagal memperbarui profil pengguna.") };
+      return { status: "error", message: getErrorMessage(error, "Gagal memperbarui profil pengguna.", 'submit') };
     }
   },
 
@@ -322,7 +391,7 @@ export const authApi = {
   }): Promise<AuthResponse> {
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-      const response = await fetch(`${API_BASE_URL}/profile/password`, {
+      const response = await safeFetch(`${API_BASE_URL}/profile/password`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -330,10 +399,18 @@ export const authApi = {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(data),
-      });
-      return await response.json();
+      }, 'submit');
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result) {
+        return {
+          status: "error",
+          message: extractResponseErrorMessage(response, result, 'submit', "Gagal mengubah kata sandi."),
+          errors: result?.errors,
+        };
+      }
+      return result;
     } catch (error: unknown) {
-      return { status: "error", message: getErrorMessage(error, "Gagal mengubah kata sandi.") };
+      return { status: "error", message: getErrorMessage(error, "Gagal mengubah kata sandi.", 'submit') };
     }
   },
 
@@ -377,14 +454,22 @@ export const authApi = {
 
   async postAuth(path: string, data: Record<string, string>, fallback: string): Promise<AuthResponse> {
     try {
-      const response = await fetch(`${API_BASE_URL}${path}`, {
+      const response = await safeFetch(`${API_BASE_URL}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify(data),
-      });
-      return await response.json();
+      }, 'submit');
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result) {
+        return {
+          status: "error",
+          message: extractResponseErrorMessage(response, result, 'submit', fallback),
+          errors: result?.errors,
+        };
+      }
+      return result;
     } catch (error: unknown) {
-      return { status: "error", message: getErrorMessage(error, fallback) };
+      return { status: "error", message: getErrorMessage(error, fallback, 'submit') };
     }
   },
 
@@ -395,7 +480,7 @@ export const authApi = {
     fallback: string,
   ): Promise<AuthResponse> {
     try {
-      const response = await fetch(`${API_BASE_URL}${path}`, {
+      const response = await safeFetch(`${API_BASE_URL}${path}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -403,10 +488,18 @@ export const authApi = {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(data),
-      });
-      return await response.json();
+      }, 'action');
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result) {
+        return {
+          status: "error",
+          message: extractResponseErrorMessage(response, result, 'action', fallback),
+          errors: result?.errors,
+        };
+      }
+      return result;
     } catch (error: unknown) {
-      return { status: "error", message: getErrorMessage(error, fallback) };
+      return { status: "error", message: getErrorMessage(error, fallback, 'action') };
     }
   },
 };
@@ -425,65 +518,90 @@ function getAuthHeaders(isAdmin = false) {
 }
 
 export const laporanApi = {
-  /** Ambil semua laporan milik user berdasarkan NIM dengan opsi pagination */
+  /** Ambil semua laporan milik user berdasarkan NIM dengan opsi pagination & conditional ETag */
   async getAll(
     nim: string,
-    params?: { page?: number; per_page?: number }
+    params?: { page?: number; per_page?: number; include_foto?: boolean; ifNoneMatch?: string | null }
   ): Promise<LaporanResponse> {
     try {
       const searchParams = new URLSearchParams();
       searchParams.set("nim", nim);
       if (params?.page) searchParams.set("page", String(params.page));
       if (params?.per_page) searchParams.set("per_page", String(params.per_page));
+      if (params?.include_foto === false) searchParams.set("include_foto", "0");
 
-      const res = await fetch(
+      const headers: Record<string, string> = {
+        ...getAuthHeaders(),
+        ...(params?.ifNoneMatch ? { "If-None-Match": params.ifNoneMatch } : {}),
+      };
+
+      const res = await safeFetch(
         `${API_BASE_URL}/laporan?${searchParams.toString()}`,
         {
           method: "GET",
-          headers: getAuthHeaders(),
+          headers,
           cache: "no-store",
-        }
+        },
+        'load'
       );
 
-    const result = await res.json().catch(() => null);
+      if (res.status === 304) {
+        return {
+          status: "success",
+          not_modified: true,
+          etag: res.headers.get("ETag") ?? params?.ifNoneMatch ?? null,
+        };
+      }
 
-    if (!res.ok) {
+      const result = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        return {
+          status: "error",
+          message: extractResponseErrorMessage(res, result, 'load', "Gagal memuat data laporan. Silakan coba lagi."),
+        };
+      }
+
+      if (!result) {
+        return {
+          status: "error",
+          message: "Gagal memuat data laporan. Silakan coba lagi.",
+        };
+      }
+
+      return {
+        ...result,
+        etag: res.headers.get("ETag"),
+      };
+    } catch (error: unknown) {
       return {
         status: "error",
-        message:
-          result?.message ||
-          `Gagal mengambil laporan. HTTP ${res.status}`,
+        message: getErrorMessage(error, "Gagal memuat data. Periksa koneksi internet Anda dan coba lagi.", 'load'),
       };
     }
-
-    if (!result) {
-      return {
-        status: "error",
-        message: "Respons server tidak valid.",
-      };
-    }
-
-    return result;
-  } catch (error: unknown) {
-    return {
-      status: "error",
-      message: getErrorMessage(
-        error,
-        "Gagal mengambil data laporan."
-      ),
-    };
-  }
   },
 
   /** Ambil detail satu laporan */
   async getById(id: number): Promise<LaporanResponse> {
     try {
-      const res = await fetch(`${API_BASE_URL}/laporan/${id}`, {
-        headers: getAuthHeaders(),
-      });
-      return await res.json();
+      const res = await safeFetch(
+        `${API_BASE_URL}/laporan/${id}`,
+        {
+          headers: getAuthHeaders(),
+          cache: "no-store",
+        },
+        'load'
+      );
+      const result = await res.json().catch(() => null);
+      if (!res.ok || !result) {
+        return {
+          status: "error",
+          message: extractResponseErrorMessage(res, result, 'load', "Gagal memuat detail laporan. Silakan coba lagi."),
+        };
+      }
+      return result;
     } catch (error: unknown) {
-      return { status: "error", message: getErrorMessage(error, "Gagal mengambil detail laporan.") };
+      return { status: "error", message: getErrorMessage(error, "Gagal memuat detail laporan.", 'load') };
     }
   },
 
@@ -498,14 +616,26 @@ export const laporanApi = {
     foto?: string;
   }): Promise<LaporanResponse> {
     try {
-      const res = await fetch(`${API_BASE_URL}/laporan`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(data),
-      });
-      return await res.json();
+      const res = await safeFetch(
+        `${API_BASE_URL}/laporan`,
+        {
+          method: "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify(data),
+        },
+        'submit'
+      );
+      const result = await res.json().catch(() => null);
+      if (!res.ok || !result) {
+        return {
+          status: "error",
+          message: extractResponseErrorMessage(res, result, 'submit', "Gagal mengirim laporan. Silakan coba lagi."),
+          errors: result?.errors,
+        };
+      }
+      return result;
     } catch (error: unknown) {
-      return { status: "error", message: getErrorMessage(error, "Gagal mengirim laporan.") };
+      return { status: "error", message: getErrorMessage(error, "Gagal mengirim laporan.", 'submit') };
     }
   },
 
@@ -522,27 +652,50 @@ export const laporanApi = {
     }>
   ): Promise<LaporanResponse> {
     try {
-      const res = await fetch(`${API_BASE_URL}/laporan/${id}`, {
-        method: "PUT",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(data),
-      });
-      return await res.json();
+      const res = await safeFetch(
+        `${API_BASE_URL}/laporan/${id}`,
+        {
+          method: "PUT",
+          headers: getAuthHeaders(),
+          body: JSON.stringify(data),
+        },
+        'submit'
+      );
+      const result = await res.json().catch(() => null);
+      if (!res.ok || !result) {
+        return {
+          status: "error",
+          message: extractResponseErrorMessage(res, result, 'submit', "Gagal memperbarui laporan. Silakan coba lagi."),
+          errors: result?.errors,
+        };
+      }
+      return result;
     } catch (error: unknown) {
-      return { status: "error", message: getErrorMessage(error, "Gagal memperbarui laporan.") };
+      return { status: "error", message: getErrorMessage(error, "Gagal memperbarui laporan.", 'submit') };
     }
   },
 
   /** Hapus laporan (hanya jika status Terkirim) */
   async delete(id: number): Promise<LaporanResponse> {
     try {
-      const res = await fetch(`${API_BASE_URL}/laporan/${id}`, {
-        method: "DELETE",
-        headers: getAuthHeaders(),
-      });
-      return await res.json();
+      const res = await safeFetch(
+        `${API_BASE_URL}/laporan/${id}`,
+        {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        },
+        'action'
+      );
+      const result = await res.json().catch(() => null);
+      if (!res.ok || !result) {
+        return {
+          status: "error",
+          message: extractResponseErrorMessage(res, result, 'action', "Gagal menghapus laporan. Silakan coba lagi."),
+        };
+      }
+      return result;
     } catch (error: unknown) {
-      return { status: "error", message: getErrorMessage(error, "Gagal menghapus laporan.") };
+      return { status: "error", message: getErrorMessage(error, "Gagal menghapus laporan.", 'action') };
     }
   },
 };
@@ -557,18 +710,17 @@ export const adminLaporanApi = {
     if (params?.per_page) searchParams.set("per_page", String(params.per_page));
 
     const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
-    const response = await fetch(`${API_BASE_URL}/admin/laporan${query}`, {
+    const response = await safeFetch(`${API_BASE_URL}/admin/laporan${query}`, {
       method: "GET",
       headers: getAuthHeaders(true),
       cache: "no-store",
-    });
+    }, 'load');
 
     const result = await response.json().catch(() => null);
 
     if (!response.ok) {
       throw new Error(
-        result?.message ||
-          `Gagal mengambil laporan. HTTP ${response.status}`
+        extractResponseErrorMessage(response, result, 'load', "Gagal memuat data laporan. Silakan coba lagi.")
       );
     }
 
@@ -578,24 +730,24 @@ export const adminLaporanApi = {
   },
 
   /** Mengambil laporan untuk halaman admin beserta metadata pagination */
-  async getAllWithPagination(params?: { page?: number; per_page?: number }) {
+  async getAllWithPagination(params?: { page?: number; per_page?: number; include_foto?: boolean }) {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set("page", String(params.page));
     if (params?.per_page) searchParams.set("per_page", String(params.per_page));
+    if (params?.include_foto === false) searchParams.set("include_foto", "0");
 
     const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
-    const response = await fetch(`${API_BASE_URL}/admin/laporan${query}`, {
+    const response = await safeFetch(`${API_BASE_URL}/admin/laporan${query}`, {
       method: "GET",
       headers: getAuthHeaders(true),
       cache: "no-store",
-    });
+    }, 'load');
 
     const result = await response.json().catch(() => null);
 
     if (!response.ok) {
       throw new Error(
-        result?.message ||
-          `Gagal mengambil laporan. HTTP ${response.status}`
+        extractResponseErrorMessage(response, result, 'load', "Gagal memuat data laporan. Silakan coba lagi.")
       );
     }
 
@@ -605,8 +757,35 @@ export const adminLaporanApi = {
       total: result?.total ?? items.length,
       current_page: result?.current_page ?? (params?.page || 1),
       last_page: result?.last_page ?? 1,
-      per_page: result?.per_page ?? (params?.per_page || 10),
+      per_page: result?.per_page ?? (params?.per_page || 20),
     };
+  },
+
+  /** Mengambil daftar ID laporan yang sudah pernah dibaca admin (tersimpan di database) */
+  async getSeenReportIds(): Promise<number[]> {
+    const response = await safeFetch(`${API_BASE_URL}/admin/laporan/seen`, {
+      method: "GET",
+      headers: getAuthHeaders(true),
+      cache: "no-store",
+    }, 'load');
+
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !Array.isArray(result?.data)) {
+      return [];
+    }
+
+    return result.data
+      .map((id: unknown) => Number(id))
+      .filter((num: number) => Number.isFinite(num) && num > 0);
+  },
+
+  /** Menandai laporan sebagai sudah dibaca oleh admin saat ini di database */
+  async markReportSeen(id: number): Promise<void> {
+    if (!Number.isFinite(id) || id <= 0) return;
+    await safeFetch(`${API_BASE_URL}/admin/laporan/${id}/seen`, {
+      method: "POST",
+      headers: getAuthHeaders(true),
+    }, 'action');
   },
 
   /** Mengubah status laporan dan menyimpan tanggapan admin */
@@ -615,38 +794,24 @@ export const adminLaporanApi = {
     status: string,
     pesan_tanggapan?: string
   ) {
-    let response: Response;
-
-    try {
-      response = await fetch(
-        `${API_BASE_URL}/admin/laporan/${id}/status`,
-        {
-          method: "PATCH",
-          headers: getAuthHeaders(true),
-          body: JSON.stringify({
-            status_laporan: status,
-            pesan_tanggapan: pesan_tanggapan ?? "",
-          }),
-        }
-      );
-    } catch {
-      throw new Error(
-        "Gagal menyimpan pembaruan. Silakan coba kembali."
-      );
-    }
+    const response = await safeFetch(
+      `${API_BASE_URL}/admin/laporan/${id}/status`,
+      {
+        method: "PATCH",
+        headers: getAuthHeaders(true),
+        body: JSON.stringify({
+          status_laporan: status,
+          pesan_tanggapan: pesan_tanggapan ?? "",
+        }),
+      },
+      'submit'
+    );
 
     const result = await response.json().catch(() => null);
 
     if (!response.ok) {
-      if (response.status >= 500) {
-        throw new Error(
-          "Gagal menyimpan pembaruan. Silakan coba kembali."
-        );
-      }
-
       throw new Error(
-        result?.message ||
-          `Gagal memperbarui status. HTTP ${response.status}`
+        extractResponseErrorMessage(response, result, 'submit', "Gagal menyimpan pembaruan status. Silakan coba lagi.")
       );
     }
 
@@ -659,38 +824,24 @@ export const adminLaporanApi = {
     kategori_laporan: "Fasilitas" | "Kebersihan",
     catatan_pemindahan?: string
   ) {
-    let response: Response;
-
-    try {
-      response = await fetch(
-        `${API_BASE_URL}/admin/laporan/${id}/kategori`,
-        {
-          method: "PATCH",
-          headers: getAuthHeaders(true),
-          body: JSON.stringify({
-            kategori_laporan,
-            catatan_pemindahan: catatan_pemindahan?.trim() || undefined,
-          }),
-        }
-      );
-    } catch {
-      throw new Error(
-        "Gagal memindahkan laporan. Silakan coba kembali."
-      );
-    }
+    const response = await safeFetch(
+      `${API_BASE_URL}/admin/laporan/${id}/kategori`,
+      {
+        method: "PATCH",
+        headers: getAuthHeaders(true),
+        body: JSON.stringify({
+          kategori_laporan,
+          catatan_pemindahan: catatan_pemindahan?.trim() || undefined,
+        }),
+      },
+      'action'
+    );
 
     const result = await response.json().catch(() => null);
 
     if (!response.ok) {
-      if (response.status >= 500) {
-        throw new Error(
-          "Gagal memindahkan laporan. Silakan coba kembali."
-        );
-      }
-
       throw new Error(
-        result?.message ||
-          `Gagal memindahkan laporan. HTTP ${response.status}`
+        extractResponseErrorMessage(response, result, 'action', "Gagal memindahkan laporan. Silakan coba lagi.")
       );
     }
 
@@ -704,16 +855,18 @@ export const adminLaporanApi = {
     else if (params?.tahun) searchParams.set("tahun", params.tahun);
 
     const url = `${API_BASE_URL}/admin/rekap${searchParams.toString() ? "?" + searchParams.toString() : ""}`;
-    const response = await fetch(url, {
+    const response = await safeFetch(url, {
       method: "GET",
       headers: getAuthHeaders(true),
       cache: "no-store",
-    });
+    }, 'load');
 
     const result = await response.json().catch(() => null);
 
     if (!response.ok) {
-      throw new Error(result?.message || `Gagal mengambil rekap. HTTP ${response.status}`);
+      throw new Error(
+        extractResponseErrorMessage(response, result, 'load', "Gagal memuat data rekap. Silakan coba lagi.")
+      );
     }
 
     return result?.data ?? null;

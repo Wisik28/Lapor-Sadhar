@@ -3,9 +3,15 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
+import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { laporanApi, type LaporanItem } from "@/lib/api";
+import { formatUserFriendlyError } from "@/lib/networkError";
 import { useAuthProtection } from "@/lib/useAuth";
-import { getFotoList, getFotoUrl as getBaseFotoUrl } from "@/lib/laporanPhoto";
+import {
+  getFotoList,
+  getFotoUrl as getBaseFotoUrl,
+  getThumbnailFotoUrl,
+} from "@/lib/laporanPhoto";
 import {
   normalizeLaporanStatus,
   type StatusLaporanTerkini,
@@ -164,6 +170,7 @@ export default function UserRiwayatLaporanPage() {
 
   const [laporanList, setLaporanList] = useState<LaporanItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("Semua");
   const [filterKategori, setFilterKategori] = useState("Semua");
@@ -188,6 +195,7 @@ export default function UserRiwayatLaporanPage() {
   // ── Ambil Data Backend ──
   const fetchLaporan = useCallback(async () => {
     setLoading(true);
+    setFetchError("");
     try {
       if (!nim) {
         setLaporanList([]);
@@ -200,11 +208,22 @@ export default function UserRiwayatLaporanPage() {
         );
         setLaporanList(sortedData);
       } else {
-        setLaporanList([]);
+        setFetchError(
+          formatUserFriendlyError(
+            res.message,
+            "load",
+            "Gagal memuat data laporan. Silakan coba lagi."
+          )
+        );
       }
     } catch (error) {
-      console.error("Gagal mengambil riwayat laporan:", error);
-      setLaporanList([]);
+      setFetchError(
+        formatUserFriendlyError(
+          error,
+          "load",
+          "Gagal memuat data laporan. Silakan coba lagi."
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -338,6 +357,16 @@ export default function UserRiwayatLaporanPage() {
 
         <main className="flex-1 overflow-y-auto bg-[#F3F4F6] p-0 md:p-6 lg:p-8">
           <div className="mx-auto max-w-6xl space-y-2.5 md:space-y-5">
+            {fetchError && (
+              <div className="px-3 pt-3 md:p-0">
+                <NetworkErrorAlert
+                  message={fetchError}
+                  onRetry={() => void fetchLaporan()}
+                  retrying={loading}
+                  onDismiss={() => setFetchError("")}
+                />
+              </div>
+            )}
             {/* ═══ KELOMPOK 1: STATUS LAPORAN ═══ */}
             <section aria-label="Ringkasan Status Laporan">
               {/* Mobile: Tanpa Card, menyatu penuh sebagai kelompok 1 */}
@@ -995,8 +1024,10 @@ export default function UserRiwayatLaporanPage() {
                           title="Klik untuk memperbesar foto"
                         >
                           <img
-                            src={fotoUrl}
+                            src={getThumbnailFotoUrl(fotoUrl, 640)}
                             alt={`Foto pendukung laporan ${idx + 1}`}
+                            loading="lazy"
+                            decoding="async"
                             className="w-full max-h-60 object-contain rounded-xl transition-opacity group-hover:opacity-90"
                             onError={(e) => {
                               const parentBtn = e.currentTarget.parentElement;
@@ -1262,6 +1293,8 @@ export default function UserRiwayatLaporanPage() {
             <img
               src={previewFoto}
               alt="Pratinjau foto ukuran penuh"
+              loading="lazy"
+              decoding="async"
               className="max-h-[82vh] w-auto max-w-full object-contain rounded-2xl shadow-2xl border border-white/10"
             />
           </div>

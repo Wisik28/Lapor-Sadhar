@@ -1,5 +1,10 @@
 // Client API untuk Dashboard Prioritas (Mendukung Admin & Pelapor)
 
+import {
+  extractResponseErrorMessage,
+  safeFetch,
+} from './networkError';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 function getPriorityAuthHeaders() {
@@ -186,17 +191,23 @@ export const priorityApi = {
     signal?: AbortSignal
   ): Promise<PriorityReportsWithSummary> {
     const queryStr = buildReportFilterQueryString(params);
-    const response = await fetch(`${API_BASE_URL}/${getPriorityEndpointPrefix()}/reports${queryStr}`, {
-      method: "GET",
-      headers: getPriorityAuthHeaders(),
-      cache: "no-store",
-      signal,
-    });
+    const response = await safeFetch(
+      `${API_BASE_URL}/${getPriorityEndpointPrefix()}/reports${queryStr}`,
+      {
+        method: "GET",
+        headers: getPriorityAuthHeaders(),
+        cache: "no-store",
+        signal,
+      },
+      'load'
+    );
 
     const result = await response.json().catch(() => null);
 
     if (!response.ok) {
-      throw new Error(result?.message || `Gagal memuat laporan prioritas (HTTP ${response.status})`);
+      throw new Error(
+        extractResponseErrorMessage(response, result, 'load', "Gagal memuat laporan prioritas. Silakan coba lagi.")
+      );
     }
 
     return {
@@ -221,17 +232,23 @@ export const priorityApi = {
    * Mengambil detail laporan dan kalkulasi faktor skor
    */
   async getReportDetail(id: number, signal?: AbortSignal): Promise<PriorityDetailData> {
-    const response = await fetch(`${API_BASE_URL}/${getPriorityEndpointPrefix()}/reports/${id}`, {
-      method: "GET",
-      headers: getPriorityAuthHeaders(),
-      cache: "no-store",
-      signal,
-    });
+    const response = await safeFetch(
+      `${API_BASE_URL}/${getPriorityEndpointPrefix()}/reports/${id}`,
+      {
+        method: "GET",
+        headers: getPriorityAuthHeaders(),
+        cache: "no-store",
+        signal,
+      },
+      'load'
+    );
 
     const result = await response.json().catch(() => null);
 
     if (!response.ok) {
-      throw new Error(result?.message || `Gagal memuat detail prioritas (HTTP ${response.status})`);
+      throw new Error(
+        extractResponseErrorMessage(response, result, 'load', "Gagal memuat detail prioritas. Silakan coba lagi.")
+      );
     }
 
     return result?.data;
@@ -245,19 +262,25 @@ export const priorityApi = {
     severity_level: SeverityLevel,
     admin_notes?: string
   ): Promise<unknown> {
-    const response = await fetch(`${API_BASE_URL}/admin/priority/reports/${id}/severity`, {
-      method: "PATCH",
-      headers: getPriorityAuthHeaders(),
-      body: JSON.stringify({
-        severity_level,
-        admin_notes: admin_notes ?? "",
-      }),
-    });
+    const response = await safeFetch(
+      `${API_BASE_URL}/admin/priority/reports/${id}/severity`,
+      {
+        method: "PATCH",
+        headers: getPriorityAuthHeaders(),
+        body: JSON.stringify({
+          severity_level,
+          admin_notes: admin_notes ?? "",
+        }),
+      },
+      'submit'
+    );
 
     const result = await response.json().catch(() => null);
 
     if (!response.ok) {
-      throw new Error(result?.message || `Gagal memperbarui tingkat kerusakan (HTTP ${response.status})`);
+      throw new Error(
+        extractResponseErrorMessage(response, result, 'submit', "Gagal memperbarui tingkat kerusakan. Silakan coba lagi.")
+      );
     }
 
     return result;
@@ -267,17 +290,23 @@ export const priorityApi = {
    * Mengambil statistik ringkasan dashboard prioritas
    */
   async getSummary(signal?: AbortSignal): Promise<PrioritySummary> {
-    const response = await fetch(`${API_BASE_URL}/${getPriorityEndpointPrefix()}/summary`, {
-      method: "GET",
-      headers: getPriorityAuthHeaders(),
-      cache: "no-store",
-      signal,
-    });
+    const response = await safeFetch(
+      `${API_BASE_URL}/${getPriorityEndpointPrefix()}/summary`,
+      {
+        method: "GET",
+        headers: getPriorityAuthHeaders(),
+        cache: "no-store",
+        signal,
+      },
+      'load'
+    );
 
     const result = await response.json().catch(() => null);
 
     if (!response.ok) {
-      throw new Error(result?.message || `Gagal memuat ringkasan prioritas (HTTP ${response.status})`);
+      throw new Error(
+        extractResponseErrorMessage(response, result, 'load', "Gagal memuat ringkasan prioritas. Silakan coba lagi.")
+      );
     }
 
     return result?.data ?? {
@@ -295,15 +324,21 @@ export const priorityApi = {
    * Memicu perhitungan ulang semua skor laporan aktif
    */
   async recalculateAll(): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/admin/priority/recalculate`, {
-      method: "POST",
-      headers: getPriorityAuthHeaders(),
-    });
+    const response = await safeFetch(
+      `${API_BASE_URL}/admin/priority/recalculate`,
+      {
+        method: "POST",
+        headers: getPriorityAuthHeaders(),
+      },
+      'action'
+    );
 
     const result = await response.json().catch(() => null);
 
     if (!response.ok) {
-      throw new Error(result?.message || `Gagal menghitung ulang (HTTP ${response.status})`);
+      throw new Error(
+        extractResponseErrorMessage(response, result, 'action', "Gagal menghitung ulang skor prioritas. Silakan coba lagi.")
+      );
     }
   },
 };

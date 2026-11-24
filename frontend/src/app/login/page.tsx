@@ -66,7 +66,7 @@ export default function LoginPage() {
         setErrorMessage(res.message || "Gagal masuk. Periksa kembali data login Anda.");
       }
     } catch {
-      setErrorMessage("Terjadi kesalahan saat menghubungkan ke server.");
+      setErrorMessage("Gagal masuk ke sistem. Periksa koneksi internet Anda dan coba lagi.");
     } finally {
       setIsLoading(false);
     }

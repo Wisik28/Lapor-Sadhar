@@ -93,8 +93,12 @@ export default function RegisterPage() {
       } else {
         setErrorMessage(res.message || "Gagal melakukan pendaftaran. Silakan periksa kembali data Anda.");
       }
-    } catch (err: any) {
-      setErrorMessage("Terjadi kesalahan saat menghubungi server backend.");
+    } catch (err: unknown) {
+      setErrorMessage(
+        err instanceof Error && !err.message.toLowerCase().includes("fetch")
+          ? err.message
+          : "Gagal mendaftar. Periksa koneksi internet Anda dan coba lagi."
+      );
     } finally {
       setIsLoading(false);
     }
@@ -111,6 +115,8 @@ export default function RegisterPage() {
             <img
               src="/assets/logo_usd.png"
               alt="Logo Universitas Sanata Dharma"
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-contain drop-shadow-md"
             />
           </div>

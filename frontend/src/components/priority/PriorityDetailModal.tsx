@@ -26,10 +26,12 @@ import {
   PriorityDetailData,
   SeverityLevel,
 } from "@/lib/priorityApi";
-import { getFotoUrl as getBaseFotoUrl } from "@/lib/laporanPhoto";
+import { getFotoUrl as getBaseFotoUrl, getThumbnailFotoUrl } from "@/lib/laporanPhoto";
 import { AdminStatusBadge } from "@/components/AdminStatusBadge";
+import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { authApi } from "@/lib/api";
 import { isReadOnlyAdmin } from "@/lib/admin-positions";
+import { formatUserFriendlyError } from "@/lib/networkError";
 
 interface PriorityDetailModalProps {
   report: PriorityReportItem | null;
@@ -174,7 +176,13 @@ export function PriorityDetailModal({
       const data = await priorityApi.getReportDetail(id);
       setDetailData(data);
     } catch (err) {
-      console.error(err);
+      setErrorMessage(
+        formatUserFriendlyError(
+          err,
+          "load",
+          "Gagal memuat detail laporan. Silakan coba lagi."
+        )
+      );
     }
   };
 
@@ -198,7 +206,11 @@ export function PriorityDetailModal({
       }, 1200);
     } catch (err) {
       setErrorMessage(
-        err instanceof Error ? err.message : "Gagal menyimpan penetapan prioritas."
+        formatUserFriendlyError(
+          err,
+          "submit",
+          "Gagal menyimpan penetapan prioritas. Silakan coba lagi."
+        )
       );
     } finally {
       setIsSaving(false);
@@ -242,10 +254,15 @@ export function PriorityDetailModal({
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {errorMessage && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-semibold text-red-700 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
-              <span>{errorMessage}</span>
-            </div>
+            <NetworkErrorAlert
+              message={errorMessage}
+              onRetry={() => {
+                setErrorMessage(null);
+                void loadDetail(report.id_laporan);
+              }}
+              retrying={isSaving}
+              onDismiss={() => setErrorMessage(null)}
+            />
           )}
 
           {saveSuccess && (
@@ -382,8 +399,10 @@ export function PriorityDetailModal({
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={fotoUrl}
+                        src={getThumbnailFotoUrl(fotoUrl, 600)}
                         alt={`Bukti foto ${idx + 1}`}
+                        loading="lazy"
+                        decoding="async"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         onError={(e) => {
                           const parentBtn = e.currentTarget.parentElement;
@@ -723,6 +742,8 @@ export function PriorityDetailModal({
               <img
                 src={fotoList[activePhotoIndex]}
                 alt={`Preview Foto ${activePhotoIndex + 1}`}
+                loading="lazy"
+                decoding="async"
                 className="max-h-[72vh] max-w-full object-contain rounded-lg shadow-2xl"
               />
             </div>

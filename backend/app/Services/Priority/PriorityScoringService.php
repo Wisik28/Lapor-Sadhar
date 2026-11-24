@@ -320,6 +320,133 @@ class PriorityScoringService
     }
 
     /**
+     * Periksa keberadaan tabel priority_assessments secara read-only tanpa menjalankan DDL.
+     */
+    public function hasAssessmentTable(): bool
+    {
+        try {
+            $pdoId = spl_object_id(DB::connection()->getPdo());
+            if (!empty(self::$tablesVerifiedByPdo[$pdoId])) {
+                return true;
+            }
+
+            return Schema::hasTable('priority_assessments');
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Periksa keberadaan tabel priority_feedback secara read-only tanpa menjalankan DDL.
+     */
+    public function hasFeedbackTable(): bool
+    {
+        try {
+            $pdoId = spl_object_id(DB::connection()->getPdo());
+            if (!empty(self::$tablesVerifiedByPdo[$pdoId])) {
+                return true;
+            }
+
+            return Schema::hasTable('priority_feedback');
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Ambil penilaian prioritas secara murni read-only (tanpa menulis ke database).
+     * Laporan yang belum memiliki baris di priority_assessments dihitung di memori saja.
+     *
+     * @param iterable<int, Laporan> $laporans
+     * @return \Illuminate\Support\Collection<int, PriorityAssessment>
+     */
+    public function assessReadOnlyMany(iterable $laporans): \Illuminate\Support\Collection
+    {
+        $collection = $laporans instanceof \Illuminate\Support\Collection ? $laporans : collect($laporans);
+        if ($collection->isEmpty()) {
+            return collect();
+        }
+
+        $hasTable = $this->hasAssessmentTable();
+        $existingMap = collect();
+
+        if ($hasTable) {
+            try {
+                $ids = $collection->pluck('id_laporan')->filter()->values()->all();
+                if (!empty($ids)) {
+                    $existingMap = PriorityAssessment::whereIn('id_laporan', $ids)
+                        ->get()
+                        ->keyBy('id_laporan');
+                }
+            } catch (\Throwable $e) {
+                $existingMap = collect();
+            }
+        }
+
+        $results = collect();
+        $missing = [];
+
+        foreach ($collection as $laporan) {
+            $existing = $existingMap->get($laporan->id_laporan);
+            if ($existing) {
+                $results->put($laporan->id_laporan, $existing);
+                continue;
+            }
+            $missing[] = $laporan;
+        }
+
+        if (empty($missing)) {
+            return $results;
+        }
+
+        $recentLaporans = null;
+        $driverName = null;
+        if (count($missing) > 1 && DB::transactionLevel() === 0) {
+            try {
+                $driverName = DB::connection()->getDriverName();
+                $recentLaporans = Laporan::query()
+                    ->select(['id_laporan', 'nim', 'kategori_laporan', 'lokasi', 'lokasi_kampus'])
+                    ->where('tanggal_buat', '>=', now()->subDays(30))
+                    ->get();
+            } catch (\Throwable $e) {
+                $recentLaporans = null;
+            }
+        }
+
+        foreach ($missing as $laporan) {
+            $distinctReporters = $recentLaporans !== null
+                ? $this->countNearbyReportersFromCollection($laporan, $recentLaporans, $driverName)
+                : null;
+
+            $prepared = $this->buildAssessmentPayload($laporan, null, $distinctReporters);
+            $results->put($laporan->id_laporan, new PriorityAssessment($prepared['attributes']));
+        }
+
+        return $results;
+    }
+
+    /**
+     * Ambil atau hitung penilaian prioritas satu laporan secara murni read-only (tanpa menulis ke database).
+     */
+    public function assessReadOnly(Laporan $laporan): PriorityAssessment
+    {
+        if ($this->hasAssessmentTable()) {
+            try {
+                $existing = PriorityAssessment::where('id_laporan', $laporan->id_laporan)->first();
+                if ($existing) {
+                    return $existing;
+                }
+            } catch (\Throwable $e) {
+                // Fallback komputasi di memori
+            }
+        }
+
+        $prepared = $this->buildAssessmentPayload($laporan, null);
+
+        return new PriorityAssessment($prepared['attributes']);
+    }
+
+    /**
      * Lakukan penilaian dan simpan ke database secara batch untuk kumpulan laporan
      * (Menghindari masalah N+1 query pada daftar laporan dan ringkasan dashboard)
      *

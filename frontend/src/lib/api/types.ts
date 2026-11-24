@@ -38,11 +38,12 @@ export type LaporanStatus = 'Terkirim' | 'Diverifikasi' | 'Diproses' | 'Selesai'
 export type LaporanKategori = 'Fasilitas' | 'Kebersihan';
 
 /**
- * Attachment interface untuk file handling
+ * Attachment interface untuk file handling (termasuk lampiran yang dipulihkan dari draf)
  */
 export interface Attachment {
   id: string;
   url: string;
   name: string;
-  file: File;
+  file?: File;
+  dataUrl?: string;
 }

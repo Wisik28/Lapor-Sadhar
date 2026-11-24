@@ -61,3 +61,36 @@ export function persistSeenReportId(
   return next;
 }
 
+/**
+ * Gabungkan daftar ID laporan yang sudah dibaca dari server DB dengan cache lokal
+ * agar status baca tersinkron lintas perangkat sekaligus tetap tersedia saat offline.
+ */
+export function mergeSeenReportIds(
+  storageKey: string,
+  serverIds: number[],
+  current?: Set<number>
+): Set<number> {
+  const next = new Set(current ?? loadSeenReportIds(storageKey));
+  let changed = false;
+
+  for (const rawId of serverIds) {
+    const id = Number(rawId);
+    if (Number.isFinite(id) && id > 0 && !next.has(id)) {
+      next.add(id);
+      changed = true;
+    }
+  }
+
+  if (changed && typeof window !== "undefined") {
+    try {
+      const list = Array.from(next);
+      const trimmed = list.length > MAX_STORED_IDS ? list.slice(list.length - MAX_STORED_IDS) : list;
+      window.localStorage.setItem(storageKey, JSON.stringify(trimmed));
+    } catch {
+      // Abaikan error quota localStorage
+    }
+  }
+
+  return next;
+}
+
