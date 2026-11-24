@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { getCurrentAuthUser, isAuthenticated } from '@/lib/auth';
+import { getAdminHomeRoute } from '@/lib/admin-positions';
 
 export default function Home() {
   const router = useRouter();
@@ -15,7 +16,7 @@ export default function Home() {
       return;
     }
 
-    router.replace(user.role === 'Admin' ? '/admin/dashboard' : '/buat-laporan');
+    router.replace(user.role === 'Admin' ? getAdminHomeRoute(user) : '/buat-laporan');
   }, [router]);
 
   return (

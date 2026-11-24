@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { getAdminHomeRoute } from '@/lib/admin-positions';
 
 type ProtectedLayoutProps = {
   children: React.ReactNode;
@@ -36,7 +37,7 @@ export function ProtectedLayout({
     }
 
     if (allowedRoles && !allowedRoles.includes(user.role)) {
-      router.replace(user.role === 'Admin' ? '/admin/dashboard' : '/buat-laporan');
+      router.replace(user.role === 'Admin' ? getAdminHomeRoute(user) : '/buat-laporan');
     }
   }, [allowedRoles, isAuthenticated, isLoading, isPublicRoute, loginPath, router, user]);
 

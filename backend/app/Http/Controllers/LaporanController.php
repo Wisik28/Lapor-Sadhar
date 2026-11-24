@@ -557,6 +557,64 @@ class LaporanController extends Controller
     }
 
     /**
+     * PATCH /api/admin/laporan/{id}/kategori
+     * Admin BPS/BLU: Memindahkan laporan yang salah kategori ke unit lain (BPS <-> BLU)
+     */
+    public function adminTransferKategori(Request $request, $id): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'kategori_laporan'   => 'required|string|in:Fasilitas,Kebersihan',
+            'catatan_pemindahan' => 'nullable|string|max:500',
+        ], [
+            'kategori_laporan.required' => 'Kategori tujuan wajib dipilih.',
+            'kategori_laporan.in'       => 'Kategori tujuan harus Fasilitas (BPS) atau Kebersihan (BLU).',
+            'catatan_pemindahan.max'    => 'Catatan pemindahan maksimal 500 karakter.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => $validator->errors()->first(),
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $admin = $request->attributes->get('admin_session')?->admin;
+            $laporan = Laporan::findOrFail($id);
+
+            if (! $admin || ! in_array($admin->role, ['BPS', 'BLU'], true) || ! $admin->canEditLaporan($laporan)) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Anda tidak memiliki wewenang untuk memindahkan kategori laporan ini.',
+                ], 403);
+            }
+
+            $hasil = $this->laporanService->transferKategoriLaporan(
+                (int) $id,
+                (string) $request->input('kategori_laporan'),
+                $admin,
+                $request->input('catatan_pemindahan')
+            );
+
+            $formattedId = str_pad((string) $hasil['id_laporan'], 3, '0', STR_PAD_LEFT);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => "Laporan #{$formattedId} berhasil dipindahkan ke admin {$hasil['unit_tujuan']} ({$hasil['kategori_laporan']}).",
+                'data'    => $hasil,
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Laporan tidak ditemukan.',
+            ], 404);
+        } catch (\Throwable $e) {
+            return $this->handleError($e);
+        }
+    }
+
+    /**
      * Normalisasi semua varian nama status ke bucket rekap:
      * - Terkirim
      * - Diverifikasi  (mencakup: Sedang Diverifikasi, Terverifikasi, Diverifikasi)

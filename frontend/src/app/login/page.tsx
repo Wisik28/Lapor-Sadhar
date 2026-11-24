@@ -15,6 +15,7 @@ import {
   IdCard,
 } from "lucide-react";
 import { authApi } from "@/lib/api";
+import { getAdminHomeRoute } from "@/lib/admin-positions";
 import { useAuth } from "@/context/AuthContext";
 
 export default function LoginPage() {
@@ -55,7 +56,7 @@ export default function LoginPage() {
           res.redirect_to && res.redirect_to.startsWith('/') && res.redirect_to !== '/login'
             ? res.redirect_to
             : res.user?.role === 'Admin'
-              ? '/admin/dashboard'
+              ? getAdminHomeRoute(res.user)
               : '/buat-laporan';
 
         setTimeout(() => {

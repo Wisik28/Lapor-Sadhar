@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import AdminNavbar from "@/components/AdminNavbar";
 import { adminLaporanApi } from "@/lib/api";
 import { getCurrentAuthUser } from "@/lib/auth";
+import { isReadOnlyAdmin } from "@/lib/admin-positions";
 import { getFotoList, getFotoUrl as getBaseFotoUrl } from "@/lib/laporanPhoto";
 import {
   Search,
@@ -213,10 +215,18 @@ function resolveFotoUrl(rawFoto: string): string {
 }
 
 export default function AdminRiwayatLaporanPage() {
+  const router = useRouter();
+  const [isRestrictedRole] = useState(() => isReadOnlyAdmin(getCurrentAuthUser()));
   const [adminUser, setAdminUser] = useState({
     nama: "Admin Lapor Sadhar",
     role: "Administrator",
   });
+
+  useEffect(() => {
+    if (isRestrictedRole) {
+      router.replace("/admin/prioritas");
+    }
+  }, [isRestrictedRole, router]);
 
   useEffect(() => {
     const currentUser = getCurrentAuthUser();
@@ -358,8 +368,9 @@ export default function AdminRiwayatLaporanPage() {
   }, []);
 
   useEffect(() => {
+    if (isRestrictedRole) return;
     fetchAllLaporanAdmin();
-  }, [fetchAllLaporanAdmin]);
+  }, [fetchAllLaporanAdmin, isRestrictedRole]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -532,6 +543,10 @@ export default function AdminRiwayatLaporanPage() {
     { key: "Proses", label: "Diproses", num: 4 },
     { key: "Selesai", label: "Selesai", num: 5 },
   ];
+
+  if (isRestrictedRole) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen w-full bg-[#F3F4F6] font-sans text-slate-800 flex flex-col">

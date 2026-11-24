@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, LockKeyhole, UserRound, ShieldCheck } from "lucide-react";
 import { authApi } from "@/lib/api";
-import { adminPositions, AdminPosition } from "@/lib/admin-positions";
+import { adminPositions, AdminPosition, getAdminHomeRoute } from "@/lib/admin-positions";
 import { useAuth } from "@/context/AuthContext";
 
 export default function AdminLoginPage() {
@@ -27,7 +27,7 @@ export default function AdminLoginPage() {
     const result = await authApi.adminLogin({ username: username.trim(), password, jabatan });
     if (result.status === "success" && result.user && result.token) {
       refresh();
-      router.replace("/admin/dashboard");
+      router.replace(getAdminHomeRoute(result.user));
     } else {
       setError(result.message || "Username atau kata sandi tidak sesuai.");
     }

@@ -3,18 +3,27 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import AdminNavbar from "@/components/AdminNavbar";
+import { AdminStatusBadge } from "@/components/AdminStatusBadge";
 import PeriodFilter from "@/components/PeriodFilter";
 import ImagePreviewModal from "@/components/ImagePreviewModal";
 import { useAdminProtection } from "@/lib/useAuth";
 import { adminLaporanApi } from "@/lib/api";
+import {
+  loadSeenReportIds,
+  persistSeenReportId,
+  resolveAdminSeenKey,
+} from "@/lib/adminSeenReports";
 import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
 import { LOKASI_KAMPUS_OPTIONS, resolveLokasiKampus } from "@/lib/laporanCampus";
 import {
   KATEGORI_LAPORAN_OPTIONS,
   getKategoriTextColorClass,
+  getTransferTarget,
   isCampusScopedAdmin,
+  isReadOnlyAdmin,
   isWakilRektorII,
   normalizeKategoriLaporan,
+  resolveAdminUnit,
 } from "@/lib/admin-positions";
 import { useDebounce } from "@/hooks/useDebounce";
 import {
@@ -32,6 +41,9 @@ import {
   Image as ImageIcon,
   X,
   RefreshCw,
+  ArrowRightLeft,
+  Loader2,
+  Send,
 } from "lucide-react";
 
 // Tipe Data Status Laporan di Dashboard
@@ -227,9 +239,37 @@ export default function AdminDashboardPage() {
   const [loadingReports, setLoadingReports] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // State Filter Periode (Bulan & Tahun) - default Semua agar seluruh data tampil
+  // State Filter Periode (Tanggal, Bulan & Tahun) - default Semua agar seluruh data tampil
+  const [selectedDay, setSelectedDay] = useState("Semua");
   const [selectedMonth, setSelectedMonth] = useState("Semua");
   const [selectedYear, setSelectedYear] = useState("Semua");
+
+  const todayParts = useMemo(() => {
+    const now = new Date();
+    return {
+      year: String(now.getFullYear()),
+      month: String(now.getMonth() + 1).padStart(2, "0"),
+      day: String(now.getDate()).padStart(2, "0"),
+    };
+  }, []);
+
+  const isTodayFilterActive =
+    selectedDay === todayParts.day &&
+    selectedMonth === todayParts.month &&
+    selectedYear === todayParts.year;
+
+  const handleToggleTodayFilter = () => {
+    if (isTodayFilterActive) {
+      setSelectedDay("Semua");
+      setSelectedMonth("Semua");
+      setSelectedYear("Semua");
+    } else {
+      setSelectedDay(todayParts.day);
+      setSelectedMonth(todayParts.month);
+      setSelectedYear(todayParts.year);
+    }
+    setCurrentPage(1);
+  };
 
   // State Filter & Pencarian Tabel
   const [searchTerm, setSearchTerm] = useState("");
@@ -237,8 +277,21 @@ export default function AdminDashboardPage() {
   const [filterLokasi, setFilterLokasi] = useState("Semua");
   const [filterKategori, setFilterKategori] = useState("Semua");
   const [filterStatus, setFilterStatus] = useState("Semua");
+  const [filterBaca, setFilterBaca] = useState<"Semua" | "Sudah Dibaca" | "Belum Dibaca">("Semua");
 
   const isWR2 = useMemo(() => isWakilRektorII(authUser), [authUser]);
+  const isReadOnly = useMemo(() => isReadOnlyAdmin(authUser), [authUser]);
+
+  useEffect(() => {
+    if (!authLoading && isReadOnly) {
+      router.replace("/admin/prioritas");
+    }
+  }, [authLoading, isReadOnly, router]);
+  const adminUnit = useMemo(() => resolveAdminUnit(authUser), [authUser]);
+  const transferTarget = useMemo(
+    () => (adminUnit ? getTransferTarget(adminUnit) : null),
+    [adminUnit]
+  );
   const showLocationFilter = useMemo(
     () => !isCampusScopedAdmin(authUser),
     [authUser]
@@ -257,13 +310,65 @@ export default function AdminDashboardPage() {
     filterLokasi,
     filterKategori,
     filterStatus,
+    filterBaca,
+    selectedDay,
     selectedMonth,
     selectedYear,
   ]);
 
-  // State Modal Detail
+  // State Modal Detail & Pemindahan Kategori (BPS <-> BLU)
   const [selectedReport, setSelectedReport] = useState<ReportItem | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null);
+  const [isTransferOpen, setIsTransferOpen] = useState(false);
+  const [transferNote, setTransferNote] = useState("");
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+
+  // State Laporan "Terkirim" yang Sudah Pernah Dibuka oleh Admin
+  const adminSeenKey = useMemo(() => resolveAdminSeenKey(authUser), [authUser]);
+  const [seenReportIds, setSeenReportIds] = useState<Set<number>>(() => new Set());
+
+  useEffect(() => {
+    let active = true;
+    Promise.resolve().then(() => {
+      if (active) {
+        setSeenReportIds(loadSeenReportIds(adminSeenKey));
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [adminSeenKey]);
+
+  const handleOpenDetailModal = useCallback(
+    (report: ReportItem) => {
+      setSelectedReport(report);
+      setActivePhotoIndex(null);
+      setIsTransferOpen(false);
+      setTransferNote("");
+      setTransferError(null);
+      setSeenReportIds((prev) => persistSeenReportId(adminSeenKey, report.idRaw, prev));
+    },
+    [adminSeenKey]
+  );
+
+  const handleCloseDetailModal = useCallback(() => {
+    if (transferLoading) return;
+    setSelectedReport(null);
+    setActivePhotoIndex(null);
+    setIsTransferOpen(false);
+    setTransferNote("");
+    setTransferError(null);
+  }, [transferLoading]);
+
+  const canTransferSelected = Boolean(
+    !isReadOnly &&
+      transferTarget &&
+      selectedReport &&
+      selectedReport.status !== "Selesai" &&
+      selectedReport.status !== "Ditolak"
+  );
 
   // Authenticated Admin User
   const adminUser = useMemo(() => {
@@ -350,6 +455,10 @@ export default function AdminDashboardPage() {
   }, []);
 
   useEffect(() => {
+    if (authLoading || !authUser || isReadOnly) {
+      return;
+    }
+
     let active = true;
     Promise.resolve().then(() => {
       if (active) {
@@ -359,13 +468,50 @@ export default function AdminDashboardPage() {
     return () => {
       active = false;
     };
-  }, [fetchReports]);
+  }, [authLoading, authUser, isReadOnly, fetchReports]);
 
-  // Filter Data Laporan Sesuai Periode Bulan & Tahun serta Filter Tabel
+  const handleConfirmTransfer = useCallback(async () => {
+    if (!selectedReport || !transferTarget) return;
+
+    setTransferLoading(true);
+    setTransferError(null);
+    try {
+      const res = await adminLaporanApi.transferKategori(
+        selectedReport.idRaw,
+        transferTarget.targetKategori,
+        transferNote
+      );
+
+      const movedId = selectedReport.idRaw;
+      const movedCode = selectedReport.id;
+      setSelectedReport(null);
+      setActivePhotoIndex(null);
+      setIsTransferOpen(false);
+      setTransferNote("");
+      setReports((prev) => prev.filter((item) => item.idRaw !== movedId));
+      setActionSuccess(
+        res?.message ||
+          `Laporan #${movedCode} berhasil dipindahkan ke Admin ${transferTarget.targetUnit} (${transferTarget.targetKategori}).`
+      );
+      void fetchReports();
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Gagal memindahkan laporan ke unit tujuan.";
+      setTransferError(msg);
+    } finally {
+      setTransferLoading(false);
+    }
+  }, [selectedReport, transferTarget, transferNote, fetchReports]);
+
+  // Filter Data Laporan Sesuai Periode Tanggal, Bulan & Tahun serta Filter Tabel
   const filteredReports = useMemo(() => {
     return reports.filter((item) => {
-      // 1. Filter Periode (Bulan & Tahun pada item.tanggal YYYY-MM-DD)
-      const [itemYear, itemMonth] = item.tanggal.split("-");
+      // 1. Filter Periode (Tanggal, Bulan & Tahun pada item.tanggal YYYY-MM-DD)
+      const [itemYear, itemMonth, itemDay] = item.tanggal.split("-");
+      const matchesDay =
+        selectedDay === "Semua" || itemDay === selectedDay;
       const matchesMonth =
         selectedMonth === "Semua" || itemMonth === selectedMonth;
       const matchesYear =
@@ -401,17 +547,27 @@ export default function AdminDashboardPage() {
       const matchesStatus =
         filterStatus === "Semua" || item.status === filterStatus;
 
+      // 6. Filter Status Baca (Semua / Sudah Dibaca / Belum Dibaca)
+      const isUnread =
+        item.status === "Terkirim" && !seenReportIds.has(item.idRaw);
+      const matchesBaca =
+        filterBaca === "Semua" ||
+        (filterBaca === "Belum Dibaca" ? isUnread : !isUnread);
+
       return (
+        matchesDay &&
         matchesMonth &&
         matchesYear &&
         matchesSearch &&
         matchesLokasi &&
         matchesKategori &&
-        matchesStatus
+        matchesStatus &&
+        matchesBaca
       );
     });
   }, [
     reports,
+    selectedDay,
     selectedMonth,
     selectedYear,
     debouncedSearchTerm,
@@ -420,19 +576,23 @@ export default function AdminDashboardPage() {
     isWR2,
     filterKategori,
     filterStatus,
+    filterBaca,
+    seenReportIds,
   ]);
 
   // Laporan pada periode terpilih (untuk menghitung metrik KPI periode tersebut)
   const periodReports = useMemo(() => {
     return reports.filter((item) => {
-      const [itemYear, itemMonth] = item.tanggal.split("-");
+      const [itemYear, itemMonth, itemDay] = item.tanggal.split("-");
+      const matchesDay =
+        selectedDay === "Semua" || itemDay === selectedDay;
       const matchesMonth =
         selectedMonth === "Semua" || itemMonth === selectedMonth;
       const matchesYear =
         selectedYear === "Semua" || itemYear === selectedYear;
-      return matchesMonth && matchesYear;
+      return matchesDay && matchesMonth && matchesYear;
     });
-  }, [reports, selectedMonth, selectedYear]);
+  }, [reports, selectedDay, selectedMonth, selectedYear]);
 
   // Hitung Data Pagination
   const totalPages = Math.ceil(filteredReports.length / itemsPerPage) || 1;
@@ -448,12 +608,23 @@ export default function AdminDashboardPage() {
     setFilterLokasi("Semua");
     setFilterKategori("Semua");
     setFilterStatus("Semua");
+    setFilterBaca("Semua");
+    setSelectedDay("Semua");
+    setSelectedMonth("Semua");
+    setSelectedYear("Semua");
     setCurrentPage(1);
   };
 
   // Ringkasan KPI Counts pada Periode yang Dipilih
   const totalPeriodCount = periodReports.length;
   const terkirimCount = periodReports.filter((r) => r.status === "Terkirim").length;
+  const unreadTerkirimCount = useMemo(
+    () =>
+      filteredReports.filter(
+        (r) => r.status === "Terkirim" && !seenReportIds.has(r.idRaw)
+      ).length,
+    [filteredReports, seenReportIds]
+  );
   const diverifikasiCount = periodReports.filter(
     (r) => r.status === "Diverifikasi"
   ).length;
@@ -462,60 +633,33 @@ export default function AdminDashboardPage() {
   const selesaiCount = periodReports.filter((r) => r.status === "Selesai").length;
 
   const periodLabel = useMemo(() => {
-    if (selectedMonth === "Semua" && selectedYear === "Semua") {
+    if (selectedDay === "Semua" && selectedMonth === "Semua" && selectedYear === "Semua") {
       return "Semua Periode";
     }
-    if (selectedMonth === "Semua") {
-      return `Semua Bulan ${selectedYear}`;
-    }
-    if (selectedYear === "Semua") {
-      return MONTH_NAMES[selectedMonth] || selectedMonth;
-    }
-    return `${MONTH_NAMES[selectedMonth] || selectedMonth} ${selectedYear}`;
-  }, [selectedMonth, selectedYear]);
+    const dayNum = selectedDay !== "Semua" ? String(Number(selectedDay)) : null;
+    const monthText = selectedMonth !== "Semua" ? (MONTH_NAMES[selectedMonth] || selectedMonth) : null;
+    const yearText = selectedYear !== "Semua" ? selectedYear : null;
 
-  // Helper Badge Status: Terkirim -> Diverifikasi -> Diproses / Ditolak -> Selesai
-  const getStatusBadge = (status: StatusLaporan) => {
-    switch (status) {
-      case "Terkirim":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-[#3B82F6] border border-blue-200/60">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6]" />
-            Terkirim
-          </span>
-        );
-      case "Diverifikasi":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-600 border border-indigo-200/60">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" />
-            Diverifikasi
-          </span>
-        );
-      case "Diproses":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-[#F59E0B] border border-amber-200/60">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#F59E0B]" />
-            Diproses
-          </span>
-        );
-      case "Ditolak":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-[#EF4444] border border-red-200/60">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444]" />
-            Ditolak
-          </span>
-        );
-      case "Selesai":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-[#10B981] border border-emerald-200/60">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-            Selesai
-          </span>
-        );
-      default:
-        return null;
+    if (isTodayFilterActive && dayNum && monthText && yearText) {
+      return `Hari Ini (${dayNum} ${monthText} ${yearText})`;
     }
-  };
+    if (dayNum && monthText && yearText) return `${dayNum} ${monthText} ${yearText}`;
+    if (dayNum && monthText) return `${dayNum} ${monthText}`;
+    if (dayNum && yearText) return `Tanggal ${dayNum}, ${yearText}`;
+    if (dayNum) return `Tanggal ${dayNum}`;
+    if (monthText && yearText) return `${monthText} ${yearText}`;
+    if (monthText) return monthText;
+    return `Semua Bulan ${yearText}`;
+  }, [isTodayFilterActive, selectedDay, selectedMonth, selectedYear]);
+
+  // Helper Badge Status terpadu (konsisten dengan /admin/prioritas)
+  const getStatusBadge = (status: StatusLaporan) => (
+    <AdminStatusBadge status={status} />
+  );
+
+  if (!authLoading && isReadOnly) {
+    return null;
+  }
 
   return (
     <>
@@ -562,48 +706,23 @@ export default function AdminDashboardPage() {
               </div>
             )}
 
-            {/* Keterangan Periode Aktif, Filter Bulan/Tahun & Tombol Segarkan */}
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 bg-white px-4 py-3 rounded-2xl border border-slate-200/80 shadow-2xs">
-              <div className="flex flex-wrap items-center gap-2">
-                {/* <span className="w-2.5 h-2.5 rounded-full bg-[#7A0C0C]" /> */}
-                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Periode Data Aktif:
-                </span>
-                <PeriodFilter
-                  selectedMonth={selectedMonth}
-                  selectedYear={selectedYear}
-                  onMonthChange={(m) => {
-                    setSelectedMonth(m);
-                    setCurrentPage(1);
-                  }}
-                  onYearChange={(y) => {
-                    setSelectedYear(y);
-                    setCurrentPage(1);
-                  }}
-                />
-              </div>
-              <div className="flex items-center justify-between lg:justify-end gap-3">
-                <span className="text-xs text-gray-500 font-medium">
-                  {loadingReports
-                    ? "Memuat data laporan..."
-                    : `Menampilkan ${filteredReports.length} laporan sarana prasarana.`}
-                </span>
+            {/* Banner Notifikasi Sukses Pemindahan Kategori */}
+            {actionSuccess && (
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-3 text-xs sm:text-sm text-emerald-800 shadow-2xs">
+                <div className="flex items-center gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="font-medium">{actionSuccess}</span>
+                </div>
                 <button
                   type="button"
-                  onClick={fetchReports}
-                  disabled={loadingReports}
-                  title="Perbarui data dari database"
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 transition-colors cursor-pointer disabled:opacity-50"
+                  onClick={() => setActionSuccess(null)}
+                  aria-label="Tutup notifikasi"
+                  className="p-1 rounded-lg text-emerald-600 hover:bg-emerald-100 transition-colors shrink-0 cursor-pointer"
                 >
-                  <RefreshCw
-                    className={`w-3.5 h-3.5 ${
-                      loadingReports ? "animate-spin" : ""
-                    }`}
-                  />
-                  <span className="hidden sm:inline">Segarkan</span>
+                  <X className="w-4 h-4" />
                 </button>
               </div>
-            </div>
+            )}
 
             {/* ------------------------------------------------------------- */}
             {/* 3. KARTU RINGKASAN STATUS (TOTAL LAPORAN PERIODE + 5 STATUS) */}
@@ -767,206 +886,366 @@ export default function AdminDashboardPage() {
             </section>
 
             {/* ------------------------------------------------------------- */}
-            {/* 4. PANEL PENCARIAN & FILTER */}
+            {/* 4. FILTER, PERIODE, REFRESH & TABEL DAFTAR LAPORAN (TERPADU) */}
             {/* ------------------------------------------------------------- */}
             <section
-              aria-label="Filter dan Pencarian Laporan"
-              className="bg-white rounded-2xl border border-gray-200/80 shadow-xs p-4 sm:p-5 space-y-4"
+              aria-label="Filter dan Daftar Tiket Laporan Masuk"
+              className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden"
             >
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                {/* Input Pencarian */}
-                <div className="relative flex-1">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
-                    <Search className="w-4 h-4" />
+              {/* AREA FILTER, PERIODE & REFRESH */}
+              <div className="bg-slate-50/75 p-4 sm:p-5 space-y-4">
+                {/* Baris 1: Judul Daftar + Periode (Bulan/Tahun) + Tombol Segarkan */}
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-gray-900 leading-tight">
+                      Daftar Seluruh Laporan Civitas Kampus
+                    </h2>
                   </div>
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => {
-                      setSearchTerm(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    placeholder="Cari ID laporan, nama pelapor, NIM, fasilitas, atau ruangan..."
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50/50 text-sm text-gray-800 placeholder:text-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] transition-all min-h-[44px]"
-                  />
-                  {searchTerm && (
+
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+                    <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                      Periode:
+                    </span>
+                    <PeriodFilter
+                      selectedDay={selectedDay}
+                      selectedMonth={selectedMonth}
+                      selectedYear={selectedYear}
+                      onDayChange={(d) => {
+                        setSelectedDay(d);
+                        setCurrentPage(1);
+                      }}
+                      onMonthChange={(m) => {
+                        setSelectedMonth(m);
+                        if (selectedDay !== "Semua" && m !== "Semua") {
+                          const y = selectedYear !== "Semua" ? Number(selectedYear) : 2024;
+                          const maxDay = new Date(y, Number(m), 0).getDate();
+                          if (Number(selectedDay) > maxDay) {
+                            setSelectedDay("Semua");
+                          }
+                        }
+                        setCurrentPage(1);
+                      }}
+                      onYearChange={(y) => {
+                        setSelectedYear(y);
+                        if (selectedDay !== "Semua" && selectedMonth !== "Semua") {
+                          const yearNum = y !== "Semua" ? Number(y) : 2024;
+                          const maxDay = new Date(yearNum, Number(selectedMonth), 0).getDate();
+                          if (Number(selectedDay) > maxDay) {
+                            setSelectedDay("Semua");
+                          }
+                        }
+                        setCurrentPage(1);
+                      }}
+                    />
                     <button
                       type="button"
-                      onClick={() => setSearchTerm("")}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
+                      onClick={handleToggleTodayFilter}
+                      aria-pressed={isTodayFilterActive}
+                      title={
+                        isTodayFilterActive
+                          ? "Klik untuk menampilkan semua periode"
+                          : "Tampilkan laporan yang masuk hari ini"
+                      }
+                      className={`inline-flex items-center gap-1.5 min-h-[38px] px-3 py-1.5 rounded-xl border text-xs font-semibold transition-colors cursor-pointer shadow-2xs ${
+                        isTodayFilterActive
+                          ? "bg-[#7A0C0C] border-[#7A0C0C] text-white hover:bg-[#650909]"
+                          : "bg-white border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                      }`}
                     >
-                      <X className="w-4 h-4" />
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>Hari Ini</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={fetchReports}
+                      disabled={loadingReports}
+                      title="Perbarui data dari database"
+                      className="inline-flex items-center gap-1.5 min-h-[38px] px-3 py-1.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-100 text-xs font-semibold text-gray-700 hover:text-gray-900 transition-colors cursor-pointer disabled:opacity-50 shadow-2xs"
+                    >
+                      <RefreshCw
+                        className={`w-3.5 h-3.5 ${
+                          loadingReports ? "animate-spin" : ""
+                        }`}
+                      />
+                      {/* <span className="hidden sm:inline">Segarkan</span> */}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Baris 2: Input Pencarian & Dropdown Filter */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                  {/* Input Pencarian */}
+                  <div className="relative flex-1">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+                      <Search className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                        setCurrentPage(1);
+                      }}
+                      placeholder="Cari ID laporan, nama pelapor, NIM, fasilitas, atau ruangan..."
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] transition-all min-h-[44px]"
+                    />
+                    {searchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchTerm("")}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filter Dropdowns & Reset */}
+                  <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5">
+                    {/* Filter Lokasi Kampus (dihilangkan untuk admin masing-masing kampus) */}
+                    {showLocationFilter && (
+                      <div className="w-full sm:w-auto">
+                        <select
+                          value={filterLokasi}
+                          onChange={(e) => {
+                            setFilterLokasi(e.target.value);
+                            setCurrentPage(1);
+                          }}
+                          aria-label="Filter berdasarkan lokasi kampus"
+                          className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
+                        >
+                          <option value="Semua">Semua Lokasi</option>
+                          {LOKASI_KAMPUS_OPTIONS.map((kampus) => (
+                            <option key={kampus} value={kampus}>
+                              {kampus}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Filter Kategori Laporan (khusus Wakil Rektor II) */}
+                    {isWR2 && (
+                      <div className="w-full sm:w-auto">
+                        <select
+                          value={filterKategori}
+                          onChange={(e) => {
+                            setFilterKategori(e.target.value);
+                            setCurrentPage(1);
+                          }}
+                          aria-label="Filter berdasarkan kategori laporan"
+                          className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
+                        >
+                          <option value="Semua">Semua Kategori</option>
+                          {KATEGORI_LAPORAN_OPTIONS.map((kategori) => (
+                            <option key={kategori} value={kategori}>
+                              {kategori}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Filter Status Laporan */}
+                    <div className="w-full sm:w-auto">
+                      <select
+                        value={filterStatus}
+                        onChange={(e) => {
+                          setFilterStatus(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        aria-label="Filter berdasarkan status laporan"
+                        className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
+                      >
+                        <option value="Semua">Semua Status</option>
+                        <option value="Terkirim">Terkirim</option>
+                        <option value="Diverifikasi">Diverifikasi</option>
+                        <option value="Diproses">Diproses</option>
+                        <option value="Ditolak">Ditolak</option>
+                        <option value="Selesai">Selesai</option>
+                      </select>
+                    </div>
+
+                    {/* Filter Status Baca (Semua / Sudah Dibaca / Belum Dibaca) */}
+                    <div className="w-full sm:w-auto">
+                      <select
+                        value={filterBaca}
+                        onChange={(e) => {
+                          setFilterBaca(
+                            e.target.value as "Semua" | "Sudah Dibaca" | "Belum Dibaca"
+                          );
+                          setCurrentPage(1);
+                        }}
+                        aria-label="Filter berdasarkan status baca laporan"
+                        className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
+                      >
+                        <option value="Semua">Semua Laporan</option>
+                        <option value="Belum Dibaca">Belum Dibaca</option>
+                        <option value="Sudah Dibaca">Sudah Dibaca</option>
+                      </select>
+                    </div>
+
+                    {/* Tombol Reset Filter */}
+                    <button
+                      type="button"
+                      onClick={handleResetFilter}
+                      className="text-xs sm:text-sm font-semibold text-slate-500 hover:text-slate-900 px-3 py-2 transition-colors cursor-pointer"
+                      title="Reset seluruh filter"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+
+                {/* Status Aktif Filter Info */}
+                {(debouncedSearchTerm !== "" ||
+                  selectedDay !== "Semua" ||
+                  selectedMonth !== "Semua" ||
+                  selectedYear !== "Semua" ||
+                  (showLocationFilter && filterLokasi !== "Semua") ||
+                  (isWR2 && filterKategori !== "Semua") ||
+                  filterStatus !== "Semua" ||
+                  filterBaca !== "Semua") && (
+                  <div className="pt-2.5 border-t border-gray-200/70 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                    <span className="font-medium text-gray-700">Filter aktif:</span>
+                    {(selectedDay !== "Semua" ||
+                      selectedMonth !== "Semua" ||
+                      selectedYear !== "Semua") && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white border border-gray-200 text-gray-800">
+                        Periode: {periodLabel}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDay("Semua");
+                            setSelectedMonth("Semua");
+                            setSelectedYear("Semua");
+                          }}
+                          className="hover:text-red-600 cursor-pointer"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )}
+                    {debouncedSearchTerm && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white border border-gray-200 text-gray-800">
+                        Pencarian: &quot;{debouncedSearchTerm}&quot;
+                        <button
+                          type="button"
+                          onClick={() => setSearchTerm("")}
+                          className="hover:text-red-600 cursor-pointer"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )}
+                    {showLocationFilter && filterLokasi !== "Semua" && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white border border-gray-200 text-gray-800">
+                        {filterLokasi}
+                        <button
+                          type="button"
+                          onClick={() => setFilterLokasi("Semua")}
+                          className="hover:text-red-600 cursor-pointer"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )}
+                    {isWR2 && filterKategori !== "Semua" && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white border border-gray-200 text-gray-800">
+                        Kategori: {filterKategori}
+                        <button
+                          type="button"
+                          onClick={() => setFilterKategori("Semua")}
+                          className="hover:text-red-600 cursor-pointer"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )}
+                    {filterStatus !== "Semua" && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white border border-gray-200 text-gray-800">
+                        Status: {filterStatus}
+                        <button
+                          type="button"
+                          onClick={() => setFilterStatus("Semua")}
+                          className="hover:text-red-600 cursor-pointer"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )}
+                    {filterBaca !== "Semua" && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white border border-gray-200 text-gray-800">
+                        Tampilan: {filterBaca}
+                        <button
+                          type="button"
+                          onClick={() => setFilterBaca("Semua")}
+                          className="hover:text-red-600 cursor-pointer"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )}
+                    <span className="text-gray-400">
+                      (Ditemukan {filteredReports.length} laporan)
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* VISUAL PEMBATAS ANTARA AREA FILTER DAN TABEL DAFTAR LAPORAN */}
+              <div className="h-[3px] w-full bg-[#7A0C0C]" />
+              <div className="px-4 sm:px-5 py-3 bg-white border-b border-gray-200/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[#7A0C0C]" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-700">
+                    Tabel Daftar Laporan
+                  </span>
+                  <span className="text-xs text-gray-400">• {periodLabel}</span>
+                  {unreadTerkirimCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilterBaca((prev) =>
+                          prev === "Belum Dibaca" ? "Semua" : "Belum Dibaca"
+                        );
+                        setCurrentPage(1);
+                      }}
+                      title={
+                        filterBaca === "Belum Dibaca"
+                          ? "Tampilkan semua laporan"
+                          : "Filter hanya laporan belum dibaca"
+                      }
+                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 hover:bg-blue-100 text-[#3B82F6] border border-blue-200/70 transition-colors cursor-pointer"
+                    >
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#3B82F6]" />
+                      </span>
+                      {unreadTerkirimCount} belum dibuka
                     </button>
                   )}
                 </div>
-
-                {/* Filter Dropdowns & Reset */}
-                <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5">
-                  {/* Filter Lokasi Kampus (dihilangkan untuk admin masing-masing kampus) */}
-                  {showLocationFilter && (
-                    <div className="w-full sm:w-auto">
-                      <select
-                        value={filterLokasi}
-                        onChange={(e) => {
-                          setFilterLokasi(e.target.value);
-                          setCurrentPage(1);
-                        }}
-                        aria-label="Filter berdasarkan lokasi kampus"
-                        className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
-                      >
-                        <option value="Semua">Semua Lokasi</option>
-                        {LOKASI_KAMPUS_OPTIONS.map((kampus) => (
-                          <option key={kampus} value={kampus}>
-                            {kampus}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {/* Filter Kategori Laporan (khusus Wakil Rektor II) */}
-                  {isWR2 && (
-                    <div className="w-full sm:w-auto">
-                      <select
-                        value={filterKategori}
-                        onChange={(e) => {
-                          setFilterKategori(e.target.value);
-                          setCurrentPage(1);
-                        }}
-                        aria-label="Filter berdasarkan kategori laporan"
-                        className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
-                      >
-                        <option value="Semua">Semua Kategori</option>
-                        {KATEGORI_LAPORAN_OPTIONS.map((kategori) => (
-                          <option key={kategori} value={kategori}>
-                            {kategori}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {/* Filter Status Laporan */}
-                  <div className="w-full sm:w-auto">
-                    <select
-                      value={filterStatus}
-                      onChange={(e) => {
-                        setFilterStatus(e.target.value);
-                        setCurrentPage(1);
-                      }}
-                      aria-label="Filter berdasarkan status laporan"
-                      className="w-full sm:w-auto min-h-[44px] px-3.5 py-2 rounded-xl border border-gray-200 bg-white text-xs sm:text-sm font-medium text-gray-700 hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] transition-colors cursor-pointer"
-                    >
-                      <option value="Semua">Semua Status</option>
-                      <option value="Terkirim">Terkirim</option>
-                      <option value="Diverifikasi">Diverifikasi</option>
-                      <option value="Diproses">Diproses</option>
-                      <option value="Ditolak">Ditolak</option>
-                      <option value="Selesai">Selesai</option>
-                    </select>
-                  </div>
-
-                  {/* Tombol Reset Filter */}
-                  <button
-                    type="button"
-                    onClick={handleResetFilter}
-                    className="text-xs sm:text-sm font-semibold text-slate-500 hover:text-slate-900 px-3 py-2 transition-colors cursor-pointer"
-                    title="Reset seluruh filter"
-                  >
-                    Reset
-                  </button>
-                </div>
-              </div>
-
-              {/* Status Aktif Filter Info */}
-              {(debouncedSearchTerm !== "" ||
-                (showLocationFilter && filterLokasi !== "Semua") ||
-                (isWR2 && filterKategori !== "Semua") ||
-                filterStatus !== "Semua") && (
-                <div className="pt-2 border-t border-gray-100 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                  <span className="font-medium text-gray-700">Filter aktif:</span>
-                  {debouncedSearchTerm && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-800">
-                      Pencarian: &quot;{debouncedSearchTerm}&quot;
-                      <button
-                        onClick={() => setSearchTerm("")}
-                        className="hover:text-red-600 cursor-pointer"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  )}
-                  {showLocationFilter && filterLokasi !== "Semua" && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-800">
-                      {filterLokasi}
-                      <button
-                        onClick={() => setFilterLokasi("Semua")}
-                        className="hover:text-red-600 cursor-pointer"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  )}
-                  {isWR2 && filterKategori !== "Semua" && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-800">
-                      Kategori: {filterKategori}
-                      <button
-                        onClick={() => setFilterKategori("Semua")}
-                        className="hover:text-red-600 cursor-pointer"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  )}
-                  {filterStatus !== "Semua" && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-800">
-                      Status: {filterStatus}
-                      <button
-                        onClick={() => setFilterStatus("Semua")}
-                        className="hover:text-red-600 cursor-pointer"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  )}
-                  <span className="text-gray-400">
-                    (Ditemukan {filteredReports.length} laporan)
-                  </span>
-                </div>
-              )}
-            </section>
-
-            {/* ------------------------------------------------------------- */}
-            {/* 5. TABEL LAPORAN (RESPONSIF: MOBILE CARDS + DESKTOP TABLE) */}
-            {/* ------------------------------------------------------------- */}
-            <section
-              aria-label="Daftar Tiket Laporan Masuk"
-              className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden"
-            >
-              {/* Header Tabel */}
-              <div className="p-4 sm:p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-gray-900 leading-tight">
-                    Daftar Seluruh Laporan Civitas Kampus
-                  </h2>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    Urutan laporan berdasarkan tanggal masuk dan status penanganan terkini.
-                  </p>
-                </div>
                 <div className="text-xs text-gray-500 font-medium">
-                  Menampilkan{" "}
-                  <span className="font-bold text-gray-800">
-                    {filteredReports.length > 0 ? startIndex + 1 : 0}
-                  </span>{" "}
-                  -{" "}
-                  <span className="font-bold text-gray-800">
-                    {Math.min(startIndex + itemsPerPage, filteredReports.length)}
-                  </span>{" "}
-                  dari{" "}
-                  <span className="font-bold text-gray-800">
-                    {filteredReports.length}
-                  </span>{" "}
-                  laporan
+                  {loadingReports ? (
+                    <span>Memuat data laporan...</span>
+                  ) : (
+                    <>
+                      Menampilkan{" "}
+                      <span className="font-bold text-gray-800">
+                        {filteredReports.length > 0 ? startIndex + 1 : 0}
+                      </span>{" "}
+                      -{" "}
+                      <span className="font-bold text-gray-800">
+                        {Math.min(startIndex + itemsPerPage, filteredReports.length)}
+                      </span>{" "}
+                      dari{" "}
+                      <span className="font-bold text-gray-800">
+                        {filteredReports.length}
+                      </span>{" "}
+                      laporan
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1079,16 +1358,47 @@ export default function AdminDashboardPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
-                        {currentReports.map((report) => (
+                        {currentReports.map((report) => {
+                          const isUnread =
+                            report.status === "Terkirim" &&
+                            !seenReportIds.has(report.idRaw);
+
+                          return (
                           <tr
                             key={report.id}
-                            className="hover:bg-gray-50/80 transition-colors group"
+                            className={`transition-colors group ${
+                              isUnread
+                                ? "bg-blue-50/35 hover:bg-blue-50/65"
+                                : "hover:bg-gray-50/80"
+                            }`}
                           >
                             {/* Kolom ID */}
-                            <td className="px-5 py-4 align-top whitespace-nowrap">
-                              <span className="font-mono font-bold text-xs text-[#7A0C0C] block group-hover:underline">
-                                {report.id}
-                              </span>
+                            <td
+                              className={`px-5 py-4 align-top whitespace-nowrap ${
+                                isUnread
+                                  ? "border-l-[3px] border-l-[#3B82F6] pl-[17px]"
+                                  : ""
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                {isUnread && (
+                                  <span
+                                    title="Laporan baru belum dibuka"
+                                    className="relative flex h-2 w-2 shrink-0"
+                                  >
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#3B82F6]" />
+                                  </span>
+                                )}
+                                <span className="font-mono font-bold text-xs text-[#7A0C0C] block group-hover:underline">
+                                  {report.id}
+                                </span>
+                              </div>
+                              {isUnread && (
+                                <span className="inline-block mt-1 text-[10px] font-semibold text-[#3B82F6] bg-blue-100/70 px-1.5 py-0.5 rounded-md">
+                                  Baru
+                                </span>
+                              )}
                             </td>
 
                             {/* Kolom Tanggal */}
@@ -1127,14 +1437,8 @@ export default function AdminDashboardPage() {
 
                             {/* Kolom Lokasi & Fasilitas */}
                             <td className="px-5 py-4 align-top max-w-xs">
-                              <div className="font-semibold text-gray-900 flex items-center gap-1.5">
+                              <div className="font-semibold text-gray-900">
                                 <span>{report.fasilitas}</span>
-                                {report.jumlahFoto > 0 && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-normal px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">
-                                    <ImageIcon className="w-2.5 h-2.5" />
-                                    {report.jumlahFoto}
-                                  </span>
-                                )}
                               </div>
                               <div className="text-xs text-gray-600 flex items-start gap-1 mt-1 leading-relaxed">
                                 <MapPin className="w-3.5 h-3.5 text-[#7A0C0C] shrink-0 mt-0.5" />
@@ -1154,7 +1458,7 @@ export default function AdminDashboardPage() {
                             <td className="px-5 py-4 align-top text-right">
                               <button
                                 type="button"
-                                onClick={() => setSelectedReport(report)}
+                                onClick={() => handleOpenDetailModal(report)}
                                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold text-[#7A0C0C] bg-[#7A0C0C]/10 hover:bg-[#7A0C0C] hover:text-white transition-all shadow-2xs active:scale-95 cursor-pointer"
                               >
                                 <span>Detail</span>
@@ -1162,24 +1466,50 @@ export default function AdminDashboardPage() {
                               </button>
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
 
                   {/* --- TAMPILAN MOBILE: LIST OF CARDS ADAPTIF (320px - 768px) --- */}
                   <div className="md:hidden divide-y divide-gray-100">
-                    {currentReports.map((report) => (
+                    {currentReports.map((report) => {
+                      const isUnread =
+                        report.status === "Terkirim" &&
+                        !seenReportIds.has(report.idRaw);
+
+                      return (
                       <div
                         key={report.id}
-                        className="p-4 space-y-3 hover:bg-gray-50/70 transition-colors"
+                        className={`p-4 space-y-3 transition-colors ${
+                          isUnread
+                            ? "bg-blue-50/35 hover:bg-blue-50/60 border-l-[3px] border-l-[#3B82F6]"
+                            : "hover:bg-gray-50/70"
+                        }`}
                       >
                         {/* Header Card: Tiket & Status */}
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <span className="font-mono text-xs font-bold text-[#7A0C0C]">
-                              {report.id}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              {isUnread && (
+                                <span
+                                  title="Laporan baru belum dibuka"
+                                  className="relative flex h-2 w-2 shrink-0"
+                                >
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#3B82F6]" />
+                                </span>
+                              )}
+                              <span className="font-mono text-xs font-bold text-[#7A0C0C]">
+                                {report.id}
+                              </span>
+                              {isUnread && (
+                                <span className="text-[10px] font-semibold text-[#3B82F6] bg-blue-100/70 px-1.5 py-0.5 rounded-md">
+                                  Baru
+                                </span>
+                              )}
+                            </div>
                             <p className="text-[11px] text-gray-500 flex items-center gap-1 mt-0.5">
                               <Calendar className="w-3 h-3 text-gray-400" />
                               {report.tanggal} • {report.waktu}
@@ -1232,7 +1562,7 @@ export default function AdminDashboardPage() {
                           </div>
                           <button
                             type="button"
-                            onClick={() => setSelectedReport(report)}
+                            onClick={() => handleOpenDetailModal(report)}
                             className="min-h-[44px] min-w-[88px] inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#7A0C0C] hover:bg-[#6e1010] active:scale-98 transition-colors shadow-xs cursor-pointer"
                           >
                             <span>Detail</span>
@@ -1240,7 +1570,8 @@ export default function AdminDashboardPage() {
                           </button>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </>
               )}
@@ -1344,12 +1675,10 @@ export default function AdminDashboardPage() {
 
                   <button
                     type="button"
-                    onClick={() => {
-                      setSelectedReport(null);
-                      setActivePhotoIndex(null);
-                    }}
+                    onClick={handleCloseDetailModal}
+                    disabled={transferLoading}
                     aria-label="Tutup modal"
-                    className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center transition-colors cursor-pointer"
+                    className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center transition-colors cursor-pointer disabled:opacity-50"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -1385,18 +1714,18 @@ export default function AdminDashboardPage() {
                     </div>
                     <div>
                       <span className="text-xs text-gray-400 block font-medium">
-                        Kategori Fasilitas
+                        Kategori Laporan
                       </span>
                       <span className="font-semibold text-gray-900">
-                        {selectedReport.kategori} - {selectedReport.fasilitas}
+                        {selectedReport.kategori} 
                       </span>
                     </div>
                     <div>
                       <span className="text-xs text-gray-400 block font-medium">
-                        Lokasi / Kampus
+                        Lokasi
                       </span>
                       <span className="font-semibold text-gray-900">
-                        {selectedReport.kampus} — {selectedReport.lokasi}
+                        {selectedReport.lokasi}
                       </span>
                     </div>
                   </div>
@@ -1447,32 +1776,148 @@ export default function AdminDashboardPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* Opsi Pemindahan Kategori Antar Unit (Khusus Admin BPS & BLU) */}
+                  {canTransferSelected && transferTarget && (
+                    <div className="p-4 rounded-2xl border border-amber-200/90 bg-amber-50/50 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-start gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
+                            <ArrowRightLeft className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs sm:text-sm font-bold text-gray-900">
+                              Salah Kategori? Pindahkan ke Admin {transferTarget.targetUnit}
+                            </h4>
+                            <p className="text-xs text-gray-600 mt-0.5 leading-relaxed">
+                              Kirim tiket ini ke{" "}
+                              <span className="font-semibold text-gray-800">
+                                {transferTarget.targetUnitFull}
+                              </span>{" "}
+                              jika laporan seharusnya masuk kategori{" "}
+                              <span className="font-semibold text-gray-800">
+                                {transferTarget.targetKategori}
+                              </span>
+                              .
+                            </p>
+                          </div>
+                        </div>
+
+                        {!isTransferOpen && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTransferError(null);
+                              setIsTransferOpen(true);
+                            }}
+                            className="w-full sm:w-auto shrink-0 min-h-[38px] inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-amber-300 bg-white hover:bg-amber-100/70 text-amber-800 text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                          >
+                            <ArrowRightLeft className="w-3.5 h-3.5" />
+                            <span>Pindahkan ke {transferTarget.targetUnit}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {isTransferOpen && (
+                        <div className="pt-3 border-t border-amber-200/70 space-y-3">
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="px-2.5 py-1 rounded-lg bg-white border border-gray-200 font-semibold text-gray-700">
+                              {transferTarget.sourceUnit} ({transferTarget.sourceKategori})
+                            </span>
+                            <ArrowRightLeft className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span className="px-2.5 py-1 rounded-lg bg-[#7A0C0C]/10 border border-[#7A0C0C]/20 font-bold text-[#7A0C0C]">
+                              {transferTarget.targetUnit} ({transferTarget.targetKategori})
+                            </span>
+                          </div>
+
+                          <div>
+                            <label
+                              htmlFor="transfer-catatan"
+                              className="block text-xs font-semibold text-gray-700 mb-1"
+                            >
+                              Catatan Pemindahan <span className="text-gray-400 font-normal">(opsional)</span>
+                            </label>
+                            <input
+                              id="transfer-catatan"
+                              type="text"
+                              maxLength={500}
+                              value={transferNote}
+                              onChange={(e) => setTransferNote(e.target.value)}
+                              disabled={transferLoading}
+                              placeholder={`Contoh: Keluhan terkait ${transferTarget.targetKategori.toLowerCase()}, diteruskan ke ${transferTarget.targetUnit}`}
+                              className="w-full px-3 py-2 rounded-xl border border-amber-200 bg-white text-xs sm:text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C]/30 focus:border-[#7A0C0C]"
+                            />
+                          </div>
+
+                          {transferError && (
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700">
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                              <span>{transferError}</span>
+                            </div>
+                          )}
+
+                          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsTransferOpen(false);
+                                setTransferError(null);
+                                setTransferNote("");
+                              }}
+                              disabled={transferLoading}
+                              className="min-h-[38px] px-3.5 py-1.5 rounded-xl border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              Batal
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleConfirmTransfer}
+                              disabled={transferLoading}
+                              className="min-h-[38px] inline-flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-60"
+                            >
+                              {transferLoading ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Memindahkan...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Send className="w-3.5 h-3.5" />
+                                  <span>Ya, Kirim ke Admin {transferTarget.targetUnit}</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Footer Modal */}
                 <div className="p-4 sm:p-5 border-t border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row items-center justify-end gap-3 shrink-0">
                   <button
                     type="button"
-                    onClick={() => {
-                      setSelectedReport(null);
-                      setActivePhotoIndex(null);
-                    }}
-                    className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl border border-gray-300 bg-white text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors cursor-pointer"
+                    onClick={handleCloseDetailModal}
+                    disabled={transferLoading}
+                    className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl border border-gray-300 bg-white text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors cursor-pointer disabled:opacity-50"
                   >
                     Tutup
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedReport(null);
-                      setActivePhotoIndex(null);
-                      router.push("/admin/ubah-status");
-                    }}
-                    className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 rounded-xl bg-[#7A0C0C] text-white text-sm font-semibold hover:bg-[#6e1010] transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
-                  >
-                    <span>Tindak Lanjuti Tiket</span>
-                    <ExternalLink className="w-4 h-4" />
-                  </button>
+                  {!isReadOnly && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleCloseDetailModal();
+                        router.push("/admin/ubah-status");
+                      }}
+                      disabled={transferLoading}
+                      className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 rounded-xl bg-[#7A0C0C] text-white text-sm font-semibold hover:bg-[#6e1010] transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <span>Tindak Lanjuti Tiket</span>
+                      <ExternalLink className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

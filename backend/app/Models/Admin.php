@@ -10,6 +10,12 @@ class Admin extends Authenticatable
 {
     use HasFactory;
 
+    public const READ_ONLY_POSITIONS = [
+        'wakil_rektor_ii',
+        'kepala_blu',
+        'kepala_bps',
+    ];
+
     public const POSITIONS = [
         'wakil_rektor_ii' => ['label' => 'Wakil Rektor II', 'role' => 'BOTH', 'campus' => null],
         'kepala_blu' => ['label' => 'Kepala Biro Layanan Umum', 'role' => 'BLU', 'campus' => null],
@@ -116,12 +122,22 @@ class Admin extends Authenticatable
     }
 
     /**
-     * Wakil Rektor II hanya dapat melihat laporan. Admin unit lain dapat mengubah
-     * laporan yang sesuai dengan cakupan kampus dan kategori unitnya.
+     * Periksa apakah admin hanya memiliki hak pantau (read-only):
+     * Wakil Rektor II, Kepala Biro Layanan Umum, dan Kepala Biro Prasarana dan Sarana.
+     */
+    public function isReadOnlyAdmin(): bool
+    {
+        return in_array($this->jabatan, self::READ_ONLY_POSITIONS, true)
+            || $this->role === 'BOTH';
+    }
+
+    /**
+     * Wakil Rektor II, Kepala Biro BLU, dan Kepala Biro BPS hanya dapat memantau laporan.
+     * Kepala Bagian BLU/BPS per kampus dapat melakukan aksi pada laporan sesuai cakupan kampus dan unitnya.
      */
     public function canEditLaporan(Laporan $laporan): bool
     {
-        if ($this->jabatan === 'wakil_rektor_ii' || $this->role === 'BOTH') {
+        if ($this->isReadOnlyAdmin()) {
             return false;
         }
 

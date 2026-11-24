@@ -64,7 +64,9 @@ class AdminAuthTest extends TestCase
             'username' => $admin->username,
             'password' => 'Initial-pass-123',
             'jabatan' => 'kepala_blu',
-        ])->assertOk()->assertJsonPath('user.role_detail', 'BLU');
+        ])->assertOk()
+            ->assertJsonPath('user.role_detail', 'BLU')
+            ->assertJsonPath('redirect_to', '/admin/prioritas');
 
         $this->withToken($login->json('token'))
             ->getJson('/api/admin/me')
@@ -100,7 +102,9 @@ class AdminAuthTest extends TestCase
             'username' => $admin->username,
             'password' => 'Initial-pass-123',
             'jabatan' => 'wakil_rektor_ii',
-        ])->assertOk()->assertJsonPath('user.role_detail', 'BOTH');
+        ])->assertOk()
+            ->assertJsonPath('user.role_detail', 'BOTH')
+            ->assertJsonPath('redirect_to', '/admin/prioritas');
 
         $this->withToken($login->json('token'))
             ->getJson('/api/admin/me')
@@ -115,6 +119,39 @@ class AdminAuthTest extends TestCase
             ->assertJsonPath('user.nama', 'Nama Pribadi WR II')
             ->assertJsonPath('user.jabatan', 'wakil_rektor_ii')
             ->assertJsonPath('user.role_detail', 'BOTH');
+    }
+
+    public function test_login_redirects_read_only_admins_to_prioritas_and_campus_admins_to_dashboard(): void
+    {
+        $kepalaBps = Admin::create([
+            'nama_admin' => 'Kepala Biro BPS',
+            'username' => 'kepala.bps',
+            'password' => Hash::make('Initial-pass-123'),
+            'role' => 'BPS',
+            'campus' => null,
+            'jabatan' => 'kepala_bps',
+        ]);
+
+        $kabagBlu1 = Admin::create([
+            'nama_admin' => 'Kepala Bagian BLU 1',
+            'username' => 'blu.kampus1',
+            'password' => Hash::make('Initial-pass-123'),
+            'role' => 'BLU',
+            'campus' => 'Kampus 1',
+            'jabatan' => 'kepala_bagian_blu_1',
+        ]);
+
+        $this->postJson('/api/admin/login', [
+            'username' => $kepalaBps->username,
+            'password' => 'Initial-pass-123',
+            'jabatan' => 'kepala_bps',
+        ])->assertOk()->assertJsonPath('redirect_to', '/admin/prioritas');
+
+        $this->postJson('/api/admin/login', [
+            'username' => $kabagBlu1->username,
+            'password' => 'Initial-pass-123',
+            'jabatan' => 'kepala_bagian_blu_1',
+        ])->assertOk()->assertJsonPath('redirect_to', '/admin/dashboard');
     }
 
     public function test_admin_password_reset_uses_the_email_assigned_to_the_selected_position(): void

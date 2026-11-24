@@ -224,10 +224,23 @@ class LaporanCampusScopingTest extends TestCase
         sort($wr2Ids);
         $this->assertSame(array_values($reports), $wr2Ids);
 
-        // Wakil Rektor II dapat melihat seluruh laporan, tetapi tidak dapat mengubah status.
+        // Wakil Rektor II, Kepala Biro BLU, dan Kepala Biro BPS dapat memantau laporan,
+        // tetapi tidak dapat melakukan aksi perubahan status maupun prioritas.
         $this->withToken($wr2Token)->patchJson("/api/admin/laporan/{$reports['k1_kebersihan']}/status", [
             'status_laporan' => 'Selesai',
             'pesan_tanggapan' => 'Tidak boleh disimpan oleh WR II',
+        ])->assertForbidden();
+        $this->withToken($kepalaBluToken)->patchJson("/api/admin/laporan/{$reports['k1_kebersihan']}/status", [
+            'status_laporan' => 'Sedang Diverifikasi',
+        ])->assertForbidden();
+        $this->withToken($kepalaBpsToken)->patchJson("/api/admin/laporan/{$reports['k1_fasilitas']}/status", [
+            'status_laporan' => 'Sedang Diverifikasi',
+        ])->assertForbidden();
+        $this->withToken($kepalaBluToken)->patchJson("/api/admin/priority/reports/{$reports['k1_kebersihan']}/severity", [
+            'severity_level' => 'berat',
+        ])->assertForbidden();
+        $this->withToken($kepalaBpsToken)->patchJson("/api/admin/priority/reports/{$reports['k1_fasilitas']}/severity", [
+            'severity_level' => 'berat',
         ])->assertForbidden();
     }
 

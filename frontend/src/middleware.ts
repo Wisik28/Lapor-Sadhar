@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const PUBLIC_ROUTES = ['/login', '/register', '/admin/login', '/admin/forgot-password', '/forgot-password'];
 
+const READ_ONLY_BLOCKED_ADMIN_ROUTES = ['/admin/dashboard', '/admin/ubah-status', '/admin/riwayat'];
+
 const PROTECTED_ROUTES = [
   '/buat-laporan',
   '/riwayat-laporan',
@@ -11,6 +13,45 @@ const PROTECTED_ROUTES = [
   '/profile',
   '/admin',
 ];
+
+function isReadOnlyAdminSession(user: {
+  jabatan?: string | null;
+  role_detail?: string | null;
+  jabatan_label?: string | null;
+  username?: string | null;
+} | null): boolean {
+  if (!user) return false;
+
+  const jabatan = (user.jabatan ?? '').trim().toLowerCase();
+  const roleDetail = (user.role_detail ?? '').trim().toUpperCase();
+  const label = (user.jabatan_label ?? '').trim().toLowerCase();
+  const username = (user.username ?? '').trim().toLowerCase();
+
+  return (
+    roleDetail === 'BOTH' ||
+    jabatan === 'wakil_rektor_ii' ||
+    jabatan === 'kepala_blu' ||
+    jabatan === 'kepala_bps' ||
+    label.includes('wakil rektor') ||
+    label.includes('kepala biro') ||
+    username === 'admin.wr2' ||
+    username === 'admin.wakil_rektor_ii' ||
+    username === 'kepala.blu' ||
+    username === 'kepala.bps' ||
+    username === 'admin.kepala_blu' ||
+    username === 'admin.kepala_bps'
+  );
+}
+
+function isBlockedForReadOnlyAdmin(pathname: string): boolean {
+  if (pathname === '/admin' || pathname === '/admin/') {
+    return true;
+  }
+
+  return READ_ONLY_BLOCKED_ADMIN_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  );
+}
 
 function isProtectedRoute(pathname: string) {
   return PROTECTED_ROUTES.some((route) => {
@@ -46,7 +87,8 @@ export function middleware(request: NextRequest) {
     try {
       const user = userSession ? JSON.parse(userSession) : null;
       if (user?.role === 'Admin') {
-        return NextResponse.redirect(new URL('/admin/dashboard', request.url));
+        const adminHome = isReadOnlyAdminSession(user) ? '/admin/prioritas' : '/admin/dashboard';
+        return NextResponse.redirect(new URL(adminHome, request.url));
       }
       return NextResponse.redirect(new URL('/buat-laporan', request.url));
     } catch {
@@ -65,6 +107,9 @@ export function middleware(request: NextRequest) {
         const user = userSession ? JSON.parse(userSession) : null;
         if (user?.role !== 'Admin') {
           return NextResponse.redirect(new URL('/buat-laporan', request.url));
+        }
+        if (isReadOnlyAdminSession(user) && isBlockedForReadOnlyAdmin(pathname)) {
+          return NextResponse.redirect(new URL('/admin/prioritas', request.url));
         }
       } catch {
         return NextResponse.redirect(new URL('/admin/login', request.url));

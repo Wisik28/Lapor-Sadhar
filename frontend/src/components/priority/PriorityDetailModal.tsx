@@ -27,6 +27,9 @@ import {
   SeverityLevel,
 } from "@/lib/priorityApi";
 import { getFotoUrl as getBaseFotoUrl } from "@/lib/laporanPhoto";
+import { AdminStatusBadge } from "@/components/AdminStatusBadge";
+import { authApi } from "@/lib/api";
+import { isReadOnlyAdmin } from "@/lib/admin-positions";
 
 interface PriorityDetailModalProps {
   report: PriorityReportItem | null;
@@ -36,6 +39,7 @@ interface PriorityDetailModalProps {
   hideAiAnalysis?: boolean;
   hideScoreBreakdown?: boolean;
   hideHandlingInfo?: boolean;
+  readOnly?: boolean;
 }
 
 function resolveFotoUrl(rawFoto: string): string {
@@ -117,6 +121,7 @@ export function PriorityDetailModal({
   hideAiAnalysis = false,
   hideScoreBreakdown = false,
   hideHandlingInfo = false,
+  readOnly = false,
 }: PriorityDetailModalProps) {
   const [detailData, setDetailData] = useState<PriorityDetailData | null>(null);
   const [selectedSeverity, setSelectedSeverity] = useState<SeverityLevel>("sedang");
@@ -175,6 +180,12 @@ export function PriorityDetailModal({
 
   if (!isOpen || !report) return null;
 
+  const canEditSeverity =
+    !readOnly &&
+    typeof window !== "undefined" &&
+    Boolean(localStorage.getItem("admin_token")) &&
+    !isReadOnlyAdmin(authApi.getCurrentUser());
+
   const handleSaveSeverity = async () => {
     try {
       setIsSaving(true);
@@ -207,16 +218,17 @@ export function PriorityDetailModal({
               <h2 className="text-lg font-bold text-gray-900 leading-tight">
                 {hideAiAnalysis ? "Detail Laporan" : "Penetapan Prioritas & Verifikasi AI"}
               </h2>
-              <p className="text-xs text-gray-500 font-medium">
-                Kategori:{" "}
-                <span className="font-semibold text-gray-700">
-                  {report.kategori_laporan}
-                </span>{" "}
-                • Status:{" "}
-                <span className="font-semibold text-gray-700">
-                  {report.status_terkini}
+              <div className="text-xs text-gray-500 font-medium flex flex-wrap items-center gap-1.5 mt-0.5">
+                <span>
+                  Kategori:{" "}
+                  <span className="font-semibold text-gray-700">
+                    {report.kategori_laporan}
+                  </span>
                 </span>
-              </p>
+                <span>•</span>
+                <span>Status:</span>
+                <AdminStatusBadge status={report.status_terkini} />
+              </div>
             </div>
           </div>
           <button
@@ -500,7 +512,7 @@ export function PriorityDetailModal({
           )}
 
           {/* Form Penetapan / Override oleh Admin */}
-          {typeof window !== "undefined" && localStorage.getItem("admin_token") ? (
+          {canEditSeverity ? (
             <div className="p-5 bg-white rounded-2xl border-2 border-[#8C1515]/20 shadow-xs space-y-4">
               <div>
                 <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
@@ -647,7 +659,7 @@ export function PriorityDetailModal({
           >
             Tutup
           </button>
-          {typeof window !== "undefined" && localStorage.getItem("admin_token") && (
+          {canEditSeverity && (
             <button
               type="button"
               onClick={handleSaveSeverity}

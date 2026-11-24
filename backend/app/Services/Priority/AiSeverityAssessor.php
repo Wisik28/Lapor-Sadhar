@@ -31,9 +31,10 @@ class AiSeverityAssessor
      * Kata kunci kerusakan tingkat berat (Fasilitas)
      */
     private const FASILITAS_BERAT_KEYWORDS = [
-        'atap bocor deras', 'bocor parah', 'banjir', 'ambruk', 'jebol', 'tidak bisa digunakan sama sekali',
+        'atap bocor deras', 'bocor', 'banjir', 'ambruk', 'jebol', 'tidak bisa digunakan',
         'mati total', 'lift macet', 'terjebak', 'laboratorium tidak bisa dipakai', 'kabel terbuka',
-        'korsleting', 'kebakaran', 'runtuh', 'bahaya', 'saluran air pecah'
+        'korsleting', 'kebakaran', 'runtuh', 'bahaya', 'saluran air pecah', 'atap ambruk', 
+        'kabel putus', 'kerusakan parah', 'kesetrum', 'tersengat', 'amblas', 'jebol'
     ];
 
     /**
@@ -42,7 +43,10 @@ class AiSeverityAssessor
     private const FASILITAS_SEDANG_KEYWORDS = [
         'ac mati', 'ac rusak', 'ac panas', 'lampu mati', 'lampu padam', 'proyektor mati',
         'proyektor rusak', 'pintu rusak', 'pintu macet', 'jendela rusak', 'wastafel mampet',
-        'kran bocor', 'toilet rusak', 'kursi rusak', 'meja rusak', 'kipas mati', 'kunci pintu rusak'
+        'kran bocor', 'toilet rusak', 'kursi rusak', 'meja rusak', 'kipas mati', 'kunci pintu rusak',
+        'rusak', 'tidak bisa digunakan', 'tidak berfungsi', 'tidak nyaman', 'berisik', 'menghambat',
+        'terlalu panas', 'tidak dingin', 'kipas angin tidak berfungsi', 'kipas angin rusak', 
+        'tidak berfungsi', 'rusak', 'urnioir', 'kloset', 'wastafel', 'sakelar', 'lampu'
     ];
 
     /**
@@ -51,7 +55,8 @@ class AiSeverityAssessor
     private const KEBERSIHAN_BERAT_KEYWORDS = [
         'limbah b3', 'limbah kimia', 'bangkai', 'toilet meluap', 'kotoran meluap',
         'air limbah membanjiri', 'sampah menggunung menutupi akses', 'bau busuk sangat menyengat',
-        'sarang tawon', 'sarang lebah', 'ulat', 'belatung'
+        'sarang tawon', 'sarang lebah', 'ulat', 'belatung', 'bau menyengat', 'bau busuk', 'aroma tidak sedap', 
+        'aroma busuk'
     ];
 
     /**
