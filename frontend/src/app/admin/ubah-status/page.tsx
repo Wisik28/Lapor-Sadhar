@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, UserCheck } from "lucide-react";
 import AdminNavbar from "@/components/AdminNavbar";
+import ImagePreviewModal from "@/components/ImagePreviewModal";
 import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { adminLaporanApi } from "@/lib/api";
 import { formatUserFriendlyError } from "@/lib/networkError";
@@ -219,6 +220,7 @@ export default function UbahStatusLaporanPage() {
   const [laporan, setLaporan] = useState<Laporan[]>([]);
   const [laporanTerpilih, setLaporanTerpilih] =
     useState<Laporan | null>(null);
+  const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (isRestrictedRole) {
@@ -574,6 +576,7 @@ export default function UbahStatusLaporanPage() {
 
   function pilihLaporan(item: Laporan) {
     setLaporanTerpilih(item);
+    setActivePhotoIndex(null);
 
     setStatusBaru(
       normalizeStatus(
@@ -955,12 +958,11 @@ export default function UbahStatusLaporanPage() {
                       </p>
                       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                         {fotoList.map((foto, index) => (
-                          <a
+                          <button
                             key={`${foto}-${index}`}
-                            href={getFotoUrl(foto)}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50"
+                            type="button"
+                            onClick={() => setActivePhotoIndex(index)}
+                            className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-left cursor-pointer hover:border-[#7A0C0C] transition-colors"
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
@@ -980,10 +982,10 @@ export default function UbahStatusLaporanPage() {
                             <p className="hidden p-3 text-center text-xs text-red-700">
                               Foto tidak dapat dimuat dari penyimpanan.
                             </p>
-                            <p className="p-2 text-center text-xs text-[#7A0C0C]">
+                            <p className="p-2 text-center text-xs font-medium text-[#7A0C0C]">
                               Lihat foto
                             </p>
-                          </a>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -1237,6 +1239,14 @@ export default function UbahStatusLaporanPage() {
           </div>
         </section>
       </main>
+
+      <ImagePreviewModal
+        images={fotoList.map(getFotoUrl)}
+        activeIndex={activePhotoIndex}
+        onClose={() => setActivePhotoIndex(null)}
+        onChangeIndex={setActivePhotoIndex}
+        titlePrefix="Foto Bukti"
+      />
     </div>
   );
 }

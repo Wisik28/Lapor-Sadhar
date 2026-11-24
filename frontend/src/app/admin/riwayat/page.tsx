@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import AdminNavbar from "@/components/AdminNavbar";
+import ImagePreviewModal from "@/components/ImagePreviewModal";
 import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { adminLaporanApi } from "@/lib/api";
 import { formatUserFriendlyError } from "@/lib/networkError";
@@ -257,7 +258,7 @@ export default function AdminRiwayatLaporanPage() {
   const itemsPerPage = 5;
 
   const [selectedDetail, setSelectedDetail] = useState<LaporanItem | null>(null);
-  const [previewFoto, setPreviewFoto] = useState<string | null>(null);
+  const [previewPhotoIndex, setPreviewPhotoIndex] = useState<number | null>(null);
   const [statusBaru, setStatusBaru] = useState<StatusValue>("Terkirim");
   const [pesanTanggapan, setPesanTanggapan] = useState("");
   const [updateLoading, setUpdateLoading] = useState(false);
@@ -1172,7 +1173,7 @@ export default function AdminRiwayatLaporanPage() {
                       >
                         <button
                           type="button"
-                          onClick={() => setPreviewFoto(fotoUrl)}
+                          onClick={() => setPreviewPhotoIndex(idx)}
                           className="block w-full relative group cursor-zoom-in focus:outline-none"
                           title="Klik untuk memperbesar foto"
                         >
@@ -1373,50 +1374,14 @@ export default function AdminRiwayatLaporanPage() {
         </div>
       )}
 
-      {/* Lightbox Pratinjau Foto Ukuran Penuh */}
-      {previewFoto && (
-        <div
-          onClick={() => setPreviewFoto(null)}
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-xs p-4"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="relative max-w-4xl w-full flex flex-col items-center gap-3"
-          >
-            <div className="w-full flex items-center justify-between text-white">
-              <span className="text-xs font-semibold text-slate-300">
-                Pratinjau Foto Bukti Laporan
-              </span>
-              <div className="flex items-center gap-2">
-                {!previewFoto.startsWith("data:") && (
-                  <a
-                    href={previewFoto}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-semibold transition-colors"
-                  >
-                    Buka di Tab Baru ↗
-                  </a>
-                )}
-                <button
-                  onClick={() => setPreviewFoto(null)}
-                  className="p-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer"
-                  title="Tutup pratinjau"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-            <img
-              src={previewFoto}
-              alt="Pratinjau foto ukuran penuh"
-              loading="lazy"
-              decoding="async"
-              className="max-h-[82vh] w-auto max-w-full object-contain rounded-2xl shadow-2xl border border-white/10"
-            />
-          </div>
-        </div>
-      )}
+      {/* Lightbox Pratinjau Foto Ukuran Tetap */}
+      <ImagePreviewModal
+        images={selectedFotoList}
+        activeIndex={selectedDetail ? previewPhotoIndex : null}
+        onClose={() => setPreviewPhotoIndex(null)}
+        onChangeIndex={setPreviewPhotoIndex}
+        titlePrefix="Foto Bukti"
+      />
 
       <footer className="border-t border-slate-200 bg-white py-4 text-center mt-auto">
         <p className="text-xs text-slate-500">

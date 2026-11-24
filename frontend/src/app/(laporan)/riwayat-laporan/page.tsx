@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
+import ImagePreviewModal from "@/components/ImagePreviewModal";
 import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { laporanApi, type LaporanItem } from "@/lib/api";
 import { formatUserFriendlyError } from "@/lib/networkError";
@@ -180,7 +181,10 @@ export default function UserRiwayatLaporanPage() {
 
   // State Modal Detail & Pratinjau Foto
   const [selectedDetail, setSelectedDetail] = useState<LaporanItem | null>(null);
-  const [previewFoto, setPreviewFoto] = useState<string | null>(null);
+  const [previewGallery, setPreviewGallery] = useState<{
+    images: string[];
+    index: number;
+  } | null>(null);
 
   // Daftar URL foto valid untuk laporan yang dibuka di modal detail
   const selectedFotoList = useMemo(() => {
@@ -826,7 +830,7 @@ export default function UserRiwayatLaporanPage() {
                                   type="button"
                                   onClick={() => {
                                     if (rowFotos.length === 1) {
-                                      setPreviewFoto(firstFotoUrl);
+                                      setPreviewGallery({ images: rowFotos, index: 0 });
                                     } else {
                                       setSelectedDetail(lap);
                                     }
@@ -1019,7 +1023,9 @@ export default function UserRiwayatLaporanPage() {
                       >
                         <button
                           type="button"
-                          onClick={() => setPreviewFoto(fotoUrl)}
+                          onClick={() =>
+                            setPreviewGallery({ images: selectedFotoList, index: idx })
+                          }
                           className="block w-full relative group cursor-zoom-in focus:outline-none"
                           title="Klik untuk memperbesar foto"
                         >
@@ -1256,50 +1262,16 @@ export default function UserRiwayatLaporanPage() {
         </div>
       )}
 
-      {/* Lightbox Pratinjau Foto Ukuran Penuh */}
-      {previewFoto && (
-        <div
-          onClick={() => setPreviewFoto(null)}
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-xs p-4"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="relative max-w-4xl w-full flex flex-col items-center gap-3"
-          >
-            <div className="w-full flex items-center justify-between text-white">
-              <span className="text-xs font-semibold text-slate-300">
-                Pratinjau Foto Bukti Laporan
-              </span>
-              <div className="flex items-center gap-2">
-                {!previewFoto.startsWith("data:") && (
-                  <a
-                    href={previewFoto}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-semibold transition-colors"
-                  >
-                    Buka di Tab Baru ↗
-                  </a>
-                )}
-                <button
-                  onClick={() => setPreviewFoto(null)}
-                  className="p-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer"
-                  title="Tutup pratinjau"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-            <img
-              src={previewFoto}
-              alt="Pratinjau foto ukuran penuh"
-              loading="lazy"
-              decoding="async"
-              className="max-h-[82vh] w-auto max-w-full object-contain rounded-2xl shadow-2xl border border-white/10"
-            />
-          </div>
-        </div>
-      )}
+      {/* Lightbox Pratinjau Foto Ukuran Tetap */}
+      <ImagePreviewModal
+        images={previewGallery?.images ?? []}
+        activeIndex={previewGallery ? previewGallery.index : null}
+        onClose={() => setPreviewGallery(null)}
+        onChangeIndex={(index) =>
+          setPreviewGallery((prev) => (prev ? { ...prev, index } : null))
+        }
+        titlePrefix="Foto Bukti"
+      />
     </div>
   );
 }
