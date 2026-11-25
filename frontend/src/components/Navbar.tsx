@@ -20,19 +20,19 @@ export default function Navbar({
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 shrink-0 z-20 shadow-xs">
       {/* Left Side: Mobile Menu Button & Dynamic Page Title */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
         {onToggleSidebar && (
           <button
             type="button"
             onClick={onToggleSidebar}
             aria-label="Buka menu navigasi"
-            className="md:hidden flex items-center justify-center w-11 h-11 -ml-2 rounded-xl text-slate-700 hover:text-[#7A0C0C] hover:bg-slate-100 active:bg-slate-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7A0C0C]"
+            className="md:hidden flex items-center justify-center w-11 h-11 -ml-2 rounded-xl text-slate-700 hover:text-[#7A0C0C] hover:bg-slate-100 active:bg-slate-200 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#7A0C0C]"
           >
             <Menu className="w-6 h-6" />
           </button>
         )}
-        <div className="flex flex-col">
-          <h1 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
+        <div className="flex flex-col min-w-0">
+          <h1 className="text-base sm:text-lg font-bold text-slate-900 leading-tight truncate">
             {pageTitle}
           </h1>
           <p className="text-xs text-slate-500 hidden sm:block">
@@ -42,7 +42,7 @@ export default function Navbar({
       </div>
 
       {/* Right Side: Profile Icon & User Info */}
-      <Link href="/profile" className="flex items-center gap-2 sm:gap-3 pl-3 sm:pl-4 border-l border-slate-200 rounded-lg hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-[#7A0C0C]" aria-label="Edit profil">
+      <Link href="/profile" className="flex items-center gap-2 sm:gap-3 pl-2.5 sm:pl-4 min-h-[44px] sm:min-h-0 border-l border-slate-200 rounded-lg hover:bg-slate-50 shrink-0 focus-visible:outline-2 focus-visible:outline-[#7A0C0C]" aria-label="Edit profil">
         <div className="text-right hidden sm:block">
           <p className="text-sm font-semibold text-slate-800 leading-none">
             {userName}

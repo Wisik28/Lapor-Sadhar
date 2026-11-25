@@ -105,7 +105,7 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen w-full flex flex-col font-sans antialiased">
+    <div className="min-h-[100dvh] sm:min-h-screen w-full flex flex-col font-sans antialiased">
       {/* ═══════════ TOP BANNER: Maroon Header (compact) ═══════════ */}
       <header className="relative bg-[#7A0C0C] w-full shrink-0">
         <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-transparent pointer-events-none" />
@@ -158,7 +158,7 @@ export default function RegisterPage() {
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                 Kategori Pengguna <span className="text-red-500">*</span>
               </label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -248,7 +248,7 @@ export default function RegisterPage() {
                         ? "Contoh: 225314001"
                         : "Contoh: KARYAWAN001"
                     }
-                    className="w-full h-9 px-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
+                    className="w-full h-11 sm:h-9 px-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-base sm:text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
                   />
                 </div>
 
@@ -266,7 +266,7 @@ export default function RegisterPage() {
                       value={nama}
                       onChange={(e) => setNama(e.target.value)}
                       placeholder="Nama lengkap Anda"
-                      className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
+                      className="w-full h-11 sm:h-9 pl-9 pr-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-base sm:text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
                     />
                   </div>
                 </div>
@@ -290,7 +290,7 @@ export default function RegisterPage() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="nama@gmail.com"
-                      className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
+                      className="w-full h-11 sm:h-9 pl-9 pr-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-base sm:text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
                     />
                   </div>
                 </div>
@@ -345,7 +345,7 @@ export default function RegisterPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Minimal 6 karakter"
-                      className="w-full h-9 pl-9 pr-9 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
+                      className="w-full h-11 sm:h-9 pl-9 pr-10 sm:pr-9 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-base sm:text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
                     />
                     <button
                       type="button"
@@ -376,7 +376,7 @@ export default function RegisterPage() {
                       value={passwordConfirmation}
                       onChange={(e) => setPasswordConfirmation(e.target.value)}
                       placeholder="Ulangi kata sandi"
-                      className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
+                      className="w-full h-11 sm:h-9 pl-9 pr-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-base sm:text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
                     />
                   </div>
                 </div>
@@ -399,7 +399,7 @@ export default function RegisterPage() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full h-10 flex items-center justify-center gap-2 rounded-lg bg-[#7A0C0C] hover:bg-[#9E1B1B] active:bg-[#600808] text-white text-sm font-semibold shadow-md shadow-[#7A0C0C]/25 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+                className="w-full h-11 sm:h-10 flex items-center justify-center gap-2 rounded-lg bg-[#7A0C0C] hover:bg-[#9E1B1B] active:bg-[#600808] text-white text-sm font-semibold shadow-md shadow-[#7A0C0C]/25 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
               >
                 {isLoading ? (
                   <>

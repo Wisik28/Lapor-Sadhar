@@ -73,7 +73,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="h-[100svh] w-full flex flex-col font-sans antialiased overflow-hidden">
+    <div className="min-h-[100dvh] sm:h-[100svh] w-full flex flex-col font-sans antialiased overflow-y-auto sm:overflow-hidden">
       {/* ═══════════ TOP BANNER: Maroon Header (compact) ═══════════ */}
       <header className="relative bg-[#7A0C0C] w-full shrink-0">
         <div className="absolute inset-0 bg-gradient-to-b from-black/10 to-transparent pointer-events-none" />
@@ -101,7 +101,7 @@ export default function LoginPage() {
 
       {/* ═══════════ MAIN CONTENT: Campus BG + Login Card ═══════════ */}
       <main
-        className="relative flex-1 min-h-0 flex items-center justify-center px-4"
+        className="relative flex-1 min-h-0 flex items-center justify-center px-4 py-6 sm:py-0"
         style={{
           backgroundImage: "url('/assets/bg_kampus.jpg')",
           backgroundSize: "cover",
@@ -167,7 +167,7 @@ export default function LoginPage() {
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
                     placeholder="Masukkan NIM atau NIP Anda"
-                    className="w-full h-10 pl-9 pr-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
+                    className="w-full h-11 sm:h-10 pl-9 pr-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-base sm:text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
                   />
                 </div>
               </div>
@@ -187,13 +187,13 @@ export default function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Masukkan kata sandi Anda"
-                    className="w-full h-10 pl-9 pr-10 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
+                    className="w-full h-11 sm:h-10 pl-9 pr-11 sm:pr-10 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-base sm:text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     aria-label="Tampilkan atau sembunyikan kata sandi"
-                    className="absolute right-3 text-slate-400 hover:text-slate-600 transition-colors p-0.5"
+                    className="absolute right-2 sm:right-3 text-slate-400 hover:text-slate-600 transition-colors p-1.5 sm:p-0.5"
                   >
                     {showPassword ? (
                       <EyeOff className="w-4 h-4" />
@@ -228,7 +228,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full h-10 flex items-center justify-center gap-2 rounded-lg bg-[#7A0C0C] hover:bg-[#9E1B1B] active:bg-[#600808] text-white text-sm font-semibold shadow-md shadow-[#7A0C0C]/25 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+                className="w-full h-11 sm:h-10 flex items-center justify-center gap-2 rounded-lg bg-[#7A0C0C] hover:bg-[#9E1B1B] active:bg-[#600808] text-white text-sm font-semibold shadow-md shadow-[#7A0C0C]/25 transition-all duration-200 active:scale-[0.98] disabled:opacity-60 cursor-pointer"
               >
                 {isLoading ? (
                   <>

@@ -1,3 +1,5 @@
+import { resolveLokasiKampus } from "./laporanCampus";
+
 export const adminPositions = [
   { value: "wakil_rektor_ii", label: "Wakil Rektor II" },
   { value: "kepala_blu", label: "Kepala Biro Layanan Umum" },
@@ -40,8 +42,19 @@ export function resolveAdminCampus(user?: AdminIdentity | null): string | null {
   if (jabatanMatch) return `Kampus ${jabatanMatch[1]}`;
 
   const label = (user.jabatan_label ?? "").trim().toLowerCase();
-  const labelMatch = label.match(/\bkepala bagian (?:blu|bps)\s+([1-4])\b/);
-  if (labelMatch) return `Kampus ${labelMatch[1]}`;
+  const labelMatch = label.match(
+    /\bkepala bagian (?:blu|bps)\s+(?:kampus\s+)?(iv|iii|ii|i|[1-4])\b/
+  );
+  if (labelMatch) {
+    const romanMap: Record<string, string> = {
+      i: "1",
+      ii: "2",
+      iii: "3",
+      iv: "4",
+    };
+    const num = romanMap[labelMatch[1]] ?? labelMatch[1];
+    return `Kampus ${num}`;
+  }
 
   const username = (user.username ?? "").trim().toLowerCase();
   const usernameMatch = username.match(/^(?:blu|bps)\.kampus([1-4])$/);
@@ -178,6 +191,39 @@ export function normalizeKategoriLaporan(kategori?: string | null): KategoriLapo
     return "Kebersihan";
   }
   return "Fasilitas";
+}
+
+/**
+ * Memeriksa apakah admin yang aktif (BPS/BLU per kampus) berwenang mengelola/menghapus laporan ini.
+ * Selaras dengan backend Admin::canEditLaporan().
+ */
+export function canAdminManageLaporan(
+  user?: AdminIdentity | null,
+  report?: {
+    kategori_laporan?: string | null;
+    lokasi_kampus?: string | null;
+    lokasi?: string | null;
+  } | null
+): boolean {
+  if (!user || !report || isReadOnlyAdmin(user)) return false;
+
+  const adminUnit = resolveAdminUnit(user);
+  if (!adminUnit) return false;
+
+  const kategori = normalizeKategoriLaporan(report.kategori_laporan);
+  if (adminUnit === "BPS" && kategori !== "Fasilitas") return false;
+  if (adminUnit === "BLU" && kategori !== "Kebersihan") return false;
+
+  const adminCampus = resolveAdminCampus(user);
+  if (adminCampus !== null) {
+    const reportCampus = resolveLokasiKampus(
+      report.lokasi_kampus,
+      report.lokasi
+    );
+    return reportCampus === adminCampus;
+  }
+
+  return true;
 }
 
 /**

@@ -256,7 +256,7 @@ export default function BuatLaporanPage() {
 
   if (authLoading) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-gradient-to-br from-[#F9F6F2] via-[#F3F4F6] to-[#F3ECE6]">
+      <div className="flex h-[100dvh] md:h-screen w-full items-center justify-center bg-gradient-to-br from-[#F9F6F2] via-[#F3F4F6] to-[#F3ECE6]">
         <div className="flex flex-col items-center gap-3.5 bg-white/80 backdrop-blur-md px-8 py-6 rounded-2xl border border-slate-200/80 shadow-lg">
           <div className="w-10 h-10 border-4 border-[#7A0C0C]/20 border-t-[#7A0C0C] rounded-full animate-spin" />
           <p className="text-slate-600 text-sm font-semibold">Memeriksa autentikasi...</p>
@@ -266,7 +266,7 @@ export default function BuatLaporanPage() {
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#F5F3F0] font-sans antialiased text-slate-800">
+    <div className="flex h-[100dvh] md:h-screen w-full overflow-hidden bg-[#F5F3F0] font-sans antialiased text-slate-800">
       <Sidebar isOpenMobile={isSidebarOpen} onCloseMobile={() => setIsSidebarOpen(false)} />
 
       <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
@@ -561,17 +561,17 @@ export default function BuatLaporanPage() {
                             value={state.detailLokasi}
                             onChange={(e) => updateField('detailLokasi', e.target.value)}
                             required
-                            className="w-full min-h-[46px] pl-10 pr-4 py-2.5 rounded-xl border border-slate-300/80 bg-white/90 hover:bg-white focus:bg-white focus:ring-2 focus:ring-[#7A0C0C]/25 focus:border-[#7A0C0C] text-sm text-slate-800 placeholder:text-slate-400 shadow-2xs transition-all outline-none"
+                            className="w-full min-h-[46px] pl-10 pr-4 py-2.5 rounded-xl border border-slate-300/80 bg-white/90 hover:bg-white focus:bg-white focus:ring-2 focus:ring-[#7A0C0C]/25 focus:border-[#7A0C0C] text-base sm:text-sm text-slate-800 placeholder:text-slate-400 shadow-2xs transition-all outline-none"
                           />
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-1.5 pt-0.5">
                           {LOKASI_PRESETS.map((preset) => (
                             <button
                               key={preset}
                               type="button"
                               onClick={() => handleSelectLokasiPreset(preset)}
-                              className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-white/80 hover:bg-[#7A0C0C]/10 text-slate-600 hover:text-[#7A0C0C] border border-slate-200 hover:border-[#7A0C0C]/30 transition-colors cursor-pointer"
+                              className="min-h-[34px] sm:min-h-0 px-3 py-1.5 sm:px-2.5 sm:py-1 rounded-full text-xs sm:text-[11px] font-medium bg-white/80 hover:bg-[#7A0C0C]/10 text-slate-600 hover:text-[#7A0C0C] border border-slate-200 hover:border-[#7A0C0C]/30 transition-colors cursor-pointer"
                             >
                               + {preset}
                             </button>
@@ -626,7 +626,7 @@ export default function BuatLaporanPage() {
                             value={state.deskripsi}
                             onChange={(e) => updateField('deskripsi', e.target.value)}
                             required
-                            className="w-full px-4 py-3.5 rounded-2xl border border-slate-300/80 bg-white/90 hover:bg-white focus:bg-white focus:ring-2 focus:ring-[#7A0C0C]/25 focus:border-[#7A0C0C] text-sm text-slate-800 placeholder:text-slate-400 shadow-2xs transition-all outline-none resize-y min-h-[120px] leading-relaxed"
+                            className="w-full px-4 py-3.5 rounded-2xl border border-slate-300/80 bg-white/90 hover:bg-white focus:bg-white focus:ring-2 focus:ring-[#7A0C0C]/25 focus:border-[#7A0C0C] text-base sm:text-sm text-slate-800 placeholder:text-slate-400 shadow-2xs transition-all outline-none resize-y min-h-[120px] leading-relaxed"
                           />
                         </div>
                       </div>
@@ -720,7 +720,7 @@ export default function BuatLaporanPage() {
                                     type="button"
                                     onClick={() => removeAttachment(item.id)}
                                     aria-label={`Hapus ${item.name}`}
-                                    className="absolute top-2 right-2 w-7 h-7 rounded-full bg-red-600/90 hover:bg-red-700 text-white flex items-center justify-center shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer"
+                                    className="absolute top-2 right-2 w-8 h-8 sm:w-7 sm:h-7 rounded-full bg-red-600/90 hover:bg-red-700 text-white flex items-center justify-center shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer"
                                   >
                                     <X className="w-3.5 h-3.5" />
                                   </button>
@@ -786,7 +786,7 @@ export default function BuatLaporanPage() {
                             title="Hapus seluruh isian formulir dan draf tersimpan"
                           >
                             <Trash2 className="w-4 h-4" />
-                            <span>Clear Form</span>
+                            <span>Hapus</span>
                           </button>
                         </div>
 
@@ -869,7 +869,7 @@ export default function BuatLaporanPage() {
         </main>
 
         {/* Bottom Persistent Progress Bar — selalu mengikuti scroll di paling bawah layar */}
-        <div className="shrink-0 z-20 bg-white/92 backdrop-blur-md border-t border-slate-200/85 shadow-[0_-6px_24px_-10px_rgba(15,23,42,0.12)] px-4 sm:px-6 md:px-8 py-3">
+        <div className="shrink-0 z-20 bg-white/92 backdrop-blur-md border-t border-slate-200/85 shadow-[0_-6px_24px_-10px_rgba(15,23,42,0.12)] px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-3 md:px-8">
           <div className="max-w-4xl mx-auto space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2.5">
@@ -952,7 +952,7 @@ export default function BuatLaporanPage() {
               exit={{ opacity: 0, scale: 0.94, y: 8 }}
               transition={{ type: 'spring', stiffness: 320, damping: 26 }}
               onClick={(e) => e.stopPropagation()}
-              className="relative w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl border border-slate-200/80"
+              className="relative w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-3xl bg-white shadow-2xl border border-slate-200/80"
             >
               <button
                 type="button"
@@ -1027,7 +1027,7 @@ export default function BuatLaporanPage() {
               exit={{ opacity: 0, scale: 0.94, y: 10 }}
               transition={{ type: 'spring', stiffness: 320, damping: 26 }}
               onClick={(e) => e.stopPropagation()}
-              className="relative w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl border border-slate-200/80"
+              className="relative w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-3xl bg-white shadow-2xl border border-slate-200/80"
             >
               <button
                 type="button"

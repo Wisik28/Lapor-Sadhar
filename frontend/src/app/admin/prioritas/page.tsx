@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { Suspense, useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import AdminNavbar from "@/components/AdminNavbar";
 import { AdminStatusBadge, normalizeAdminStatus } from "@/components/AdminStatusBadge";
 import PeriodFilter from "@/components/PeriodFilter";
@@ -102,16 +103,27 @@ function extractReportDateParts(rawDate?: string | null): {
   return null;
 }
 
-export default function AdminPriorityDashboardPage() {
+function AdminPriorityDashboardContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { isLoading: authLoading, user: authUser } = useAdminProtection();
   const isReadOnly = useMemo(() => isReadOnlyAdmin(authUser), [authUser]);
   const isWR2 = useMemo(() => isWakilRektorII(authUser), [authUser]);
+  const rawIdParam = searchParams.get("id");
+  const requestedReportId = useMemo(() => {
+    if (!rawIdParam) return null;
+    const parsed = Number(rawIdParam);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }, [rawIdParam]);
+  const handledQueryIdRef = useRef<number | null>(null);
+  const retriedQueryIdRef = useRef<number | null>(null);
 
   // Data state
   const [reports, setReports] = useState<PriorityReportItem[]>([]);
   const [summary, setSummary] = useState<PrioritySummary | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   // Filter state
   const [search, setSearch] = useState("");
@@ -411,12 +423,56 @@ export default function AdminPriorityDashboardPage() {
     [displayedReports, seenReportIds]
   );
 
-  const handleOpenDetail = (item: PriorityReportItem) => {
-    setSelectedReport(item);
-    setIsModalOpen(true);
-    setSeenReportIds((prev) => persistSeenReportId(adminSeenKey, item.id_laporan, prev));
-    void adminLaporanApi.markReportSeen(item.id_laporan).catch(() => {});
-  };
+  const handleOpenDetail = useCallback(
+    (item: PriorityReportItem) => {
+      setSelectedReport(item);
+      setIsModalOpen(true);
+      setSeenReportIds((prev) => persistSeenReportId(adminSeenKey, item.id_laporan, prev));
+      void adminLaporanApi.markReportSeen(item.id_laporan).catch(() => {});
+    },
+    [adminSeenKey]
+  );
+
+  // Buka otomatis modal detail jika dibuka dari notifikasi (?id=<id_laporan>)
+  useEffect(() => {
+    if (requestedReportId === null) {
+      handledQueryIdRef.current = null;
+      retriedQueryIdRef.current = null;
+      return;
+    }
+
+    if (loading || handledQueryIdRef.current === requestedReportId) {
+      return;
+    }
+
+    const matched = reports.find((item) => item.id_laporan === requestedReportId);
+    if (matched) {
+      handledQueryIdRef.current = requestedReportId;
+      let active = true;
+      Promise.resolve().then(() => {
+        if (active) {
+          handleOpenDetail(matched);
+        }
+      });
+      return () => {
+        active = false;
+      };
+    }
+
+    // Jika laporan baru saja masuk saat halaman sudah terbuka, segarkan data sekali
+    if (retriedQueryIdRef.current !== requestedReportId) {
+      retriedQueryIdRef.current = requestedReportId;
+      let active = true;
+      Promise.resolve().then(() => {
+        if (active) {
+          fetchData();
+        }
+      });
+      return () => {
+        active = false;
+      };
+    }
+  }, [requestedReportId, reports, loading, handleOpenDetail, fetchData]);
 
   if (authLoading) {
     return (
@@ -559,6 +615,23 @@ export default function AdminPriorityDashboardPage() {
               </div>
             );
           })()}
+
+          {actionSuccess && (
+            <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-3 text-xs sm:text-sm text-emerald-800 shadow-2xs">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="font-medium">{actionSuccess}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActionSuccess(null)}
+                aria-label="Tutup notifikasi"
+                className="p-1 rounded-lg text-emerald-600 hover:bg-emerald-100 transition-colors shrink-0 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
           {errorMessage && (
             <NetworkErrorAlert
@@ -1126,8 +1199,25 @@ export default function AdminPriorityDashboardPage() {
       <PriorityDetailModal
         report={selectedReport}
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          setIsModalOpen(false);
+          if (requestedReportId !== null) {
+            router.replace("/admin/prioritas", { scroll: false });
+          }
+        }}
         onUpdated={() => {
+          fetchData();
+        }}
+        onDeleted={(deletedId) => {
+          setReports((prev) => prev.filter((item) => item.id_laporan !== deletedId));
+          setSelectedReport(null);
+          setIsModalOpen(false);
+          if (requestedReportId !== null) {
+            router.replace("/admin/prioritas", { scroll: false });
+          }
+          setActionSuccess(
+            `Laporan #${deletedId} yang berstatus Ditolak berhasil dihapus dari sistem.`
+          );
           fetchData();
         }}
         hideAiAnalysis={true}
@@ -1136,5 +1226,24 @@ export default function AdminPriorityDashboardPage() {
         readOnly={isReadOnly}
       />
     </div>
+  );
+}
+
+export default function AdminPriorityDashboardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen w-full items-center justify-center bg-[#F8F9FA]">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-4 border-[#7A0C0C]/20 border-t-[#7A0C0C] rounded-full animate-spin" />
+            <p className="text-slate-600 text-sm font-medium">
+              Memuat halaman prioritas laporan...
+            </p>
+          </div>
+        </div>
+      }
+    >
+      <AdminPriorityDashboardContent />
+    </Suspense>
   );
 }

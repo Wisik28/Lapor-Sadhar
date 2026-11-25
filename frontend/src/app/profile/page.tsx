@@ -221,82 +221,92 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-[100dvh] sm:min-h-screen bg-slate-50">
       <Navbar pageTitle="Profil" userName={user?.nama} userRole={user?.role} />
 
-      <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
-        <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Profil Pengguna</h1>
-            <p className="mt-1 text-sm text-slate-600">
-              Kelola informasi kontak (email & nomor handphone) serta keamanan kata sandi akun Anda.
-            </p>
+      <main className="mx-auto max-w-3xl px-3 py-4 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-8">
+        <div className="mb-4 sm:mb-6 flex flex-col gap-2.5 sm:gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
           </div>
           <Link
             href="/buat-laporan"
-            className="inline-flex items-center gap-1.5 self-start rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-2xs transition hover:border-[#7A0C0C]/30 hover:text-[#7A0C0C]"
+            className="inline-flex items-center gap-1.5 self-start rounded-lg border border-slate-200 bg-white px-3 py-1.5 sm:px-3.5 sm:py-2 text-[11px] sm:text-xs font-semibold text-slate-700 shadow-2xs transition hover:border-[#7A0C0C]/30 hover:text-[#7A0C0C] shrink-0"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
             Kembali ke Laporan
           </Link>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           {/* Ringkasan Informasi Akun */}
-          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs sm:p-7">
-            <div className="mb-5 flex items-center gap-3 border-b border-slate-100 pb-4">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#7A0C0C]/10 text-[#7A0C0C]">
-                <UserRound className="h-5 w-5" />
+          <section className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs sm:p-7">
+            <div className="mb-3.5 sm:mb-5 flex items-center gap-2.5 sm:gap-3 border-b border-slate-100 pb-3 sm:pb-4">
+              <div className="grid h-8 w-8 sm:h-10 sm:w-10 shrink-0 place-items-center rounded-lg bg-[#7A0C0C]/10 text-[#7A0C0C]">
+                <UserRound className="h-4 w-4 sm:h-5 sm:w-5" />
               </div>
-              <div>
-                <h2 className="font-semibold text-slate-900">Informasi Akun</h2>
-                <p className="text-xs text-slate-500">Data identitas pelapor yang terdaftar di sistem</p>
+              <div className="min-w-0">
+                <h2 className="text-sm sm:text-base font-semibold text-slate-900">Informasi Akun</h2>
+                <p className="text-[11px] sm:text-xs text-slate-500">
+                  Data identitas pelapor yang terdaftar di sistem
+                </p>
               </div>
             </div>
 
-            <dl className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-lg bg-slate-50 p-3.5">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Nama Lengkap</dt>
-                <dd className="mt-1 font-medium text-slate-900">{user?.nama || "—"}</dd>
+            <dl className="grid gap-2.5 sm:gap-4 sm:grid-cols-2">
+              <div className="rounded-lg bg-slate-50 px-3 py-2.5 sm:p-3.5">
+                <dt className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Nama Lengkap
+                </dt>
+                <dd className="mt-0.5 sm:mt-1 text-xs sm:text-base font-medium text-slate-900 break-words">
+                  {user?.nama || "—"}
+                </dd>
               </div>
-              <div className="rounded-lg bg-slate-50 p-3.5">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <div className="rounded-lg bg-slate-50 px-3 py-2.5 sm:p-3.5">
+                <dt className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Nomor Identitas (NIM / NIP)
                 </dt>
-                <dd className="mt-1 font-medium text-slate-900">
+                <dd className="mt-0.5 sm:mt-1 text-xs sm:text-base font-medium text-slate-900 break-all">
                   {user?.nomor_identitas || user?.nim || "—"}
                 </dd>
               </div>
-              <div className="rounded-lg bg-slate-50 p-3.5">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Email Saat Ini</dt>
-                <dd className="mt-1 font-medium text-slate-900 break-all">
+              <div className="rounded-lg bg-slate-50 px-3 py-2.5 sm:p-3.5">
+                <dt className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Email Saat Ini
+                </dt>
+                <dd className="mt-0.5 sm:mt-1 text-xs sm:text-base font-medium text-slate-900 break-all">
                   {user?.email || "Belum diisi"}
                 </dd>
               </div>
-              <div className="rounded-lg bg-slate-50 p-3.5">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <div className="rounded-lg bg-slate-50 px-3 py-2.5 sm:p-3.5">
+                <dt className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Nomor Handphone Saat Ini
                 </dt>
-                <dd className="mt-1 font-medium text-slate-900">
+                <dd className="mt-0.5 sm:mt-1 text-xs sm:text-base font-medium text-slate-900">
                   {user?.no_handphone || "Belum diisi"}
                 </dd>
               </div>
-              <div className="rounded-lg bg-slate-50 p-3.5 sm:col-span-2">
-                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Jenis Akun</dt>
-                <dd className="mt-1 font-medium text-slate-900">{user?.role || "—"}</dd>
+              <div className="rounded-lg bg-slate-50 px-3 py-2.5 sm:p-3.5 sm:col-span-2">
+                <dt className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Jenis Akun
+                </dt>
+                <dd className="mt-0.5 sm:mt-1 text-xs sm:text-base font-medium text-slate-900">
+                  {user?.role || "—"}
+                </dd>
               </div>
             </dl>
           </section>
 
           {/* Form Penggantian Data Diri (Email & Nomor Handphone) */}
-          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs sm:p-7">
-            <div className="mb-5 flex items-start gap-3 border-b border-slate-100 pb-4">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#7A0C0C]/10 text-[#7A0C0C]">
-                <Phone className="h-5 w-5" />
+          <section className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs sm:p-7">
+            <div className="mb-3.5 sm:mb-5 flex items-start gap-2.5 sm:gap-3 border-b border-slate-100 pb-3 sm:pb-4">
+              <div className="grid h-8 w-8 sm:h-10 sm:w-10 shrink-0 place-items-center rounded-lg bg-[#7A0C0C]/10 text-[#7A0C0C]">
+                <Phone className="h-4 w-4 sm:h-5 sm:w-5" />
               </div>
-              <div>
-                <h2 className="font-semibold text-slate-900">Ubah Data Kontak</h2>
-                <p className="mt-0.5 text-xs text-slate-500">
+              <div className="min-w-0">
+                <h2 className="text-sm sm:text-base font-semibold text-slate-900">
+                  Ubah Data Kontak
+                </h2>
+                <p className="mt-0.5 text-[11px] sm:text-xs text-slate-500 leading-snug">
                   Perbarui alamat email dan nomor handphone / WhatsApp Anda secara langsung.
                 </p>
               </div>
@@ -305,7 +315,7 @@ export default function ProfilePage() {
             {profileMessage && (
               <div
                 role="status"
-                className="mb-5 flex items-center gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 p-3.5 text-sm text-emerald-800"
+                className="mb-3.5 sm:mb-5 flex items-center gap-2 sm:gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 sm:p-3.5 text-xs sm:text-sm text-emerald-800"
               >
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
                 <span>{profileMessage}</span>
@@ -315,21 +325,24 @@ export default function ProfilePage() {
             {profileError && (
               <div
                 role="alert"
-                className="mb-5 flex items-center gap-2.5 rounded-lg border border-rose-200 bg-rose-50 p-3.5 text-sm text-rose-800"
+                className="mb-3.5 sm:mb-5 flex items-center gap-2 sm:gap-2.5 rounded-lg border border-rose-200 bg-rose-50 p-2.5 sm:p-3.5 text-xs sm:text-sm text-rose-800"
               >
                 <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
                 <span>{profileError}</span>
               </div>
             )}
 
-            <form onSubmit={handleProfileFormSubmit} className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+            <form onSubmit={handleProfileFormSubmit} className="space-y-3 sm:space-y-4">
+              <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="profile-email" className="mb-1.5 block text-sm font-medium text-slate-700">
+                  <label
+                    htmlFor="profile-email"
+                    className="mb-1 sm:mb-1.5 block text-xs sm:text-sm font-medium text-slate-700"
+                  >
                     Alamat Email
                   </label>
                   <div className="relative">
-                    <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Mail className="pointer-events-none absolute left-3 sm:left-3.5 top-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 -translate-y-1/2 text-slate-400" />
                     <input
                       id="profile-email"
                       type="email"
@@ -338,17 +351,20 @@ export default function ProfilePage() {
                       placeholder="nama@email.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="h-11 w-full rounded-lg border border-slate-300 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-[#7A0C0C] focus:ring-2 focus:ring-[#7A0C0C]/15"
+                      className="h-9 sm:h-11 w-full rounded-lg border border-slate-300 pl-9 sm:pl-10 pr-3 text-xs sm:text-sm text-slate-900 outline-none transition focus:border-[#7A0C0C] focus:ring-2 focus:ring-[#7A0C0C]/15"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label htmlFor="profile-phone" className="mb-1.5 block text-sm font-medium text-slate-700">
+                  <label
+                    htmlFor="profile-phone"
+                    className="mb-1 sm:mb-1.5 block text-xs sm:text-sm font-medium text-slate-700"
+                  >
                     Nomor Handphone / WhatsApp
                   </label>
                   <div className="relative">
-                    <Phone className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Phone className="pointer-events-none absolute left-3 sm:left-3.5 top-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 -translate-y-1/2 text-slate-400" />
                     <input
                       id="profile-phone"
                       type="tel"
@@ -358,17 +374,17 @@ export default function ProfilePage() {
                       placeholder="081234567890"
                       value={noHandphone}
                       onChange={(e) => setNoHandphone(e.target.value)}
-                      className="h-11 w-full rounded-lg border border-slate-300 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-[#7A0C0C] focus:ring-2 focus:ring-[#7A0C0C]/15"
+                      className="h-9 sm:h-11 w-full rounded-lg border border-slate-300 pl-9 sm:pl-10 pr-3 text-xs sm:text-sm text-slate-900 outline-none transition focus:border-[#7A0C0C] focus:ring-2 focus:ring-[#7A0C0C]/15"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="pt-2">
+              <div className="pt-1 sm:pt-2">
                 <button
                   type="submit"
                   disabled={profileLoading}
-                  className="inline-flex h-11 items-center justify-center rounded-lg bg-[#7A0C0C] px-5 text-sm font-semibold text-white transition hover:bg-[#600909] disabled:opacity-60 cursor-pointer"
+                  className="inline-flex w-full sm:w-auto h-9 sm:h-11 items-center justify-center rounded-lg bg-[#7A0C0C] px-4 sm:px-5 text-xs sm:text-sm font-semibold text-white transition hover:bg-[#600909] disabled:opacity-60 cursor-pointer"
                 >
                   {profileLoading ? "Menyimpan perubahan..." : "Simpan Perubahan Data"}
                 </button>
@@ -377,14 +393,16 @@ export default function ProfilePage() {
           </section>
 
           {/* Form Penggantian Kata Sandi */}
-          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs sm:p-7">
-            <div className="mb-5 flex items-start gap-3 border-b border-slate-100 pb-4">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#7A0C0C]/10 text-[#7A0C0C]">
-                <ShieldCheck className="h-5 w-5" />
+          <section className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs sm:p-7">
+            <div className="mb-3.5 sm:mb-5 flex items-start gap-2.5 sm:gap-3 border-b border-slate-100 pb-3 sm:pb-4">
+              <div className="grid h-8 w-8 sm:h-10 sm:w-10 shrink-0 place-items-center rounded-lg bg-[#7A0C0C]/10 text-[#7A0C0C]">
+                <ShieldCheck className="h-4 w-4 sm:h-5 sm:w-5" />
               </div>
-              <div>
-                <h2 className="font-semibold text-slate-900">Ganti Kata Sandi</h2>
-                <p className="mt-0.5 text-xs text-slate-500">
+              <div className="min-w-0">
+                <h2 className="text-sm sm:text-base font-semibold text-slate-900">
+                  Ganti Kata Sandi
+                </h2>
+                <p className="mt-0.5 text-[11px] sm:text-xs text-slate-500 leading-snug">
                   Gunakan minimal 6 karakter untuk menjaga keamanan akun Anda.
                 </p>
               </div>
@@ -393,7 +411,7 @@ export default function ProfilePage() {
             {passwordMessage && (
               <div
                 role="status"
-                className="mb-5 flex items-center gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 p-3.5 text-sm text-emerald-800"
+                className="mb-3.5 sm:mb-5 flex items-center gap-2 sm:gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 sm:p-3.5 text-xs sm:text-sm text-emerald-800"
               >
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
                 <span>{passwordMessage}</span>
@@ -403,16 +421,19 @@ export default function ProfilePage() {
             {passwordError && (
               <div
                 role="alert"
-                className="mb-5 flex items-center gap-2.5 rounded-lg border border-rose-200 bg-rose-50 p-3.5 text-sm text-rose-800"
+                className="mb-3.5 sm:mb-5 flex items-center gap-2 sm:gap-2.5 rounded-lg border border-rose-200 bg-rose-50 p-2.5 sm:p-3.5 text-xs sm:text-sm text-rose-800"
               >
                 <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
                 <span>{passwordError}</span>
               </div>
             )}
 
-            <form onSubmit={handlePasswordFormSubmit} className="space-y-4">
+            <form onSubmit={handlePasswordFormSubmit} className="space-y-3 sm:space-y-4">
               <div>
-                <label htmlFor="current-password" className="mb-1.5 block text-sm font-medium text-slate-700">
+                <label
+                  htmlFor="current-password"
+                  className="mb-1 sm:mb-1.5 block text-xs sm:text-sm font-medium text-slate-700"
+                >
                   Kata Sandi Saat Ini
                 </label>
                 <div className="relative">
@@ -424,22 +445,29 @@ export default function ProfilePage() {
                     placeholder="Masukkan kata sandi saat ini"
                     value={currentPassword}
                     onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="h-11 w-full rounded-lg border border-slate-300 px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-[#7A0C0C] focus:ring-2 focus:ring-[#7A0C0C]/15"
+                    className="h-9 sm:h-11 w-full rounded-lg border border-slate-300 px-3 pr-9 sm:pr-10 text-xs sm:text-sm text-slate-900 outline-none transition focus:border-[#7A0C0C] focus:ring-2 focus:ring-[#7A0C0C]/15"
                   />
                   <button
                     type="button"
                     onClick={() => setShowCurrentPassword((prev) => !prev)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 p-1 sm:p-0 text-slate-400 hover:text-slate-600 cursor-pointer"
                     aria-label={showCurrentPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
                   >
-                    {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showCurrentPassword ? (
+                      <EyeOff className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    ) : (
+                      <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    )}
                   </button>
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="new-password" className="mb-1.5 block text-sm font-medium text-slate-700">
+                  <label
+                    htmlFor="new-password"
+                    className="mb-1 sm:mb-1.5 block text-xs sm:text-sm font-medium text-slate-700"
+                  >
                     Kata Sandi Baru
                   </label>
                   <div className="relative">
@@ -452,21 +480,28 @@ export default function ProfilePage() {
                       placeholder="Minimal 6 karakter"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="h-11 w-full rounded-lg border border-slate-300 px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-[#7A0C0C] focus:ring-2 focus:ring-[#7A0C0C]/15"
+                      className="h-9 sm:h-11 w-full rounded-lg border border-slate-300 px-3 pr-9 sm:pr-10 text-xs sm:text-sm text-slate-900 outline-none transition focus:border-[#7A0C0C] focus:ring-2 focus:ring-[#7A0C0C]/15"
                     />
                     <button
                       type="button"
                       onClick={() => setShowNewPassword((prev) => !prev)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 p-1 sm:p-0 text-slate-400 hover:text-slate-600 cursor-pointer"
                       aria-label={showNewPassword ? "Sembunyikan kata sandi baru" : "Tampilkan kata sandi baru"}
                     >
-                      {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {showNewPassword ? (
+                        <EyeOff className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      ) : (
+                        <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      )}
                     </button>
                   </div>
                 </div>
 
                 <div>
-                  <label htmlFor="confirm-password" className="mb-1.5 block text-sm font-medium text-slate-700">
+                  <label
+                    htmlFor="confirm-password"
+                    className="mb-1 sm:mb-1.5 block text-xs sm:text-sm font-medium text-slate-700"
+                  >
                     Konfirmasi Kata Sandi Baru
                   </label>
                   <div className="relative">
@@ -479,29 +514,33 @@ export default function ProfilePage() {
                       placeholder="Ulangi kata sandi baru"
                       value={passwordConfirmation}
                       onChange={(e) => setPasswordConfirmation(e.target.value)}
-                      className="h-11 w-full rounded-lg border border-slate-300 px-3 pr-10 text-sm text-slate-900 outline-none transition focus:border-[#7A0C0C] focus:ring-2 focus:ring-[#7A0C0C]/15"
+                      className="h-9 sm:h-11 w-full rounded-lg border border-slate-300 px-3 pr-9 sm:pr-10 text-xs sm:text-sm text-slate-900 outline-none transition focus:border-[#7A0C0C] focus:ring-2 focus:ring-[#7A0C0C]/15"
                     />
                     <button
                       type="button"
                       onClick={() => setShowConfirmPassword((prev) => !prev)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 p-1 sm:p-0 text-slate-400 hover:text-slate-600 cursor-pointer"
                       aria-label={
                         showConfirmPassword ? "Sembunyikan konfirmasi kata sandi" : "Tampilkan konfirmasi kata sandi"
                       }
                     >
-                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {showConfirmPassword ? (
+                        <EyeOff className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      ) : (
+                        <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      )}
                     </button>
                   </div>
                 </div>
               </div>
 
-              <div className="pt-2">
+              <div className="pt-1 sm:pt-2">
                 <button
                   type="submit"
                   disabled={passwordLoading}
-                  className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#7A0C0C] px-5 text-sm font-semibold text-white transition hover:bg-[#600909] disabled:opacity-60 cursor-pointer"
+                  className="inline-flex w-full sm:w-auto h-9 sm:h-11 items-center justify-center gap-1.5 sm:gap-2 rounded-lg bg-[#7A0C0C] px-4 sm:px-5 text-xs sm:text-sm font-semibold text-white transition hover:bg-[#600909] disabled:opacity-60 cursor-pointer"
                 >
-                  <KeyRound className="h-4 w-4" />
+                  <KeyRound className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                   {passwordLoading ? "Menyimpan..." : "Ubah Kata Sandi"}
                 </button>
               </div>
@@ -513,43 +552,43 @@ export default function ProfilePage() {
       {/* Modal Alert / Konfirmasi Perubahan Data */}
       {confirmModal.isOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-4 backdrop-blur-xs"
           role="alertdialog"
           aria-modal="true"
           aria-labelledby="confirm-modal-title"
           aria-describedby="confirm-modal-desc"
         >
-          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-              <div className="flex items-center gap-2.5">
-                <div className="grid h-9 w-9 place-items-center rounded-full bg-amber-100 text-amber-700">
-                  <AlertTriangle className="h-5 w-5" />
+          <div className="w-full max-w-sm sm:max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-3 sm:px-5 sm:py-4">
+              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                <div className="grid h-8 w-8 sm:h-9 sm:w-9 shrink-0 place-items-center rounded-full bg-amber-100 text-amber-700">
+                  <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5" />
                 </div>
-                <h3 id="confirm-modal-title" className="font-bold text-slate-900">
+                <h3 id="confirm-modal-title" className="text-sm sm:text-base font-bold text-slate-900 leading-snug">
                   {confirmModal.title}
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setConfirmModal({ isOpen: false })}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 shrink-0 cursor-pointer"
                 aria-label="Tutup dialog konfirmasi"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4 sm:h-5 sm:w-5" />
               </button>
             </div>
 
-            <div className="p-5">
-              <p id="confirm-modal-desc" className="text-sm text-slate-600">
+            <div className="p-4 sm:p-5">
+              <p id="confirm-modal-desc" className="text-xs sm:text-sm text-slate-600 leading-relaxed">
                 {confirmModal.description}
               </p>
 
               {confirmModal.changes && confirmModal.changes.length > 0 && (
-                <div className="mt-4 space-y-2.5 rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-xs">
+                <div className="mt-3 sm:mt-4 space-y-2 sm:space-y-2.5 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-3.5 text-[11px] sm:text-xs">
                   {confirmModal.changes.map((item) => (
                     <div key={item.label} className="space-y-0.5">
                       <span className="font-semibold text-slate-700">{item.label}:</span>
-                      <div className="flex flex-wrap items-center gap-1.5 text-slate-600">
+                      <div className="flex flex-wrap items-center gap-1.5 text-slate-600 break-all">
                         <span className="line-through text-slate-400">{item.oldValue}</span>
                         <span>→</span>
                         <span className="font-semibold text-slate-900">{item.newValue}</span>
@@ -559,11 +598,11 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              <div className="mt-6 flex items-center justify-end gap-2.5">
+              <div className="mt-4 sm:mt-6 flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-2.5">
                 <button
                   type="button"
                   onClick={() => setConfirmModal({ isOpen: false })}
-                  className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 cursor-pointer"
+                  className="h-9 sm:h-10 rounded-lg border border-slate-300 bg-white px-4 text-xs sm:text-sm font-medium text-slate-700 transition hover:bg-slate-50 cursor-pointer"
                 >
                   Batal
                 </button>
@@ -572,7 +611,7 @@ export default function ProfilePage() {
                   onClick={
                     confirmModal.type === "profile" ? executeProfileUpdate : executePasswordChange
                   }
-                  className="h-10 rounded-lg bg-[#7A0C0C] px-4 text-sm font-semibold text-white transition hover:bg-[#600909] cursor-pointer"
+                  className="h-9 sm:h-10 rounded-lg bg-[#7A0C0C] px-4 text-xs sm:text-sm font-semibold text-white transition hover:bg-[#600909] cursor-pointer"
                 >
                   Ya, Saya Yakin
                 </button>

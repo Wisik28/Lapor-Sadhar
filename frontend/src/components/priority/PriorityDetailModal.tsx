@@ -18,6 +18,7 @@ import {
   ImageIcon,
   Eye,
   Paperclip,
+  Trash2,
 } from "lucide-react";
 import {
   priorityApi,
@@ -26,11 +27,15 @@ import {
   SeverityLevel,
 } from "@/lib/priorityApi";
 import { getFotoUrl as getBaseFotoUrl, getThumbnailFotoUrl } from "@/lib/laporanPhoto";
-import { AdminStatusBadge } from "@/components/AdminStatusBadge";
+import {
+  AdminStatusBadge,
+  normalizeAdminStatus,
+} from "@/components/AdminStatusBadge";
+import { DeleteRejectedReportModal } from "@/components/DeleteRejectedReportModal";
 import ImagePreviewModal from "@/components/ImagePreviewModal";
 import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { authApi } from "@/lib/api";
-import { isReadOnlyAdmin } from "@/lib/admin-positions";
+import { canAdminManageLaporan, isReadOnlyAdmin } from "@/lib/admin-positions";
 import { formatUserFriendlyError } from "@/lib/networkError";
 
 interface PriorityDetailModalProps {
@@ -38,6 +43,7 @@ interface PriorityDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onUpdated: () => void;
+  onDeleted?: (deletedId: number) => void;
   hideAiAnalysis?: boolean;
   hideScoreBreakdown?: boolean;
   hideHandlingInfo?: boolean;
@@ -120,6 +126,7 @@ export function PriorityDetailModal({
   isOpen,
   onClose,
   onUpdated,
+  onDeleted,
   hideAiAnalysis = false,
   hideScoreBreakdown = false,
   hideHandlingInfo = false,
@@ -132,6 +139,7 @@ export function PriorityDetailModal({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   const reportExtra = report as PriorityReportItem & {
     fotos?: unknown;
@@ -164,10 +172,12 @@ export function PriorityDetailModal({
       setSaveSuccess(false);
       setErrorMessage(null);
       setActivePhotoIndex(null);
+      setIsDeleteModalOpen(false);
       loadDetail(report.id_laporan);
     } else {
       setDetailData(null);
       setActivePhotoIndex(null);
+      setIsDeleteModalOpen(false);
     }
   }, [isOpen, report]);
 
@@ -188,11 +198,31 @@ export function PriorityDetailModal({
 
   if (!isOpen || !report) return null;
 
+  const currentAdmin =
+    typeof window !== "undefined" ? authApi.getCurrentUser() : null;
+  const hasAdminToken =
+    typeof window !== "undefined" && Boolean(localStorage.getItem("admin_token"));
+
+  const currentStatus = normalizeAdminStatus(report.status_terkini);
+  const isRejectedReport = currentStatus === "Ditolak";
+
   const canEditSeverity =
     !readOnly &&
-    typeof window !== "undefined" &&
-    Boolean(localStorage.getItem("admin_token")) &&
-    !isReadOnlyAdmin(authApi.getCurrentUser());
+    hasAdminToken &&
+    !isReadOnlyAdmin(currentAdmin) &&
+    !isRejectedReport;
+
+  const canDeleteRejected =
+    !readOnly &&
+    hasAdminToken &&
+    isRejectedReport &&
+    canAdminManageLaporan(currentAdmin, {
+      kategori_laporan:
+        detailData?.laporan?.kategori_laporan ?? report.kategori_laporan,
+      lokasi_kampus:
+        detailData?.laporan?.lokasi_kampus ?? report.lokasi_kampus,
+      lokasi: detailData?.laporan?.lokasi ?? report.lokasi,
+    });
 
   const handleSaveSeverity = async () => {
     try {
@@ -614,6 +644,18 @@ export function PriorityDetailModal({
                 />
               </div>
             </div>
+          ) : isRejectedReport && canDeleteRejected ? (
+            <div className="p-4 bg-red-50/80 rounded-2xl border border-red-200 flex items-start gap-3 text-xs text-red-800">
+              <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-red-900">
+                  Laporan Berstatus Ditolak
+                </p>
+                <p className="mt-0.5 text-red-700 leading-relaxed">
+                  Laporan yang sudah berstatus Ditolak tidak dapat ditindaklanjuti atau diubah tingkat prioritasnya lagi. Anda dapat menghapus laporan ini dari sistem melalui tombol <strong>Hapus Laporan</strong> di bawah.
+                </p>
+              </div>
+            </div>
           ) : !hideHandlingInfo ? (
             <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200/80 flex items-start gap-3 text-xs text-amber-800">
               <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -669,7 +711,7 @@ export function PriorityDetailModal({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-end gap-3">
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex flex-wrap items-center justify-end gap-3">
           <button
             type="button"
             onClick={onClose}
@@ -678,6 +720,17 @@ export function PriorityDetailModal({
           >
             Tutup
           </button>
+          {canDeleteRejected && (
+            <button
+              type="button"
+              onClick={() => setIsDeleteModalOpen(true)}
+              disabled={isSaving}
+              className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Hapus Laporan</span>
+            </button>
+          )}
           {canEditSeverity && (
             <button
               type="button"
@@ -700,6 +753,27 @@ export function PriorityDetailModal({
           )}
         </div>
       </div>
+
+      {/* Modal Konfirmasi Hapus Laporan Ditolak */}
+      <DeleteRejectedReportModal
+        report={{
+          id_laporan: report.id_laporan,
+          deskripsi: report.deskripsi,
+          lokasi: detailData?.laporan?.lokasi || report.lokasi,
+        }}
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onDeleted={(deletedId) => {
+          setIsDeleteModalOpen(false);
+          setActivePhotoIndex(null);
+          if (onDeleted) {
+            onDeleted(deletedId);
+          } else {
+            onUpdated();
+          }
+          onClose();
+        }}
+      />
 
       {/* Lightbox / Preview Ukuran Penuh Foto */}
       <ImagePreviewModal

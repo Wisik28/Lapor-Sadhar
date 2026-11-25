@@ -24,6 +24,7 @@ class LaporanService
     private LocationCategorizer $locationCategorizer;
     private LocationSeverityAssessor $locationSeverityAssessor;
     private CloudinaryStorageService $cloudinaryStorage;
+    private AdminNotificationService $adminNotificationService;
 
     /**
      * Cache verifikasi kolom lokasi per koneksi PDO untuk mencegah query skema berulang.
@@ -35,11 +36,13 @@ class LaporanService
     public function __construct(
         ?LocationCategorizer $locationCategorizer = null,
         ?LocationSeverityAssessor $locationSeverityAssessor = null,
-        ?CloudinaryStorageService $cloudinaryStorage = null
+        ?CloudinaryStorageService $cloudinaryStorage = null,
+        ?AdminNotificationService $adminNotificationService = null
     ) {
         $this->locationCategorizer = $locationCategorizer ?? new LocationCategorizer();
         $this->locationSeverityAssessor = $locationSeverityAssessor ?? new LocationSeverityAssessor($this->locationCategorizer);
         $this->cloudinaryStorage = $cloudinaryStorage ?? new CloudinaryStorageService();
+        $this->adminNotificationService = $adminNotificationService ?? new AdminNotificationService();
     }
 
     /**
@@ -136,6 +139,8 @@ class LaporanService
                 $result->setAttribute('tingkat_keparahan', $result->tingkat_keparahan ?? $locationAssessment['tingkat_keparahan']);
                 $result->setAttribute('skala_keparahan', (int) ($result->skala_keparahan ?? $locationAssessment['skala_keparahan']));
 
+                $this->adminNotificationService->notifyNewLaporan($result);
+
                 return $result;
             });
         } catch (\Throwable $e) {
@@ -214,7 +219,7 @@ class LaporanService
                 ? $this->persistFotoPayload($data['foto'], $uploadedUrls)
                 : $oldFoto;
 
-            $result = DB::transaction(function () use ($id, $data, $hasLocationColumns, $persistedFoto) {
+            $result = DB::transaction(function () use ($id, $data, $hasLocationColumns, $persistedFoto, $hasNewFotoInput, $oldFoto) {
                 $laporan = Laporan::with(['statuses' => function ($q) {
                     $q->orderBy('tanggal_merubah', 'desc');
                     $q->orderBy('id_status', 'desc');
@@ -242,6 +247,26 @@ class LaporanService
                     'tanggal_rubah'    => now(),
                 ];
 
+                $changedFields = [];
+                if (($updatePayload['kategori_laporan'] ?? null) !== $laporan->kategori_laporan) {
+                    $changedFields[] = 'kategori';
+                }
+                if (
+                    ($updatePayload['lokasi_kampus'] ?? null) !== $laporan->lokasi_kampus
+                    || ($updatePayload['lokasi'] ?? null) !== $laporan->lokasi
+                ) {
+                    $changedFields[] = 'lokasi';
+                }
+                if (($updatePayload['deskripsi'] ?? null) !== $laporan->deskripsi) {
+                    $changedFields[] = 'deskripsi';
+                }
+                if (substr((string) ($updatePayload['tanggal_kejadian'] ?? ''), 0, 10) !== substr((string) $laporan->tanggal_kejadian, 0, 10)) {
+                    $changedFields[] = 'tanggal kejadian';
+                }
+                if ($hasNewFotoInput && $persistedFoto !== $oldFoto) {
+                    $changedFields[] = 'lampiran foto';
+                }
+
                 if ($hasLocationColumns) {
                     $updatePayload['kategori_lokasi']   = $locationAssessment['kategori_lokasi'];
                     $updatePayload['tingkat_keparahan'] = $locationAssessment['tingkat_keparahan'];
@@ -254,6 +279,8 @@ class LaporanService
                 $result->setAttribute('kategori_lokasi', $result->kategori_lokasi ?? $locationAssessment['kategori_lokasi']);
                 $result->setAttribute('tingkat_keparahan', $result->tingkat_keparahan ?? $locationAssessment['tingkat_keparahan']);
                 $result->setAttribute('skala_keparahan', (int) ($result->skala_keparahan ?? $locationAssessment['skala_keparahan']));
+
+                $this->adminNotificationService->notifyRevisedLaporan($result, $changedFields);
 
                 return $result;
             });
@@ -314,6 +341,42 @@ class LaporanService
     }
 
     /**
+     * Hapus laporan oleh admin (hanya diizinkan jika status terbaru adalah Ditolak)
+     */
+    public function deleteRejectedLaporanByAdmin(int $id): bool
+    {
+        $oldFoto = null;
+
+        $deleted = DB::transaction(function () use ($id, &$oldFoto) {
+            $laporan = Laporan::with(['statuses' => function ($q) {
+                $q->orderBy('tanggal_merubah', 'desc');
+                $q->orderBy('id_status', 'desc');
+            }])->findOrFail($id);
+
+            $latestStatus = $laporan->statuses->first()?->status_laporan ?? 'Terkirim';
+
+            if (strcasecmp(trim($latestStatus), 'Ditolak') !== 0) {
+                throw new \Exception(
+                    "Laporan tidak dapat dihapus karena hanya laporan berstatus \"Ditolak\" yang boleh dihapus admin.",
+                    403
+                );
+            }
+
+            $oldFoto = $laporan->foto;
+
+            return $laporan->delete();
+        });
+
+        if ($deleted) {
+            foreach ($this->extractStoredPhotoItems($oldFoto) as $url) {
+                $this->cloudinaryStorage->deleteByUrl($url);
+            }
+        }
+
+        return $deleted;
+    }
+
+    /**
      * Ambil semua laporan untuk admin sesuai cakupan kampus dan unitnya.
      */
     public function getAllLaporanForAdmin(?Admin $admin = null)
@@ -341,7 +404,20 @@ class LaporanService
     public function updateStatusLaporan(int $id, string $status, string $pesan = ''): array
     {
         return DB::transaction(function () use ($id, $status, $pesan) {
-            $laporan = Laporan::findOrFail($id);
+            $laporan = Laporan::with([
+                'statuses' => function ($query) {
+                    $query->orderBy('tanggal_merubah', 'desc');
+                    $query->orderBy('id_status', 'desc');
+                },
+            ])->findOrFail($id);
+
+            $latestStatus = (string) ($laporan->statuses->first()?->status_laporan ?? 'Terkirim');
+            if (strcasecmp(trim($latestStatus), 'Ditolak') === 0) {
+                throw new \Exception(
+                    'Laporan yang berstatus "Ditolak" tidak dapat ditindaklanjuti atau diubah statusnya lagi.',
+                    403
+                );
+            }
 
             $statusRecord = Status::create([
                 'id_laporan'      => $laporan->id_laporan,
