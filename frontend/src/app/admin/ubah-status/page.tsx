@@ -1,15 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Lock, UserCheck } from "lucide-react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, Lock, Trash2, UserCheck } from "lucide-react";
 import AdminNavbar from "@/components/AdminNavbar";
+import {
+  DeleteRejectedReportModal,
+  type DeleteRejectedReportTarget,
+} from "@/components/DeleteRejectedReportModal";
 import ImagePreviewModal from "@/components/ImagePreviewModal";
 import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { adminLaporanApi } from "@/lib/api";
 import { formatUserFriendlyError } from "@/lib/networkError";
 import { getCurrentAuthUser } from "@/lib/auth";
-import { isReadOnlyAdmin } from "@/lib/admin-positions";
+import {
+  canAdminManageLaporan,
+  isReadOnlyAdmin,
+} from "@/lib/admin-positions";
 import { getFotoList, getFotoUrl, getThumbnailFotoUrl } from "@/lib/laporanPhoto";
 
 type StatusValue =
@@ -214,13 +221,23 @@ function getStatusUpdateErrorMessage(err: unknown): string {
   );
 }
 
-export default function UbahStatusLaporanPage() {
+function UbahStatusLaporanContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isRestrictedRole] = useState(() => isReadOnlyAdmin(getCurrentAuthUser()));
+  const rawIdParam = searchParams.get("id");
+  const requestedReportId = useMemo(() => {
+    if (!rawIdParam) return null;
+    const parsed = Number(rawIdParam);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  }, [rawIdParam]);
+  const isDirectReportMode = requestedReportId !== null;
+
   const [laporan, setLaporan] = useState<Laporan[]>([]);
   const [laporanTerpilih, setLaporanTerpilih] =
     useState<Laporan | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState<number | null>(null);
+  const [deletedReportId, setDeletedReportId] = useState<number | null>(null);
 
   useEffect(() => {
     if (isRestrictedRole) {
@@ -228,14 +245,13 @@ export default function UbahStatusLaporanPage() {
     }
   }, [isRestrictedRole, router]);
 
-  const [adminName] = useState(() => {
-    const currentUser = getCurrentAuthUser();
-    return currentUser?.nama || currentUser?.username || "Admin";
-  });
-  const [adminRole] = useState(() => {
-    const currentUser = getCurrentAuthUser();
-    return currentUser?.jabatan_label || currentUser?.jabatan || "Administrator";
-  });
+  const [authUser] = useState(() => getCurrentAuthUser());
+  const [adminName] = useState(
+    () => authUser?.nama || authUser?.username || "Admin"
+  );
+  const [adminRole] = useState(
+    () => authUser?.jabatan_label || authUser?.jabatan || "Administrator"
+  );
 
   const [pencarian, setPencarian] = useState("");
   const [filterStatus, setFilterStatus] = useState("Semua");
@@ -250,67 +266,12 @@ export default function UbahStatusLaporanPage() {
   const [menyimpan, setMenyimpan] = useState(false);
   const [error, setError] = useState("");
   const [sukses, setSukses] = useState("");
+  const [deleteTarget, setDeleteTarget] =
+    useState<DeleteRejectedReportTarget | null>(null);
 
   const checkCanEditStatus = useCallback(
-    (item: Laporan): boolean => {
-      const role = (adminRole || "").trim().toLowerCase();
-
-      if (
-        role.includes("wakil rektor") ||
-        role.includes("wr ii") ||
-        role.includes("wakil_rektor")
-      ) {
-        return false;
-      }
-
-      const kategori = (item.kategori_laporan || "").trim().toLowerCase();
-      const isBPS =
-        kategori === "bps" || kategori.includes("fasilitas");
-      const isBLU =
-        kategori === "blu" || kategori.includes("kebersihan");
-
-      // Deteksi unit pada nama role
-      const roleIsBPS =
-        /\bbps\b/i.test(role) ||
-        role.includes("sarana") ||
-        role.includes("prasarana");
-      const roleIsBLU =
-        /\bblu\b/i.test(role) || role.includes("layanan umum");
-
-      if (!roleIsBPS && !roleIsBLU) return false;
-      if (roleIsBPS && !isBPS) return false;
-      if (roleIsBLU && !isBLU) return false;
-
-      // Gunakan lokasi_kampus baku; lokasi teks hanya dipakai sebagai fallback data lama.
-      const lokasiKampus = (item.lokasi_kampus || "").trim().toLowerCase();
-      const lokasi = `${lokasiKampus} ${(item.lokasi || "").toLowerCase()}`;
-      const roleKampus1 = /\b(kampus\s*)?(i|1)\b/i.test(role);
-      const roleKampus2 = /\b(kampus\s*)?(ii|2)\b/i.test(role);
-      const roleKampus3 = /\b(kampus\s*)?(iii|3)\b/i.test(role);
-      const roleKampus4 = /\b(kampus\s*)?(iv|4)\b/i.test(role);
-
-      const punyaBatasanKampus =
-        roleKampus1 || roleKampus2 || roleKampus3 || roleKampus4;
-
-      // 2. Jika Kepala Biro (tidak terikat nomor kampus), boleh akses semua kampus sesuai unitnya
-      if (!punyaBatasanKampus) {
-        return true;
-      }
-
-      // 3. Jika Kepala Bagian / Staf kampus tertentu, cocokkan dengan lokasi kejadian laporan
-      const lokasiKampus1 = /\bkampus\s*(i|1)\b|\bmrican\b/i.test(lokasi);
-      const lokasiKampus2 = /\bkampus\s*(ii|2)\b/i.test(lokasi);
-      const lokasiKampus3 = /\bkampus\s*(iii|3)\b|\bpaingan\b/i.test(lokasi);
-      const lokasiKampus4 = /\bkampus\s*(iv|4)\b|\bkotabaru\b/i.test(lokasi);
-
-      if (roleKampus1 && lokasiKampus1) return true;
-      if (roleKampus2 && lokasiKampus2) return true;
-      if (roleKampus3 && lokasiKampus3) return true;
-      if (roleKampus4 && lokasiKampus4) return true;
-
-      return false;
-    },
-    [adminRole]
+    (item: Laporan): boolean => canAdminManageLaporan(authUser, item),
+    [authUser]
   );
 
   const muatLaporan = useCallback(async () => {
@@ -340,15 +301,35 @@ export default function UbahStatusLaporanPage() {
 
       setLaporan(daftar);
 
-      setLaporanTerpilih((sebelumnya) => {
-        if (!sebelumnya) return null;
+      let nextSelected: Laporan | null = null;
+      if (requestedReportId !== null) {
+        nextSelected =
+          daftar.find((item) => item.id_laporan === requestedReportId) ?? null;
+        setLaporanTerpilih(nextSelected);
+        if (!nextSelected) {
+          setError(
+            `Laporan #${requestedReportId} tidak ditemukan atau berada di luar cakupan wilayah kelola Anda.`
+          );
+        }
+      } else {
+        setLaporanTerpilih((sebelumnya) => {
+          if (!sebelumnya) return null;
 
-        return (
-          daftar.find(
-            (item) => item.id_laporan === sebelumnya.id_laporan
-          ) ?? null
+          nextSelected =
+            daftar.find((item) => item.id_laporan === sebelumnya.id_laporan) ??
+            null;
+          return nextSelected;
+        });
+      }
+
+      if (nextSelected) {
+        setStatusBaru(
+          normalizeStatus(
+            nextSelected.status_terkini ?? nextSelected.status_laporan
+          )
         );
-      });
+        setPesanTanggapan(nextSelected.pesan_tanggapan ?? "");
+      }
     } catch (err) {
       setError(
         formatUserFriendlyError(
@@ -360,7 +341,7 @@ export default function UbahStatusLaporanPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [requestedReportId]);
 
   useEffect(() => {
     if (isRestrictedRole) return;
@@ -394,15 +375,31 @@ export default function UbahStatusLaporanPage() {
 
         setLaporan(daftar);
 
-        setLaporanTerpilih((sebelumnya) => {
-          if (!sebelumnya) return null;
+        if (requestedReportId !== null) {
+          const matched =
+            daftar.find((item) => item.id_laporan === requestedReportId) ?? null;
+          setLaporanTerpilih(matched);
+          if (matched) {
+            setStatusBaru(
+              normalizeStatus(matched.status_terkini ?? matched.status_laporan)
+            );
+            setPesanTanggapan(matched.pesan_tanggapan ?? "");
+          } else {
+            setError(
+              `Laporan #${requestedReportId} tidak ditemukan atau berada di luar cakupan wilayah kelola Anda.`
+            );
+          }
+        } else {
+          setLaporanTerpilih((sebelumnya) => {
+            if (!sebelumnya) return null;
 
-          return (
-            daftar.find(
-              (item) => item.id_laporan === sebelumnya.id_laporan
-            ) ?? null
-          );
-        });
+            return (
+              daftar.find(
+                (item) => item.id_laporan === sebelumnya.id_laporan
+              ) ?? null
+            );
+          });
+        }
       } catch (err) {
         if (!aktif) return;
 
@@ -420,10 +417,25 @@ export default function UbahStatusLaporanPage() {
 
     void ambilData();
 
+    const handleNotificationRefresh = (event: Event) => {
+      const custom = event as CustomEvent<{ idLaporan?: number }>;
+      if (
+        requestedReportId !== null &&
+        custom.detail?.idLaporan === requestedReportId
+      ) {
+        void muatLaporan();
+      }
+    };
+    window.addEventListener("lapor-sadhar:open-report", handleNotificationRefresh);
+
     return () => {
       aktif = false;
+      window.removeEventListener(
+        "lapor-sadhar:open-report",
+        handleNotificationRefresh
+      );
     };
-  }, [isRestrictedRole]);
+  }, [isRestrictedRole, requestedReportId, muatLaporan]);
 
   const daftarTahun = useMemo(() => {
     const tahun = laporan
@@ -539,6 +551,11 @@ export default function UbahStatusLaporanPage() {
       return;
     }
 
+    if (statusSekarang === "Ditolak") {
+      setError("Laporan yang berstatus Ditolak tidak dapat ditindaklanjuti atau diubah statusnya lagi.");
+      return;
+    }
+
     if (statusBaru === "Ditolak" && !pesanTanggapan.trim()) {
       setError("Isi alasan penolakan sebelum menyimpan status Ditolak.");
       return;
@@ -610,25 +627,52 @@ export default function UbahStatusLaporanPage() {
         adminRole={adminRole}
       />
 
-      <main className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+      <main
+        className={`mx-auto w-full space-y-6 px-4 py-6 sm:px-6 lg:px-8 ${
+          isDirectReportMode ? "max-w-4xl" : "max-w-7xl"
+        }`}
+      >
         <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
           <div>
+            {isDirectReportMode && (
+              <button
+                type="button"
+                onClick={() => router.push("/admin/dashboard")}
+                className="mb-2 inline-flex items-center gap-1.5 text-xs font-semibold text-[#7A0C0C] hover:underline cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Kembali ke Dashboard</span>
+              </button>
+            )}
             <p className="text-xs font-bold uppercase tracking-wider text-[#7A0C0C]">
               ADMINISTRATOR
             </p>
             <h1 className="mt-1 text-2xl font-bold text-slate-900 sm:text-3xl">
-              Status Laporan
+              {isDirectReportMode
+                ? `Tindak Lanjut Laporan #${String(requestedReportId).padStart(3, "0")}`
+                : "Status Laporan"}
             </h1>
           </div>
 
-          <button
-            type="button"
-            onClick={() => void muatLaporan()}
-            disabled={loading}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? "Memuat..." : "↻ Muat Ulang"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {isDirectReportMode && (
+              <button
+                type="button"
+                onClick={() => router.push("/admin/ubah-status")}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-100 cursor-pointer"
+              >
+                Semua Daftar Laporan
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void muatLaporan()}
+              disabled={loading}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 shadow-2xs transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+            >
+              {loading ? "Memuat..." : "↻ Muat Ulang"}
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -649,6 +693,7 @@ export default function UbahStatusLaporanPage() {
           </div>
         )}
 
+        {!isDirectReportMode && (
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[
             { label: "Total Laporan", value: statistik.total, color: "text-slate-900" },
@@ -672,8 +717,16 @@ export default function UbahStatusLaporanPage() {
             </div>
           ))}
         </section>
+        )}
 
-        <section className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
+        <section
+          className={
+            isDirectReportMode
+              ? "space-y-6"
+              : "grid grid-cols-1 items-start gap-6 lg:grid-cols-12"
+          }
+        >
+          {!isDirectReportMode && (
           <div className="space-y-4 lg:col-span-5">
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
               <h2 className="font-bold text-slate-900">Daftar Laporan</h2>
@@ -865,21 +918,64 @@ export default function UbahStatusLaporanPage() {
               )}
             </div>
           </div>
+          )}
 
-          <div className="space-y-6 lg:col-span-7">
+          <div
+            className={`space-y-6 ${
+              isDirectReportMode ? "" : "lg:col-span-7"
+            }`}
+          >
             {!laporanTerpilih ? (
-              <div className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#7A0C0C]/5 text-2xl">
-                  📋
+              isDirectReportMode && loading ? (
+                <div className="flex min-h-60 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-2xs">
+                  <div className="w-8 h-8 border-4 border-[#7A0C0C]/20 border-t-[#7A0C0C] rounded-full animate-spin" />
+                  <p className="mt-3 text-sm font-semibold text-slate-600">
+                    Memuat detail laporan #{requestedReportId}...
+                  </p>
                 </div>
-                <h2 className="mt-4 font-bold text-slate-800">
-                  Pilih Laporan
-                </h2>
-                <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">
-                  Pilih salah satu laporan dari daftar untuk melihat detail,
-                  mengubah status, dan menulis tanggapan.
-                </p>
-              </div>
+              ) : isDirectReportMode ? (
+                <div className="flex min-h-60 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+                  <h2 className="font-bold text-slate-800">
+                    {deletedReportId === requestedReportId
+                      ? `Laporan #${requestedReportId} Telah Dihapus`
+                      : `Laporan #${requestedReportId} Tidak Tersedia`}
+                  </h2>
+                  <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
+                    {deletedReportId === requestedReportId
+                      ? "Laporan berstatus Ditolak ini telah dihapus permanen dari sistem."
+                      : "Laporan tidak ditemukan atau tidak berada dalam cakupan wilayah kelola Anda."}
+                  </p>
+                  <div className="mt-5 flex flex-wrap items-center justify-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => router.push("/admin/dashboard")}
+                      className="rounded-xl bg-[#7A0C0C] px-4 py-2.5 text-xs sm:text-sm font-semibold text-white hover:bg-[#600909] transition cursor-pointer"
+                    >
+                      Kembali ke Dashboard
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => router.push("/admin/ubah-status")}
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                    >
+                      Lihat Semua Laporan
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#7A0C0C]/5 text-2xl">
+                    📋
+                  </div>
+                  <h2 className="mt-4 font-bold text-slate-800">
+                    Pilih Laporan
+                  </h2>
+                  <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">
+                    Pilih salah satu laporan dari daftar untuk melihat detail,
+                    mengubah status, dan menulis tanggapan.
+                  </p>
+                </div>
+              )
             ) : (
               <>
                 <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs sm:p-6">
@@ -990,9 +1086,51 @@ export default function UbahStatusLaporanPage() {
                       </div>
                     </div>
                   )}
+
+                  {canEditTerpilih && statusSekarang === "Ditolak" && (
+                    <div className="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs font-medium text-red-700">
+                        Laporan ini berstatus Ditolak dan dapat dihapus permanen dari sistem.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDeleteTarget({
+                            id_laporan: laporanTerpilih.id_laporan,
+                            deskripsi: laporanTerpilih.deskripsi,
+                            lokasi: laporanTerpilih.lokasi,
+                          })
+                        }
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2.5 text-xs font-semibold text-white shadow-2xs transition hover:bg-red-700 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Hapus Laporan</span>
+                      </button>
+                    </div>
+                  )}
                 </section>
 
-                {canEditTerpilih ? (
+                {canEditTerpilih && statusSekarang === "Ditolak" ? (
+                  <section className="rounded-2xl border border-red-200/80 bg-white p-5 shadow-2xs sm:p-6 space-y-4">
+                    <div className="bg-red-50/80 p-4 rounded-2xl border border-red-200 flex items-center gap-3 text-red-800 text-sm">
+                      <Lock className="w-5 h-5 text-red-600 shrink-0" />
+                      <span>
+                        Laporan ini berstatus <strong>Ditolak</strong> sehingga tidak dapat ditindaklanjuti atau diubah statusnya lagi. Anda dapat menghapus laporan ini melalui tombol <strong>Hapus Laporan</strong> pada detail di atas.
+                      </span>
+                    </div>
+
+                    {laporanTerpilih.pesan_tanggapan && (
+                      <div className="rounded-xl border border-[#7A0C0C]/20 bg-[#7A0C0C]/5 p-4">
+                        <p className="text-sm font-semibold text-[#7A0C0C]">
+                          Tanggapan Tersimpan
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#7A0C0C]">
+                          {laporanTerpilih.pesan_tanggapan}
+                        </p>
+                      </div>
+                    )}
+                  </section>
+                ) : canEditTerpilih ? (
                   <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs sm:p-6">
                     <div>
                       <h2 className="text-lg font-bold text-slate-900">
@@ -1240,6 +1378,25 @@ export default function UbahStatusLaporanPage() {
         </section>
       </main>
 
+      <DeleteRejectedReportModal
+        report={deleteTarget}
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={(deletedId) => {
+          setDeleteTarget(null);
+          setDeletedReportId(deletedId);
+          setLaporanTerpilih(null);
+          setActivePhotoIndex(null);
+          setLaporan((prev) =>
+            prev.filter((item) => item.id_laporan !== deletedId)
+          );
+          setError("");
+          setSukses(
+            `Laporan #${deletedId} yang berstatus Ditolak berhasil dihapus dari sistem.`
+          );
+        }}
+      />
+
       <ImagePreviewModal
         images={fotoList.map(getFotoUrl)}
         activeIndex={activePhotoIndex}
@@ -1248,5 +1405,24 @@ export default function UbahStatusLaporanPage() {
         titlePrefix="Foto Bukti"
       />
     </div>
+  );
+}
+
+export default function UbahStatusLaporanPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen w-full items-center justify-center bg-[#F8F9FA]">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-4 border-[#7A0C0C]/20 border-t-[#7A0C0C] rounded-full animate-spin" />
+            <p className="text-slate-600 text-sm font-medium">
+              Memuat halaman status laporan...
+            </p>
+          </div>
+        </div>
+      }
+    >
+      <UbahStatusLaporanContent />
+    </Suspense>
   );
 }

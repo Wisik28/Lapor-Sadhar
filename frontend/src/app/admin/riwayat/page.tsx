@@ -3,12 +3,19 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import AdminNavbar from "@/components/AdminNavbar";
+import {
+  DeleteRejectedReportModal,
+  type DeleteRejectedReportTarget,
+} from "@/components/DeleteRejectedReportModal";
 import ImagePreviewModal from "@/components/ImagePreviewModal";
 import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { adminLaporanApi } from "@/lib/api";
 import { formatUserFriendlyError } from "@/lib/networkError";
-import { getCurrentAuthUser } from "@/lib/auth";
-import { isReadOnlyAdmin } from "@/lib/admin-positions";
+import { getCurrentAuthUser, type AuthUser } from "@/lib/auth";
+import {
+  canAdminManageLaporan,
+  isReadOnlyAdmin,
+} from "@/lib/admin-positions";
 import {
   getFotoList,
   getFotoUrl as getBaseFotoUrl,
@@ -31,6 +38,7 @@ import {
   Lock,
   UserCheck,
   ZoomIn,
+  Trash2,
 } from "lucide-react";
 
 type StatusValue =
@@ -60,6 +68,7 @@ interface LaporanItem {
   tanggal_kejadian?: string;
   tanggal_buat: string;
   tanggal_rubah?: string | null;
+  lokasi_kampus?: string | null;
   lokasi: string;
   foto?: string | string[] | null;
   pesan_tanggapan?: string | null;
@@ -224,6 +233,7 @@ function resolveFotoUrl(rawFoto: string): string {
 export default function AdminRiwayatLaporanPage() {
   const router = useRouter();
   const [isRestrictedRole] = useState(() => isReadOnlyAdmin(getCurrentAuthUser()));
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [adminUser, setAdminUser] = useState({
     nama: "Admin Lapor Sadhar",
     role: "Administrator",
@@ -238,6 +248,7 @@ export default function AdminRiwayatLaporanPage() {
   useEffect(() => {
     const currentUser = getCurrentAuthUser();
     if (currentUser) {
+      setAuthUser(currentUser);
       setAdminUser({
         nama: currentUser.nama || currentUser.username || "Admin",
         role: currentUser.jabatan_label || currentUser.jabatan || "Administrator",
@@ -264,6 +275,9 @@ export default function AdminRiwayatLaporanPage() {
   const [updateLoading, setUpdateLoading] = useState(false);
   const [modalSuccess, setModalSuccess] = useState("");
   const [modalError, setModalError] = useState("");
+  const [deleteTarget, setDeleteTarget] =
+    useState<DeleteRejectedReportTarget | null>(null);
+  const [pageSuccess, setPageSuccess] = useState("");
 
   const selectedFotoList = useMemo(() => {
     if (!selectedDetail) return [];
@@ -273,65 +287,8 @@ export default function AdminRiwayatLaporanPage() {
   }, [selectedDetail]);
 
   const checkCanEditStatus = useCallback(
-    (laporan: LaporanItem): boolean => {
-      const role = (adminUser.role || "").trim().toLowerCase();
-
-      // 1. Akses penuh semua unit & semua kampus
-      if (
-        role.includes("wakil rektor") ||
-        role.includes("wr ii") ||
-        role.includes("administrator")
-      ) {
-        return true;
-      }
-
-      const kategori = (laporan.kategori_laporan || "").trim().toLowerCase();
-      const isBPS =
-        kategori === "bps" || kategori.includes("fasilitas");
-      const isBLU =
-        kategori === "blu" || kategori.includes("kebersihan");
-
-      // Deteksi unit pada nama role
-      const roleIsBPS =
-        /\bbps\b/i.test(role) ||
-        role.includes("sarana") ||
-        role.includes("prasarana");
-      const roleIsBLU =
-        /\bblu\b/i.test(role) || role.includes("layanan umum");
-
-      if (!roleIsBPS && !roleIsBLU) return false;
-      if (roleIsBPS && !isBPS) return false;
-      if (roleIsBLU && !isBLU) return false;
-
-      // Deteksi pembatasan kampus pada nama role (misal: "BPS 3" atau "BPS Kampus III")
-      const roleKampus1 = /\b(kampus\s*)?(i|1)\b/i.test(role);
-      const roleKampus2 = /\b(kampus\s*)?(ii|2)\b/i.test(role);
-      const roleKampus3 = /\b(kampus\s*)?(iii|3)\b/i.test(role);
-      const roleKampus4 = /\b(kampus\s*)?(iv|4)\b/i.test(role);
-
-      const punyaBatasanKampus =
-        roleKampus1 || roleKampus2 || roleKampus3 || roleKampus4;
-
-      // 2. Jika Kepala Biro (tidak terikat nomor kampus), boleh akses semua kampus sesuai unitnya
-      if (!punyaBatasanKampus) {
-        return true;
-      }
-
-      // 3. Jika Kepala Bagian / Staf kampus tertentu, cocokkan dengan lokasi kejadian laporan
-      const lokasi = (laporan.lokasi || "").toLowerCase();
-      const lokasiKampus1 = /\bkampus\s*(i|1)\b|\bmrican\b/i.test(lokasi);
-      const lokasiKampus2 = /\bkampus\s*(ii|2)\b|\bmrican\b/i.test(lokasi);
-      const lokasiKampus3 = /\bkampus\s*(iii|3)\b|\bpaingan\b/i.test(lokasi);
-      const lokasiKampus4 = /\bkampus\s*(iv|4)\b/i.test(lokasi);
-
-      if (roleKampus1 && lokasiKampus1) return true;
-      if (roleKampus2 && lokasiKampus2) return true;
-      if (roleKampus3 && lokasiKampus3) return true;
-      if (roleKampus4 && lokasiKampus4) return true;
-
-      return false;
-    },
-    [adminUser.role]
+    (laporan: LaporanItem): boolean => canAdminManageLaporan(authUser, laporan),
+    [authUser]
   );
 
   const fetchAllLaporanAdmin = useCallback(async () => {
@@ -553,6 +510,15 @@ export default function AdminRiwayatLaporanPage() {
     }
   };
 
+  const handleOpenDeleteModal = (laporan: LaporanItem) => {
+    setPageSuccess("");
+    setDeleteTarget({
+      id_laporan: laporan.id_laporan,
+      deskripsi: laporan.deskripsi,
+      lokasi: laporan.lokasi,
+    });
+  };
+
   const stepsProgres: { key: StatusValue; label: string; num: number }[] = [
     { key: "Terkirim", label: "Terkirim", num: 1 },
     { key: "Sedang Diverifikasi", label: "Sedang Diverifikasi", num: 2 },
@@ -607,6 +573,23 @@ export default function AdminRiwayatLaporanPage() {
               retrying={loading}
               onDismiss={() => setFetchError("")}
             />
+          )}
+
+          {pageSuccess && (
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs sm:text-sm font-medium text-emerald-800 shadow-2xs">
+              <div className="flex items-center gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{pageSuccess}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPageSuccess("")}
+                aria-label="Tutup notifikasi"
+                className="rounded-lg p-1 text-emerald-600 hover:bg-emerald-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           )}
 
           {/* Stat Cards */}
@@ -842,23 +825,39 @@ export default function AdminRiwayatLaporanPage() {
                             )}
                           </td>
                           <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap">
-                            <button
-                              onClick={() => {
-                                setSelectedDetail(lap);
-                                setStatusBaru(
-                                  normalizeStatus(
-                                    lap.status_terkini ?? lap.status_laporan
-                                  )
-                                );
-                                setPesanTanggapan(lap.pesan_tanggapan || "");
-                                setModalError("");
-                                setModalSuccess("");
-                              }}
-                              className="px-3.5 py-1.5 rounded-lg bg-[#7A0C0C] hover:bg-[#9E1B1B] text-white text-xs font-semibold shadow-2xs transition-all inline-flex items-center gap-1 cursor-pointer"
-                            >
-                              <span>Detail / Kelola</span>
-                              <ChevronRight className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="inline-flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => {
+                                  setSelectedDetail(lap);
+                                  setStatusBaru(
+                                    normalizeStatus(
+                                      lap.status_terkini ?? lap.status_laporan
+                                    )
+                                  );
+                                  setPesanTanggapan(lap.pesan_tanggapan || "");
+                                  setModalError("");
+                                  setModalSuccess("");
+                                }}
+                                className="px-3.5 py-1.5 rounded-lg bg-[#7A0C0C] hover:bg-[#9E1B1B] text-white text-xs font-semibold shadow-2xs transition-all inline-flex items-center gap-1 cursor-pointer"
+                              >
+                                <span>Detail / Kelola</span>
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </button>
+                              {canEdit &&
+                                normalizeStatus(
+                                  lap.status_terkini ?? lap.status_laporan
+                                ) === "Ditolak" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenDeleteModal(lap)}
+                                    title="Hapus laporan yang sudah ditolak"
+                                    className="px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-semibold shadow-2xs transition-all inline-flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Hapus</span>
+                                  </button>
+                                )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -953,7 +952,14 @@ export default function AdminRiwayatLaporanPage() {
                 </div>
               )}
 
-              {checkCanEditStatus(selectedDetail) ? (
+              {checkCanEditStatus(selectedDetail) && statusSekarang === "Ditolak" ? (
+                <div className="bg-red-50/80 p-3.5 rounded-2xl border border-red-200 flex items-center gap-2.5 text-red-800 text-xs">
+                  <Lock className="w-4 h-4 text-red-600 shrink-0" />
+                  <span>
+                    Laporan ini berstatus <strong>Ditolak</strong> sehingga tidak dapat ditindaklanjuti atau diubah statusnya lagi. Gunakan tombol <strong>Hapus Laporan</strong> jika ingin menghapusnya dari sistem.
+                  </span>
+                </div>
+              ) : checkCanEditStatus(selectedDetail) ? (
                 <div className="bg-amber-50/60 border border-amber-200/80 p-4 rounded-2xl space-y-3">
                   <div className="flex items-center gap-2 text-amber-900 font-bold text-xs uppercase tracking-wider">
                     <Edit3 className="w-4 h-4 text-amber-700" />
@@ -1361,18 +1367,57 @@ export default function AdminRiwayatLaporanPage() {
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between shrink-0">
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-between gap-2 shrink-0">
               <p className="text-xs text-slate-400">Portal Admin USD</p>
-              <button
-                onClick={() => setSelectedDetail(null)}
-                className="px-5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold transition-all cursor-pointer"
-              >
-                Tutup
-              </button>
+              <div className="flex items-center gap-2">
+                {checkCanEditStatus(selectedDetail) &&
+                  statusSekarang === "Ditolak" && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenDeleteModal(selectedDetail)}
+                      className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition-all inline-flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Hapus Laporan</span>
+                    </button>
+                  )}
+                <button
+                  onClick={() => setSelectedDetail(null)}
+                  className="px-5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold transition-all cursor-pointer"
+                >
+                  Tutup
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Modal Konfirmasi Hapus Laporan Ditolak */}
+      <DeleteRejectedReportModal
+        report={deleteTarget}
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={(deletedId) => {
+          setDeleteTarget(null);
+          setLaporanList((prev) =>
+            prev.filter((item) => item.id_laporan !== deletedId)
+          );
+          setCurrentPage((prevPage) =>
+            Math.min(
+              prevPage,
+              Math.max(1, Math.ceil((filteredList.length - 1) / itemsPerPage))
+            )
+          );
+          if (selectedDetail?.id_laporan === deletedId) {
+            setSelectedDetail(null);
+            setPreviewPhotoIndex(null);
+          }
+          setPageSuccess(
+            `Laporan #${deletedId} yang berstatus Ditolak berhasil dihapus dari sistem.`
+          );
+        }}
+      />
 
       {/* Lightbox Pratinjau Foto Ukuran Tetap */}
       <ImagePreviewModal

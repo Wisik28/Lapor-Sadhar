@@ -7,7 +7,6 @@ import {
   FilePlus,
   Eye,
   History,
-  FileEdit,
   LogOut,
   X
 } from "lucide-react";
@@ -31,7 +30,6 @@ const MENU_ITEMS: MenuItem[] = [
   { id: "buat-laporan", label: "Buat Laporan", icon: FilePlus, route: "/buat-laporan" },
   { id: "lihat-status", label: "Lihat Status", icon: Eye, route: "/lihat-status" },
   { id: "riwayat-laporan", label: "Riwayat Laporan", icon: History, route: "/riwayat-laporan" },
-  { id: "ubah-pengajuan", label: "Ubah Pengajuan", icon: FileEdit, route: "/ubah-pengajuan" },
 ];
 
 export default function Sidebar({
@@ -46,6 +44,10 @@ export default function Sidebar({
 
   // Detect active menu from current pathname instead of prop
   const activeMenu = useMemo(() => {
+    if (pathname === "/ubah-pengajuan") {
+      return "riwayat-laporan";
+    }
+
     // First try to find menu by exact route match
     const menuItem = MENU_ITEMS.find(item => item.route === pathname);
     if (menuItem) {
@@ -81,7 +83,7 @@ export default function Sidebar({
   };
 
   const sidebarContent = (
-    <div className="relative w-56 md:w-64 h-full text-white flex flex-col justify-between shrink-0 shadow-2xl overflow-hidden bg-[#7A0C0C]">
+    <div className="relative w-[272px] max-w-[82vw] md:w-64 md:max-w-none h-full text-white flex flex-col justify-between shrink-0 shadow-2xl overflow-hidden bg-[#7A0C0C]">
       {/* BACKGROUND IMAGE: sidebar.png */}
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none transform scale-105"
@@ -122,15 +124,15 @@ export default function Sidebar({
                 type="button"
                 onClick={onCloseMobile}
                 aria-label="Tutup navigasi"
-                className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-white/80 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors shrink-0"
+                className="md:hidden flex items-center justify-center w-10 h-10 rounded-xl text-white/80 hover:text-white hover:bg-white/10 active:bg-white/20 transition-colors shrink-0"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             )}
           </div>
 
           {/* Navigasi Menu */}
-          <nav className="p-2.5 md:p-4 space-y-1 md:space-y-2 mt-1 md:mt-2">
+          <nav className="p-3 md:p-4 space-y-1.5 md:space-y-2 mt-1 md:mt-2">
             {MENU_ITEMS.map((item) => {
               const Icon = item.icon;
               const isActive = activeMenu === item.id;
@@ -139,7 +141,7 @@ export default function Sidebar({
                 <button
                   key={item.id}
                   onClick={() => handleSelectMenu(item.id, item.route)}
-                  className={`relative w-full min-h-[38px] md:min-h-[48px] flex items-center justify-between px-3 py-2 md:px-4 md:py-3 rounded-xl md:rounded-2xl font-medium text-xs md:text-sm transition-colors duration-200 outline-none group ${
+                  className={`relative w-full min-h-[44px] md:min-h-[48px] flex items-center justify-between px-3.5 py-2.5 md:px-4 md:py-3 rounded-xl md:rounded-2xl font-medium text-sm transition-colors duration-200 outline-none group ${
                     isActive
                       ? "text-[#7A0C0C] font-bold"
                       : "text-red-100/90 hover:bg-white/10 hover:text-white"
@@ -178,12 +180,12 @@ export default function Sidebar({
         </div>
 
         {/* Bottom Sidebar: Tombol Keluar */}
-        <div className="p-2.5 md:p-4 border-t border-white/15 bg-black/20">
+        <div className="p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-4 border-t border-white/15 bg-black/20">
           <button
             onClick={handleLogout}
-            className="w-full min-h-[36px] md:min-h-[44px] flex items-center justify-center gap-2 md:gap-2.5 px-3 py-2 md:px-4 md:py-2.5 rounded-lg md:rounded-xl bg-white/10 hover:bg-white/20 text-red-100 hover:text-white text-xs md:text-sm font-medium transition-all duration-200 border border-white/10 active:scale-98 shadow-xs cursor-pointer"
+            className="w-full min-h-[44px] flex items-center justify-center gap-2 md:gap-2.5 px-3.5 py-2.5 md:px-4 rounded-xl bg-white/10 hover:bg-white/20 text-red-100 hover:text-white text-sm font-medium transition-all duration-200 border border-white/10 active:scale-98 shadow-xs cursor-pointer"
           >
-            <LogOut className="w-3.5 h-3.5 md:w-4 md:h-4 text-red-200" />
+            <LogOut className="w-4 h-4 text-red-200" />
             <span>Keluar</span>
           </button>
         </div>
@@ -219,7 +221,7 @@ export default function Sidebar({
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="relative z-10 max-w-[75vw] h-full shadow-2xl"
+              className="relative z-10 max-w-[82vw] h-[100dvh] shadow-2xl"
             >
               {sidebarContent}
             </motion.aside>

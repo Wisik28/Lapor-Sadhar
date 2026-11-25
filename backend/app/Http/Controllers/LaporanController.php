@@ -795,6 +795,15 @@ class LaporanController extends Controller
                 'status'  => 'error',
                 'message' => 'Laporan tidak ditemukan.',
             ], 404);
+        } catch (\Exception $e) {
+            if ($e->getCode() === 403) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => $e->getMessage(),
+                ], 403);
+            }
+
+            return $this->handleError($e);
         } catch (\Throwable $e) {
             return $this->handleError($e);
         }
@@ -853,6 +862,48 @@ class LaporanController extends Controller
                 'status'  => 'error',
                 'message' => 'Laporan tidak ditemukan.',
             ], 404);
+        } catch (\Throwable $e) {
+            return $this->handleError($e);
+        }
+    }
+
+    /**
+     * DELETE /api/admin/laporan/{id}
+     * Admin: Hapus laporan yang berstatus Ditolak sesuai cakupan kampus & unit admin
+     */
+    public function adminDestroy(Request $request, $id): JsonResponse
+    {
+        try {
+            $admin = $request->attributes->get('admin_session')?->admin;
+            $laporan = Laporan::findOrFail($id);
+
+            if (! $admin || ! $admin->canEditLaporan($laporan)) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Anda tidak memiliki wewenang untuk menghapus laporan ini.',
+                ], 403);
+            }
+
+            $this->laporanService->deleteRejectedLaporanByAdmin((int) $id);
+
+            return response()->json([
+                'status'  => 'success',
+                'message' => 'Laporan berstatus Ditolak berhasil dihapus.',
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Laporan tidak ditemukan.',
+            ], 404);
+        } catch (\Exception $e) {
+            if ($e->getCode() === 403) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => $e->getMessage(),
+                ], 403);
+            }
+
+            return $this->handleError($e);
         } catch (\Throwable $e) {
             return $this->handleError($e);
         }

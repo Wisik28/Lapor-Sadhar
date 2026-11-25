@@ -142,22 +142,6 @@ function getStatusBadgeStyle(status: StatusLaporanTerkini): {
   }
 }
 
-// Opsi Bulan untuk Filter
-const LIST_BULAN = [
-  { value: "0", label: "Januari" },
-  { value: "1", label: "Februari" },
-  { value: "2", label: "Maret" },
-  { value: "3", label: "April" },
-  { value: "4", label: "Mei" },
-  { value: "5", label: "Juni" },
-  { value: "6", label: "Juli" },
-  { value: "7", label: "Agustus" },
-  { value: "8", label: "September" },
-  { value: "9", label: "Oktober" },
-  { value: "10", label: "November" },
-  { value: "11", label: "Desember" },
-];
-
 export default function UserRiwayatLaporanPage() {
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -175,9 +159,8 @@ export default function UserRiwayatLaporanPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("Semua");
   const [filterKategori, setFilterKategori] = useState("Semua");
-  const [filterWaktu, setFilterWaktu] = useState("Semua Waktu");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
+  const itemsPerPage = 15;
 
   // State Modal Detail & Pratinjau Foto
   const [selectedDetail, setSelectedDetail] = useState<LaporanItem | null>(null);
@@ -242,7 +225,7 @@ export default function UserRiwayatLaporanPage() {
   // Reset ke halaman 1 jika filter berubah
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, filterStatus, filterKategori, filterWaktu]);
+  }, [searchTerm, filterStatus, filterKategori]);
 
   // ── Hitung KPI ──
   const totalLaporan = laporanList.length;
@@ -274,18 +257,7 @@ export default function UserRiwayatLaporanPage() {
     const matchesKategori =
       filterKategori === "Semua" || item.kategori_laporan === filterKategori;
 
-    // Filter Bulan
-    let matchesWaktu = true;
-    const targetDateStr = item.tanggal_buat || item.tanggal_kejadian;
-
-    if (targetDateStr && filterWaktu !== "Semua Waktu") {
-      const itemDate = new Date(targetDateStr);
-      if (!Number.isNaN(itemDate.getTime())) {
-        matchesWaktu = itemDate.getMonth() === Number(filterWaktu);
-      }
-    }
-
-    return matchesSearch && matchesStatus && matchesKategori && matchesWaktu;
+    return matchesSearch && matchesStatus && matchesKategori;
   });
 
   const totalPages = Math.ceil(filteredList.length / itemsPerPage) || 1;
@@ -339,7 +311,7 @@ export default function UserRiwayatLaporanPage() {
     : "Terkirim";
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#F3F4F6] font-sans text-slate-800">
+    <div className="flex h-[100dvh] md:h-screen w-full overflow-hidden bg-[#F3F4F6] font-sans text-slate-800">
       <Sidebar
         activeMenu="riwayat-laporan"
         setActiveMenu={(menu: string) => {
@@ -360,7 +332,7 @@ export default function UserRiwayatLaporanPage() {
         />
 
         <main className="flex-1 overflow-y-auto bg-[#F3F4F6] p-0 md:p-6 lg:p-8">
-          <div className="mx-auto max-w-6xl space-y-2.5 md:space-y-5">
+          <div className="mx-auto max-w-6xl space-y-3 md:space-y-5">
             {fetchError && (
               <div className="px-3 pt-3 md:p-0">
                 <NetworkErrorAlert
@@ -373,10 +345,10 @@ export default function UserRiwayatLaporanPage() {
             )}
             {/* ═══ KELOMPOK 1: STATUS LAPORAN ═══ */}
             <section aria-label="Ringkasan Status Laporan">
-              {/* Mobile: Tanpa Card, menyatu penuh sebagai kelompok 1 */}
-              <div className="md:hidden bg-white border-b border-slate-200/80 px-2 py-3">
-                <div className="grid grid-cols-4 divide-x divide-slate-100 text-center">
-                  <div className="px-1 flex flex-col items-center">
+              {/* Mobile: 4 Card Status Kompak (ukuran tetap ringkas) */}
+              <div className="md:hidden px-3 pt-3">
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs px-1 py-2.5 flex flex-col items-center">
                     <div className="w-7 h-7 rounded-lg bg-red-50 text-[#7A0C0C] flex items-center justify-center border border-red-100 mb-1">
                       <FileText className="w-3.5 h-3.5" />
                     </div>
@@ -388,7 +360,7 @@ export default function UserRiwayatLaporanPage() {
                     </span>
                   </div>
 
-                  <div className="px-1 flex flex-col items-center">
+                  <div className="bg-white rounded-xl border border-amber-200/70 shadow-2xs px-1 py-2.5 flex flex-col items-center">
                     <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100 mb-1">
                       <Clock className="w-3.5 h-3.5" />
                     </div>
@@ -400,7 +372,7 @@ export default function UserRiwayatLaporanPage() {
                     </span>
                   </div>
 
-                  <div className="px-1 flex flex-col items-center">
+                  <div className="bg-white rounded-xl border border-emerald-200/70 shadow-2xs px-1 py-2.5 flex flex-col items-center">
                     <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 mb-1">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                     </div>
@@ -412,7 +384,7 @@ export default function UserRiwayatLaporanPage() {
                     </span>
                   </div>
 
-                  <div className="px-1 flex flex-col items-center">
+                  <div className="bg-white rounded-xl border border-red-200/70 shadow-2xs px-1 py-2.5 flex flex-col items-center">
                     <div className="w-7 h-7 rounded-lg bg-red-50 text-red-600 flex items-center justify-center border border-red-100 mb-1">
                       <XCircle className="w-3.5 h-3.5" />
                     </div>
@@ -496,10 +468,72 @@ export default function UserRiwayatLaporanPage() {
               </div>
             </section>
 
+            {/* ═══ MOBILE: PANEL PENCARIAN & FILTER TERPISAH ═══ */}
+            <section aria-label="Pencarian dan Filter Laporan" className="md:hidden px-3">
+              <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs p-2.5 space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <div className="relative flex-1 min-w-0">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="Cari ID, deskripsi, atau lokasi..."
+                      className="w-full h-8 pl-8 pr-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs placeholder:text-[11px] outline-none focus:border-[#7A0C0C] focus:bg-white transition-colors"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={fetchLaporan}
+                    disabled={loading}
+                    aria-label="Muat ulang data"
+                    title="Muat ulang data"
+                    className="w-8 h-8 shrink-0 inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 active:bg-slate-200 rounded-lg text-slate-600 transition-colors cursor-pointer"
+                  >
+                    <RefreshCw
+                      className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
+                    />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1.5">
+                  <select
+                    aria-label="Filter status"
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="w-full min-w-0 h-8 px-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 outline-none focus:border-[#7A0C0C] cursor-pointer"
+                  >
+                    <option value="Semua">Status</option>
+                    {STATUS_OPTIONS.map((st) => (
+                      <option key={st} value={st}>
+                        {st}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    aria-label="Filter kategori"
+                    value={filterKategori}
+                    onChange={(e) => setFilterKategori(e.target.value)}
+                    className="w-full min-w-0 h-8 px-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 outline-none focus:border-[#7A0C0C] cursor-pointer"
+                  >
+                    <option value="Semua">Kategori</option>
+                    <option value="Fasilitas">Fasilitas</option>
+                    <option value="Kebersihan">Kebersihan</option>
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            {/* Separator Jelas antara Ringkasan/Filter dan Tabel Daftar Laporan (Mobile) */}
+            <div className="md:hidden px-3" aria-hidden="true">
+              <div className="h-px w-full bg-slate-300/80" />
+            </div>
+
             {/* ═══ KELOMPOK 2: PENCARIAN, FILTER & DAFTAR LAPORAN ═══ */}
             <section
               aria-label="Filter dan Daftar Laporan"
-              className="bg-white border-t border-slate-200/80 md:rounded-2xl md:border md:border-slate-200/80 md:shadow-2xs overflow-hidden w-full"
+              className="bg-white border-t border-slate-200/90 shadow-2xs md:rounded-2xl md:border md:border-slate-200/80 md:shadow-2xs overflow-hidden w-full"
             >
               {/* Panel Pencarian & Filter — Desktop tergabung di bagian atas Kelompok 2 */}
               <div className="hidden md:flex p-4 border-b border-slate-200/80 flex-row items-center justify-between gap-3">
@@ -515,20 +549,6 @@ export default function UserRiwayatLaporanPage() {
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
-                  {/* Filter Waktu */}
-                  <select
-                    value={filterWaktu}
-                    onChange={(e) => setFilterWaktu(e.target.value)}
-                    className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none cursor-pointer"
-                  >
-                    <option value="Semua Waktu">Waktu: Semua Waktu</option>
-                    {LIST_BULAN.map((b) => (
-                      <option key={b.value} value={b.value}>
-                        {b.label}
-                      </option>
-                    ))}
-                  </select>
-
                   {/* Filter Status */}
                   <select
                     value={filterStatus}
@@ -568,75 +588,6 @@ export default function UserRiwayatLaporanPage() {
                 </div>
               </div>
 
-              {/* Search Bar + Refresh Ikon Kecil + Filter — Mobile tergabung di bagian atas Kelompok 2 */}
-              <div className="md:hidden px-3 py-3 border-b border-slate-100 space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1 min-w-0">
-                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder="Cari ID, deskripsi, atau lokasi..."
-                      className="w-full h-8 pl-8 pr-3 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-[#7A0C0C] focus:bg-white transition-colors"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={fetchLaporan}
-                    disabled={loading}
-                    aria-label="Muat ulang data"
-                    title="Muat ulang data"
-                    className="w-8 h-8 shrink-0 inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 active:bg-slate-200 rounded-lg text-slate-600 transition-colors cursor-pointer"
-                  >
-                    <RefreshCw
-                      className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`}
-                    />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-3 gap-1.5">
-                  <select
-                    aria-label="Filter waktu"
-                    value={filterWaktu}
-                    onChange={(e) => setFilterWaktu(e.target.value)}
-                    className="w-full min-w-0 h-8 px-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 outline-none focus:border-[#7A0C0C] cursor-pointer"
-                  >
-                    <option value="Semua Waktu">Waktu</option>
-                    {LIST_BULAN.map((b) => (
-                      <option key={b.value} value={b.value}>
-                        {b.label}
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    aria-label="Filter status"
-                    value={filterStatus}
-                    onChange={(e) => setFilterStatus(e.target.value)}
-                    className="w-full min-w-0 h-8 px-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 outline-none focus:border-[#7A0C0C] cursor-pointer"
-                  >
-                    <option value="Semua">Status</option>
-                    {STATUS_OPTIONS.map((st) => (
-                      <option key={st} value={st}>
-                        {st}
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    aria-label="Filter kategori"
-                    value={filterKategori}
-                    onChange={(e) => setFilterKategori(e.target.value)}
-                    className="w-full min-w-0 h-8 px-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 outline-none focus:border-[#7A0C0C] cursor-pointer"
-                  >
-                    <option value="Semua">Kategori</option>
-                    <option value="Fasilitas">Fasilitas</option>
-                    <option value="Kebersihan">Kebersihan</option>
-                  </select>
-                </div>
-              </div>
-
               {/* Tabel Mobile — fit 1 layar tanpa scroll horizontal, klik baris untuk detail */}
               <div className="md:hidden w-full">
                 <div className="px-3 py-2.5 bg-slate-50/80 border-b border-slate-200/80">
@@ -671,14 +622,6 @@ export default function UserRiwayatLaporanPage() {
                       </tr>
                     ) : (
                       paginatedData.map((lap) => {
-                        const rawFoto = lap.foto as
-                          | string
-                          | string[]
-                          | null
-                          | undefined;
-                        const rowFotos = getFotoList(rawFoto)
-                          .map(resolveFotoUrl)
-                          .filter((url) => url.length > 0);
                         const statusNorm = normalizeLaporanStatus(lap.status_terkini);
                         const statusStyle = getStatusBadgeStyle(statusNorm);
 
@@ -712,12 +655,6 @@ export default function UserRiwayatLaporanPage() {
                                 <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold border border-slate-200/70">
                                   {lap.kategori_laporan}
                                 </span>
-                                {rowFotos.length > 0 && (
-                                  <span className="inline-flex items-center gap-0.5 text-slate-500">
-                                    <Paperclip className="w-2.5 h-2.5" />
-                                    <span>{rowFotos.length}</span>
-                                  </span>
-                                )}
                               </div>
                             </td>
                             <td className="px-3 py-3 align-middle text-right">
@@ -874,7 +811,7 @@ export default function UserRiwayatLaporanPage() {
               </div>
 
               {/* Pagination */}
-              <div className="px-3 md:px-4 py-3 bg-white md:bg-slate-50/50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2.5 sm:gap-3 text-xs text-slate-500">
+              <div className="px-3 md:px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-3 bg-white md:bg-slate-50/50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2.5 sm:gap-3 text-xs text-slate-500">
                 <p>
                   Menampilkan{" "}
                   {paginatedData.length > 0
@@ -884,11 +821,11 @@ export default function UserRiwayatLaporanPage() {
                   dari {filteredList.length} pengajuan laporan
                 </p>
 
-                <div className="flex items-center gap-1">
+                <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-1">
                   <button
                     onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
                     disabled={currentPage === 1}
-                    className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer"
+                    className="min-h-[36px] sm:min-h-0 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer"
                   >
                     Sebelumnya
                   </button>
@@ -897,7 +834,7 @@ export default function UserRiwayatLaporanPage() {
                       <button
                         key={p}
                         onClick={() => setCurrentPage(p)}
-                        className={`w-7 h-7 rounded-lg font-bold transition-colors cursor-pointer ${
+                        className={`min-h-[36px] min-w-[36px] sm:min-h-0 sm:min-w-0 sm:w-7 sm:h-7 rounded-lg font-bold transition-colors cursor-pointer ${
                           currentPage === p
                             ? "bg-[#7A0C0C] text-white"
                             : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
@@ -912,7 +849,7 @@ export default function UserRiwayatLaporanPage() {
                       setCurrentPage((p) => Math.min(p + 1, totalPages))
                     }
                     disabled={currentPage === totalPages}
-                    className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer"
+                    className="min-h-[36px] sm:min-h-0 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 font-medium hover:bg-slate-50 disabled:opacity-40 transition-colors cursor-pointer"
                   >
                     Berikutnya
                   </button>
@@ -929,27 +866,29 @@ export default function UserRiwayatLaporanPage() {
       {selectedDetail && (
         <div
           onClick={() => setSelectedDetail(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-2.5 sm:p-4"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-2xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[84dvh] sm:max-h-[90vh] flex flex-col border border-slate-100"
+            className="relative w-full max-w-2xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[90dvh] sm:max-h-[90vh] flex flex-col border border-slate-100"
           >
             {/* Header Modal */}
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 shrink-0">
-              <div>
+            <div className="px-4 py-3.5 sm:px-6 sm:py-4 border-b border-slate-100 flex items-center justify-between gap-2 bg-slate-50/50 shrink-0">
+              <div className="min-w-0">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                   DETAIL LAPORAN #{selectedDetail.id_laporan}
                 </p>
-                <h2 className="text-base font-extrabold text-slate-900 mt-0.5">
+                <h2 className="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5 truncate">
                   Informasi Laporan
                 </h2>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                 {renderStatusBadge(selectedDetail.status_terkini)}
                 <button
+                  type="button"
                   onClick={() => setSelectedDetail(null)}
-                  className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors cursor-pointer"
+                  aria-label="Tutup detail laporan"
+                  className="w-9 h-9 sm:w-auto sm:h-auto sm:p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -957,7 +896,7 @@ export default function UserRiwayatLaporanPage() {
             </div>
 
             {/* Isi Konten Scrollable */}
-            <div className="p-6 overflow-y-auto space-y-6 text-xs sm:text-sm">
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-5 sm:space-y-6 text-xs sm:text-sm">
               {/* Grid Info Utama */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -1220,16 +1159,16 @@ export default function UserRiwayatLaporanPage() {
             </div>
 
             {/* Footer Modal */}
-            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+            <div className="px-4 py-3.5 sm:px-6 sm:py-4 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-2.5 sm:gap-3 shrink-0">
               {selectedStatus === "Terkirim" ? (
-                <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200/60 w-full sm:w-auto">
+                <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 px-3 py-2 sm:py-1.5 rounded-xl border border-amber-200/60 w-full sm:w-auto">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>
                     Pengajuan ini masih dapat diubah sebelum diverifikasi.
                   </span>
                 </div>
               ) : (
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-slate-400 self-start sm:self-center">
                   {selectedStatus === "Selesai"
                     ? "Laporan telah selesai ditangani."
                     : selectedStatus === "Ditolak"
@@ -1241,18 +1180,20 @@ export default function UserRiwayatLaporanPage() {
               <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
                 {selectedStatus === "Terkirim" && (
                   <button
+                    type="button"
                     onClick={() =>
                       handleGoToUbahPengajuan(selectedDetail.id_laporan)
                     }
-                    className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-[#7A0C0C] hover:bg-[#9E1B1B] text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                    className="flex-1 sm:flex-none min-h-[44px] sm:min-h-0 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-[#7A0C0C] hover:bg-[#9E1B1B] text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                     <span>Ubah Pengajuan</span>
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={() => setSelectedDetail(null)}
-                  className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold transition-all cursor-pointer"
+                  className="flex-1 sm:flex-none min-h-[44px] sm:min-h-0 px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold transition-all cursor-pointer"
                 >
                   Tutup
                 </button>

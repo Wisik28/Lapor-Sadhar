@@ -3,6 +3,7 @@
  */
 
 import { LaporanResponse } from './types';
+import { emitAdminNotificationSync } from '@/lib/notificationEvents';
 import {
   extractResponseErrorMessage,
   formatUserFriendlyError,
@@ -121,6 +122,9 @@ export const laporanApi = {
           message: 'Gagal mengirim laporan. Silakan coba lagi.',
         };
       }
+      if (result.status === 'success') {
+        emitAdminNotificationSync('laporan_baru');
+      }
       return result;
     } catch (error: unknown) {
       return {
@@ -165,6 +169,9 @@ export const laporanApi = {
           status: 'error',
           message: 'Gagal memperbarui laporan. Silakan coba lagi.',
         };
+      }
+      if (result.status === 'success') {
+        emitAdminNotificationSync('revisi_laporan');
       }
       return result;
     } catch (error: unknown) {

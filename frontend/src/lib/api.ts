@@ -1,6 +1,7 @@
 // Client API Helper untuk terhubung ke Backend Laravel
 
 import { setAuthSession, clearAuthSession, syncSessionExpiry } from './auth';
+import { emitAdminNotificationSync } from './notificationEvents';
 import {
   extractResponseErrorMessage,
   formatUserFriendlyError,
@@ -633,6 +634,9 @@ export const laporanApi = {
           errors: result?.errors,
         };
       }
+      if (result?.status === "success") {
+        emitAdminNotificationSync("laporan_baru");
+      }
       return result;
     } catch (error: unknown) {
       return { status: "error", message: getErrorMessage(error, "Gagal mengirim laporan.", 'submit') };
@@ -668,6 +672,9 @@ export const laporanApi = {
           message: extractResponseErrorMessage(res, result, 'submit', "Gagal memperbarui laporan. Silakan coba lagi."),
           errors: result?.errors,
         };
+      }
+      if (result?.status === "success") {
+        emitAdminNotificationSync("revisi_laporan");
       }
       return result;
     } catch (error: unknown) {
@@ -848,6 +855,28 @@ export const adminLaporanApi = {
     return result;
   },
 
+  /** Menghapus laporan berstatus Ditolak oleh admin sesuai cakupan unit & kampus */
+  async deleteReport(id: number) {
+    const response = await safeFetch(
+      `${API_BASE_URL}/admin/laporan/${id}`,
+      {
+        method: "DELETE",
+        headers: getAuthHeaders(true),
+      },
+      'action'
+    );
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        extractResponseErrorMessage(response, result, 'action', "Gagal menghapus laporan. Silakan coba lagi.")
+      );
+    }
+
+    return result;
+  },
+
   /** Mengambil data rekap & analitik laporan untuk admin */
   async getRekap(params?: { bulan?: string; tahun?: string }) {
     const searchParams = new URLSearchParams();
@@ -870,5 +899,163 @@ export const adminLaporanApi = {
     }
 
     return result?.data ?? null;
+  },
+};
+
+// ─── Admin Notification API ──────────────────────────────────────────────────
+
+export interface AdminNotificationItem {
+  id: number;
+  id_laporan: number;
+  kode_laporan: string;
+  jenis_aktivitas: "laporan_baru" | "revisi_laporan" | string;
+  label_aktivitas: string;
+  judul: string;
+  pesan: string;
+  nama_pelapor: string;
+  nim_pelapor?: string | null;
+  kategori_laporan?: string | null;
+  lokasi_kampus?: string | null;
+  lokasi?: string | null;
+  tanggal_kejadian?: string | null;
+  is_read: boolean;
+  read_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface AdminNotificationsFetchResult {
+  not_modified: boolean;
+  etag?: string | null;
+  unread_count: number;
+  latest_id: number;
+  server_time?: string;
+  data: AdminNotificationItem[];
+}
+
+export const adminNotificationApi = {
+  /** Mengambil daftar notifikasi admin dengan ETag (304) untuk pembaruan real-time ringan */
+  async getList(params?: {
+    limit?: number;
+    unread_only?: boolean;
+    etag?: string | null;
+    signal?: AbortSignal;
+  }): Promise<AdminNotificationsFetchResult> {
+    const searchParams = new URLSearchParams();
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    if (params?.unread_only) searchParams.set("unread_only", "1");
+
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    const headers: Record<string, string> = {
+      ...getAuthHeaders(true),
+      ...(params?.etag ? { "If-None-Match": params.etag } : {}),
+    };
+
+    const response = await safeFetch(
+      `${API_BASE_URL}/admin/notifications${query}`,
+      {
+        method: "GET",
+        headers,
+        cache: "no-store",
+        signal: params?.signal,
+      },
+      "load"
+    );
+
+    if (response.status === 304) {
+      return {
+        not_modified: true,
+        etag: response.headers.get("ETag") || params?.etag || null,
+        unread_count: 0,
+        latest_id: 0,
+        data: [],
+      };
+    }
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        extractResponseErrorMessage(
+          response,
+          result,
+          "load",
+          "Gagal memuat notifikasi admin."
+        )
+      );
+    }
+
+    return {
+      not_modified: false,
+      etag: response.headers.get("ETag"),
+      unread_count: Number(result?.unread_count ?? 0),
+      latest_id: Number(result?.latest_id ?? 0),
+      server_time: result?.server_time,
+      data: Array.isArray(result?.data) ? result.data : [],
+    };
+  },
+
+  /** Menandai satu notifikasi sebagai sudah dibaca */
+  async markAsRead(id: number): Promise<{
+    unread_count: number;
+    data?: AdminNotificationItem;
+  }> {
+    const response = await safeFetch(
+      `${API_BASE_URL}/admin/notifications/${id}/read`,
+      {
+        method: "PATCH",
+        headers: getAuthHeaders(true),
+      },
+      "action"
+    );
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        extractResponseErrorMessage(
+          response,
+          result,
+          "action",
+          "Gagal menandai notifikasi sebagai dibaca."
+        )
+      );
+    }
+
+    emitAdminNotificationSync("read_updated");
+    return {
+      unread_count: Number(result?.unread_count ?? 0),
+      data: result?.data,
+    };
+  },
+
+  /** Menandai seluruh notifikasi admin saat ini sebagai sudah dibaca */
+  async markAllAsRead(): Promise<{ unread_count: number; updated_count: number }> {
+    const response = await safeFetch(
+      `${API_BASE_URL}/admin/notifications/read-all`,
+      {
+        method: "PATCH",
+        headers: getAuthHeaders(true),
+      },
+      "action"
+    );
+
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        extractResponseErrorMessage(
+          response,
+          result,
+          "action",
+          "Gagal menandai seluruh notifikasi sebagai dibaca."
+        )
+      );
+    }
+
+    emitAdminNotificationSync("read_updated");
+    return {
+      unread_count: Number(result?.unread_count ?? 0),
+      updated_count: Number(result?.updated_count ?? 0),
+    };
   },
 };

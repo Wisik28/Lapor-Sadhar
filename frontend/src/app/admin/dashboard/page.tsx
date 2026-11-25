@@ -20,6 +20,7 @@ import { getFotoList, getFotoUrl, getThumbnailFotoUrl } from "@/lib/laporanPhoto
 import { LOKASI_KAMPUS_OPTIONS, resolveLokasiKampus } from "@/lib/laporanCampus";
 import {
   KATEGORI_LAPORAN_OPTIONS,
+  canAdminManageLaporan,
   getKategoriTextColorClass,
   getTransferTarget,
   isCampusScopedAdmin,
@@ -28,6 +29,10 @@ import {
   normalizeKategoriLaporan,
   resolveAdminUnit,
 } from "@/lib/admin-positions";
+import {
+  DeleteRejectedReportModal,
+  type DeleteRejectedReportTarget,
+} from "@/components/DeleteRejectedReportModal";
 import { useDebounce } from "@/hooks/useDebounce";
 import {
   Inbox,
@@ -47,6 +52,7 @@ import {
   ArrowRightLeft,
   Loader2,
   Send,
+  Trash2,
 } from "lucide-react";
 
 // Tipe Data Status Laporan di Dashboard
@@ -327,6 +333,8 @@ export default function AdminDashboardPage() {
   const [transferLoading, setTransferLoading] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] =
+    useState<DeleteRejectedReportTarget | null>(null);
 
   // State Laporan "Terkirim" yang Sudah Pernah Dibuka oleh Admin
   const adminSeenKey = useMemo(() => resolveAdminSeenKey(authUser), [authUser]);
@@ -376,6 +384,7 @@ export default function AdminDashboardPage() {
     setIsTransferOpen(false);
     setTransferNote("");
     setTransferError(null);
+    setDeleteTarget(null);
   }, [transferLoading]);
 
   const canTransferSelected = Boolean(
@@ -384,6 +393,16 @@ export default function AdminDashboardPage() {
       selectedReport &&
       selectedReport.status !== "Selesai" &&
       selectedReport.status !== "Ditolak"
+  );
+
+  const canDeleteSelected = Boolean(
+    selectedReport &&
+      selectedReport.status === "Ditolak" &&
+      canAdminManageLaporan(authUser, {
+        kategori_laporan: selectedReport.kategori,
+        lokasi_kampus: selectedReport.kampus,
+        lokasi: selectedReport.lokasi,
+      })
   );
 
   // Authenticated Admin User
@@ -1918,12 +1937,30 @@ export default function AdminDashboardPage() {
                   >
                     Tutup
                   </button>
-                  {!isReadOnly && (
+                  {canDeleteSelected && selectedReport && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDeleteTarget({
+                          id_laporan: selectedReport.idRaw,
+                          deskripsi: selectedReport.deskripsi,
+                          lokasi: selectedReport.lokasi,
+                        })
+                      }
+                      disabled={transferLoading}
+                      className="w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Hapus Laporan</span>
+                    </button>
+                  )}
+                  {!isReadOnly && selectedReport.status !== "Ditolak" && (
                     <button
                       type="button"
                       onClick={() => {
+                        const targetId = selectedReport.idRaw;
                         handleCloseDetailModal();
-                        router.push("/admin/ubah-status");
+                        router.push(`/admin/ubah-status?id=${targetId}`);
                       }}
                       disabled={transferLoading}
                       className="w-full sm:w-auto min-h-[44px] px-6 py-2.5 rounded-xl bg-[#7A0C0C] text-white text-sm font-semibold hover:bg-[#6e1010] transition-colors shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
@@ -1938,6 +1975,25 @@ export default function AdminDashboardPage() {
           )}
         </div>
       )}
+
+      <DeleteRejectedReportModal
+        report={deleteTarget}
+        isOpen={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={(deletedId) => {
+          setDeleteTarget(null);
+          setSelectedReport(null);
+          setActivePhotoIndex(null);
+          const nextTotal = Math.max(0, filteredReports.length - 1);
+          setCurrentPage((prev) =>
+            Math.min(prev, Math.max(1, Math.ceil(nextTotal / itemsPerPage)))
+          );
+          setReports((prev) => prev.filter((item) => item.idRaw !== deletedId));
+          setActionSuccess(
+            `Laporan #${formatReportId(deletedId)} yang berstatus Ditolak berhasil dihapus dari sistem.`
+          );
+        }}
+      />
 
       <ImagePreviewModal
         images={(selectedReport?.fotoList ?? []).map(getFotoUrl)}

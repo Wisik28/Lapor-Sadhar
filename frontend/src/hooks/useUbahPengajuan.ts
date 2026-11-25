@@ -188,7 +188,11 @@ export function useUbahPengajuan() {
   }, []);
 
   const save = useCallback(
-    async (nim: string, onSuccess?: () => void) => {
+    async (
+      nim: string,
+      onSuccess?: (updated?: LaporanItem) => void,
+      options?: { keepSelection?: boolean }
+    ) => {
       if (!state.selectedLaporan) return;
 
       setError('');
@@ -233,9 +237,28 @@ export function useUbahPengajuan() {
         });
 
         if (res.status === 'success') {
-          setSuccess('Laporan berhasil diperbarui!');
-          clearSelection();
-          if (onSuccess) onSuccess();
+          const updatedItem =
+            res.data && !Array.isArray(res.data) ? res.data : undefined;
+
+          if (options?.keepSelection) {
+            setState((prev) => ({
+              ...prev,
+              selectedLaporan: updatedItem
+                ? {
+                    ...prev.selectedLaporan!,
+                    ...updatedItem,
+                    status_terkini: prev.selectedLaporan?.status_terkini ?? 'Terkirim',
+                  }
+                : prev.selectedLaporan,
+              photoChanged: false,
+              success: 'Perubahan laporan berhasil disimpan!',
+            }));
+          } else {
+            setSuccess('Laporan berhasil diperbarui!');
+            clearSelection();
+          }
+
+          if (onSuccess) onSuccess(updatedItem);
         } else {
           setError(
             formatUserFriendlyError(
@@ -273,8 +296,17 @@ export function useUbahPengajuan() {
   );
 
   const delete_ = useCallback(
-    async (id: number, onSuccess?: () => void) => {
-      if (!confirm('Yakin ingin menghapus laporan ini? Tindakan ini tidak dapat dibatalkan.')) return;
+    async (
+      id: number,
+      onSuccess?: () => void,
+      options?: { skipConfirm?: boolean }
+    ) => {
+      if (
+        !options?.skipConfirm &&
+        !confirm('Yakin ingin menghapus laporan ini? Tindakan ini tidak dapat dibatalkan.')
+      ) {
+        return;
+      }
 
       setState((prev) => ({ ...prev, deleteLoading: id }));
 

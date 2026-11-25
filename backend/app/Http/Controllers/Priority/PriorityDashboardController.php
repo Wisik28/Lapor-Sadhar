@@ -564,6 +564,18 @@ class PriorityDashboardController extends Controller
                 ], 403);
             }
 
+            $latestStatus = $laporan->statuses()
+                ->orderBy('tanggal_merubah', 'desc')
+                ->orderBy('id_status', 'desc')
+                ->value('status_laporan') ?? 'Terkirim';
+
+            if (strcasecmp(trim((string) $latestStatus), 'Ditolak') === 0) {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Laporan yang berstatus "Ditolak" tidak dapat ditindaklanjuti atau diubah prioritasnya lagi.',
+                ], 403);
+            }
+
             $updated = $this->scoringService->overrideSeverityByAdmin(
                 (int) $id,
                 $request->input('severity_level'),

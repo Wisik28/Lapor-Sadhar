@@ -7,16 +7,8 @@ export const LOKASI_KAMPUS_OPTIONS = [
 
 export type LokasiKampus = (typeof LOKASI_KAMPUS_OPTIONS)[number];
 
-/**
- * Resolve canonical campus name ("Kampus 1".."Kampus 4") from explicit field or free-text location.
- */
-export function resolveLokasiKampus(lokasiKampus?: string | null, lokasi?: string | null): string {
-  const explicit = (lokasiKampus ?? '').trim();
-  if (explicit) {
-    return explicit;
-  }
-
-  const lower = (lokasi ?? '').toLowerCase();
+function inferCampusFromText(text: string): string | null {
+  const lower = text.toLowerCase();
   if (/\bkampus\s*(?:iv|4)\b/i.test(lower) || lower.includes('kotabaru')) {
     return 'Kampus 4';
   }
@@ -29,7 +21,27 @@ export function resolveLokasiKampus(lokasiKampus?: string | null, lokasi?: strin
   if (/\bkampus\s*(?:i|1)\b/i.test(lower) || lower.includes('mrican')) {
     return 'Kampus 1';
   }
+  return null;
+}
 
-  return 'Kampus Sanata Dharma';
+/**
+ * Resolve canonical campus name ("Kampus 1".."Kampus 4") from explicit field or free-text location.
+ */
+export function resolveLokasiKampus(lokasiKampus?: string | null, lokasi?: string | null): string {
+  const explicit = (lokasiKampus ?? '').trim();
+  if (explicit) {
+    if ((LOKASI_KAMPUS_OPTIONS as readonly string[]).includes(explicit)) {
+      return explicit;
+    }
+    const normalizedExplicit = inferCampusFromText(explicit);
+    if (normalizedExplicit) {
+      return normalizedExplicit;
+    }
+    if (explicit.toLowerCase() !== 'semua kampus') {
+      return explicit;
+    }
+  }
+
+  return inferCampusFromText(lokasi ?? '') ?? 'Kampus Sanata Dharma';
 }
 

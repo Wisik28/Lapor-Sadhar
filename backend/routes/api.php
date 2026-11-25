@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdminAuthController;
+use App\Http\Controllers\AdminNotificationController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\EmailSecurityController;
 use App\Http\Controllers\LaporanController;
@@ -35,6 +36,10 @@ Route::middleware('admin.session')->prefix('admin')->group(function () {
     Route::post('/laporan/{id}/seen', [LaporanController::class, 'adminMarkSeen']);
     Route::patch('/laporan/{id}/status', [LaporanController::class, 'adminUpdateStatus']);
     Route::patch('/laporan/{id}/kategori', [LaporanController::class, 'adminTransferKategori']);
+    Route::delete('/laporan/{id}', [LaporanController::class, 'adminDestroy']);
+    Route::get('/notifications', [AdminNotificationController::class, 'index']);
+    Route::patch('/notifications/read-all', [AdminNotificationController::class, 'markAllAsRead']);
+    Route::patch('/notifications/{id}/read', [AdminNotificationController::class, 'markAsRead']);
     Route::get('/rekap', [LaporanController::class, 'adminRekap']);
 });
 

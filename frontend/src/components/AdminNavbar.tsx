@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { authApi } from "@/lib/api";
 import { isReadOnlyAdmin } from "@/lib/admin-positions";
+import AdminNotificationBell from "@/components/AdminNotificationBell";
 
 export interface AdminNavbarProps {
   adminName?: string;
@@ -143,8 +144,11 @@ export default function AdminNavbar({
             })}
           </nav>
 
-          {/* Sisi Kanan: Profile Avatar Admin */}
+          {/* Sisi Kanan: Notifikasi & Profile Avatar Admin */}
           <div className="flex items-center gap-2.5 sm:gap-3">
+            {/* Ikon Lonceng Notifikasi Real-time */}
+            <AdminNotificationBell isReadOnly={isReadOnly} />
+
             {/* Profile Avatar & Admin Label */}
             <div className="relative" ref={dropdownRef}>
               <button
