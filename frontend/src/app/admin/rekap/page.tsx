@@ -1,14 +1,17 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import AdminNavbar from "@/components/AdminNavbar";
 import PeriodFilter from "@/components/PeriodFilter";
 import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { authApi, adminLaporanApi } from "@/lib/api";
 import { formatUserFriendlyError } from "@/lib/networkError";
+import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
 import {
   Send, Search, X, CheckCircle2, Settings, Flag,
   RefreshCw, Download, FileSpreadsheet, FileText,
+  ChevronDown, ChevronUp,
 } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -410,6 +413,7 @@ function TrenLineChart({ data }: { data: BulanData[] }) {
 // ─── Halaman Utama ─────────────────────────────────────────────────────────────
 
 export default function AdminRekapPage() {
+  const router = useRouter();
   const [selectedMonth, setSelectedMonth] = useState("Semua");
   const [selectedYear, setSelectedYear]   = useState("2026");
   const [rekapData, setRekapData]         = useState<RekapData | null>(null);
@@ -418,6 +422,9 @@ export default function AdminRekapPage() {
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState<"pdf" | "excel" | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [showAllLokasi, setShowAllLokasi] = useState(false);
+  const [showAllLaporan, setShowAllLaporan] = useState(false);
+  const [expandedReportId, setExpandedReportId] = useState<number | null>(null);
   const [adminUser] = useState(() => {
     const user = authApi.getCurrentUser();
     if (user && (user.role === "Admin" || user.admin_id)) {
@@ -429,11 +436,13 @@ export default function AdminRekapPage() {
   const fetchRekap = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setShowAllLaporan(false);
+    setExpandedReportId(null);
     try {
-      const params: { bulan?: string; tahun?: string } = {};
+      const params: { bulan?: string; tahun?: string; limit_terbaru?: number } = { limit_terbaru: 100 };
       if (selectedMonth !== "Semua" && selectedYear !== "Semua") params.bulan = `${selectedYear}-${selectedMonth}`;
       else if (selectedYear !== "Semua") params.tahun = selectedYear;
-      const data = await adminLaporanApi.getRekap(Object.keys(params).length > 0 ? params : undefined);
+      const data = await adminLaporanApi.getRekap(params);
       setRekapData(data);
       setLaporanTerbaru(Array.isArray(data?.laporan_terbaru) ? data.laporan_terbaru : []);
     } catch (err: unknown) {
@@ -453,10 +462,10 @@ export default function AdminRekapPage() {
     let active = true;
     const load = async () => {
       try {
-        const params: { bulan?: string; tahun?: string } = {};
+        const params: { bulan?: string; tahun?: string; limit_terbaru?: number } = { limit_terbaru: 100 };
         if (selectedMonth !== "Semua" && selectedYear !== "Semua") params.bulan = `${selectedYear}-${selectedMonth}`;
         else if (selectedYear !== "Semua") params.tahun = selectedYear;
-        const data = await adminLaporanApi.getRekap(Object.keys(params).length > 0 ? params : undefined);
+        const data = await adminLaporanApi.getRekap(params);
         if (!active) return;
         setRekapData(data);
         setLaporanTerbaru(Array.isArray(data?.laporan_terbaru) ? data.laporan_terbaru : []);
@@ -571,14 +580,14 @@ export default function AdminRekapPage() {
       const firstPage = await adminLaporanApi.getAllWithPagination({
         page: 1,
         per_page: 100,
-        include_foto: false,
+        include_foto: true,
       });
       const reports = [...firstPage.data];
       for (let page = 2; page <= firstPage.last_page; page++) {
         const result = await adminLaporanApi.getAllWithPagination({
           page,
           per_page: 100,
-          include_foto: false,
+          include_foto: true,
         });
         reports.push(...result.data);
       }
@@ -607,21 +616,52 @@ export default function AdminRekapPage() {
           head: [[
             "ID", "NIM", "Nama Pelapor", "Kategori", "Deskripsi",
             "Tgl. Kejadian", "Tgl. Dibuat", "Kampus", "Lokasi", "Status",
+            "URL Bukti Gambar",
           ]],
-          body: filteredReports.map((report) => [
-            report.id_laporan,
-            report.nim,
-            report.nama_pelapor || "-",
-            report.kategori_laporan,
-            report.deskripsi,
-            report.tanggal_kejadian,
-            report.tanggal_buat,
-            report.lokasi_kampus || "-",
-            report.lokasi,
-            report.status_terkini,
-          ]),
+          body: filteredReports.map((report) => {
+            const photoUrls = getFotoList(report.foto).map(getFotoUrl);
+            const photoText = photoUrls.length > 0 ? photoUrls.join("\n") : "-";
+
+            return [
+              report.id_laporan,
+              report.nim,
+              report.nama_pelapor || "-",
+              report.kategori_laporan,
+              report.deskripsi,
+              report.tanggal_kejadian,
+              report.tanggal_buat,
+              report.lokasi_kampus || "-",
+              report.lokasi,
+              report.status_terkini,
+              photoText,
+            ];
+          }),
           styles: { fontSize: 7, cellPadding: 2, overflow: "linebreak" },
+          columnStyles: {
+            0: { cellWidth: 10 },
+            1: { cellWidth: 18 },
+            2: { cellWidth: 26 },
+            3: { cellWidth: 16 },
+            4: { cellWidth: 40 },
+            5: { cellWidth: 20 },
+            6: { cellWidth: 20 },
+            7: { cellWidth: 18 },
+            8: { cellWidth: 24 },
+            9: { cellWidth: 18 },
+            10: { cellWidth: 65 },
+          },
           headStyles: { fillColor: [122, 12, 12] },
+          didDrawCell: (data) => {
+            if (data.section === "body" && data.column.index === 10) {
+              const report = filteredReports[data.row.index];
+              if (report) {
+                const urls = getFotoList(report.foto).map(getFotoUrl);
+                if (urls.length > 0) {
+                  pdf.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: urls[0] });
+                }
+              }
+            }
+          },
           didDrawPage: () => {
             pageNumber += 1;
             pdf.setFontSize(8);
@@ -650,19 +690,31 @@ export default function AdminRekapPage() {
           { header: "Kampus", key: "kampus", width: 20 },
           { header: "Lokasi", key: "lokasi", width: 28 },
           { header: "Status", key: "status", width: 22 },
+          { header: "URL Bukti Gambar", key: "urlGambar", width: 45 },
         ];
-        worksheet.addRows(filteredReports.map((report) => ({
-          id: report.id_laporan,
-          nim: report.nim,
-          nama: report.nama_pelapor || "-",
-          kategori: report.kategori_laporan,
-          deskripsi: report.deskripsi,
-          tanggalKejadian: report.tanggal_kejadian,
-          tanggalDibuat: report.tanggal_buat,
-          kampus: report.lokasi_kampus || "-",
-          lokasi: report.lokasi,
-          status: report.status_terkini,
-        })));
+        worksheet.addRows(filteredReports.map((report) => {
+          const photoUrls = getFotoList(report.foto).map(getFotoUrl);
+          let urlGambarValue: unknown = "-";
+          if (photoUrls.length === 1) {
+            urlGambarValue = { text: photoUrls[0], hyperlink: photoUrls[0], tooltip: "Buka bukti gambar" };
+          } else if (photoUrls.length > 1) {
+            urlGambarValue = { text: photoUrls.join("\n"), hyperlink: photoUrls[0], tooltip: "Buka bukti gambar" };
+          }
+
+          return {
+            id: report.id_laporan,
+            nim: report.nim,
+            nama: report.nama_pelapor || "-",
+            kategori: report.kategori_laporan,
+            deskripsi: report.deskripsi,
+            tanggalKejadian: report.tanggal_kejadian,
+            tanggalDibuat: report.tanggal_buat,
+            kampus: report.lokasi_kampus || "-",
+            lokasi: report.lokasi,
+            status: report.status_terkini,
+            urlGambar: urlGambarValue,
+          };
+        }));
         worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
         worksheet.getRow(1).fill = {
           type: "pattern",
@@ -670,7 +722,17 @@ export default function AdminRekapPage() {
           fgColor: { argb: "FF7A0C0C" },
         };
         worksheet.views = [{ state: "frozen", ySplit: 1 }];
-        worksheet.autoFilter = "A1:J1";
+        worksheet.autoFilter = "A1:K1";
+        worksheet.getColumn("urlGambar").alignment = { wrapText: true, vertical: "middle" };
+        worksheet.eachRow((row, rowNumber) => {
+          if (rowNumber > 1) {
+            const cell = row.getCell("urlGambar");
+            const val = cell.value as unknown;
+            if (val && typeof val === "object" && "hyperlink" in (val as Record<string, unknown>)) {
+              cell.font = { color: { argb: "FF0563C1" }, underline: true };
+            }
+          }
+        });
 
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], {
@@ -874,94 +936,195 @@ export default function AdminRekapPage() {
             {/* ═══ ROW 3 — LOKASI + LAPORAN TERBARU ════════════════════════════ */}
             <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-              {/* Laporan Berdasarkan Lokasi Top 5 */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs hover:shadow-sm transition-all duration-300 p-5">
-                <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
-                  <div>
-                    <h2 className="text-sm font-bold text-gray-900">Laporan per Lokasi</h2>
-                    <p className="text-[10px] text-gray-400 mt-0.5">Top 5 lokasi terbanyak</p>
+              {/* Laporan Berdasarkan Lokasi Top 5 / Semua */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs hover:shadow-sm transition-all duration-300 p-5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
+                    <div>
+                      <h2 className="text-sm font-bold text-gray-900">Laporan per Lokasi</h2>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        {showAllLokasi ? `Semua ${d.top_lokasi.length} lokasi laporan` : "Top 5 lokasi terbanyak"}
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-100 px-2.5 py-1 rounded-lg">
+                      {showAllLokasi ? `Semua (${d.top_lokasi.length})` : "Top 5"}
+                    </span>
                   </div>
-                  <span className="text-[10px] font-bold text-orange-700 bg-orange-50 border border-orange-100 px-2.5 py-1 rounded-lg">Top 5</span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-gray-100">
-                        <th className="text-left py-2 pr-2 text-[10px] font-bold text-gray-400 uppercase tracking-wide">Lokasi</th>
-                        <th className="text-right py-2 px-2 text-[10px] font-bold text-gray-400 uppercase tracking-wide">Jumlah</th>
-                        <th className="text-right py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wide">%</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {d.top_lokasi.length === 0 ? (
-                        <tr>
-                          <td colSpan={3} className="py-6 text-center text-xs text-gray-400">Belum ada data lokasi</td>
+                  <div className={`overflow-x-auto ${showAllLokasi ? "max-h-80 overflow-y-auto pr-1" : ""}`}>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-gray-100">
+                          <th className="text-left py-2 pr-2 text-[10px] font-bold text-gray-400 uppercase tracking-wide">Lokasi</th>
+                          <th className="text-right py-2 px-2 text-[10px] font-bold text-gray-400 uppercase tracking-wide">Jumlah</th>
+                          <th className="text-right py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wide">%</th>
                         </tr>
-                      ) : d.top_lokasi.slice(0, 5).map((lok, idx) => {
-                        const p = pct(lok.jumlah, d.total_laporan);
-                        const colors = ["#f97316","#3b82f6","#8b5cf6","#10b981","#eab308"];
-                        return (
-                          <tr key={lok.nama} className="group border-b border-gray-50 last:border-0 hover:bg-gray-50/70 transition-colors rounded-lg">
-                            <td className="py-3 pr-2">
-                              <div className="flex items-center gap-2.5">
-                                <span className="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black text-white shrink-0"
-                                  style={{ background: colors[idx] }}>
-                                  {idx + 1}
-                                </span>
-                                <span className="font-semibold text-gray-700 text-[11px] group-hover:text-gray-900 transition-colors">{lok.nama}</span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-2 text-right font-black text-gray-900 text-sm tabular-nums">{lok.jumlah}</td>
-                            <td className="py-3 text-right">
-                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full"
-                                style={{ color: colors[idx], background: colors[idx] + "18" }}>
-                                {p}%
-                              </span>
-                            </td>
+                      </thead>
+                      <tbody>
+                        {d.top_lokasi.length === 0 ? (
+                          <tr>
+                            <td colSpan={3} className="py-6 text-center text-xs text-gray-400">Belum ada data lokasi</td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                        ) : (showAllLokasi ? d.top_lokasi : d.top_lokasi.slice(0, 5)).map((lok, idx) => {
+                          const p = pct(lok.jumlah, d.total_laporan);
+                          const colors = ["#f97316","#3b82f6","#8b5cf6","#10b981","#eab308","#06b6d4","#ec4899","#6366f1","#14b8a6","#f43f5e"];
+                          const badgeColor = colors[idx % colors.length];
+                          return (
+                            <tr key={lok.nama} className="group border-b border-gray-50 last:border-0 hover:bg-gray-50/70 transition-colors rounded-lg">
+                              <td className="py-3 pr-2">
+                                <div className="flex items-center gap-2.5">
+                                  <span className="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black text-white shrink-0"
+                                    style={{ background: badgeColor }}>
+                                    {idx + 1}
+                                  </span>
+                                  <span className="font-semibold text-gray-700 text-[11px] group-hover:text-gray-900 transition-colors">{lok.nama}</span>
+                                </div>
+                              </td>
+                              <td className="py-3 px-2 text-right font-black text-gray-900 text-sm tabular-nums">{lok.jumlah}</td>
+                              <td className="py-3 text-right">
+                                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+                                  style={{ color: badgeColor, background: badgeColor + "18" }}>
+                                  {p}%
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-                <button className="mt-4 w-full py-2 text-center text-[11px] font-bold text-[#7A0C0C] bg-red-50 hover:bg-red-100 border border-red-100 rounded-xl transition-colors">
-                  Lihat Selengkapnya
+                <button
+                  type="button"
+                  onClick={() => setShowAllLokasi((prev) => !prev)}
+                  className="mt-4 w-full py-2 flex items-center justify-center gap-1.5 text-[11px] font-bold text-[#7A0C0C] bg-red-50 hover:bg-red-100 border border-red-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  {showAllLokasi ? (
+                    <>
+                      <span>Tampilkan Lebih Sedikit</span>
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    </>
+                  ) : (
+                    <>
+                      <span>Lihat Selengkapnya</span>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </>
+                  )}
                 </button>
               </div>
 
-              {/* Laporan Terbaru */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs hover:shadow-sm transition-all duration-300 p-5">
-                <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
-                  <div>
-                    <h2 className="text-sm font-bold text-gray-900">Laporan Terbaru</h2>
-                    <p className="text-[10px] text-gray-400 mt-0.5">Aktivitas laporan terkini</p>
-                  </div>
-                  <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-100 px-2.5 py-1 rounded-lg">5 Terakhir</span>
-                </div>
-                <div className="space-y-1">
-                  {laporanTerbaru.length === 0 ? (
-                    <p className="text-xs text-gray-400 text-center py-6">Belum ada laporan terbaru</p>
-                  ) : laporanTerbaru.map((lap, i) => (
-                    <div key={lap.id_laporan}
-                      className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-gray-50 transition-colors group cursor-pointer"
-                      style={{ borderLeft: i === 0 ? "2px solid #7A0C0C" : "2px solid transparent" }}>
-                      <KategoriIcon kategori={lap.kategori_laporan} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[11px] font-semibold text-gray-800 truncate group-hover:text-gray-900">{lap.deskripsi}</p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">
-                          {lap.lokasi_kampus ? `${lap.lokasi_kampus} • ` : ""}
-                          {lap.lokasi}
-                        </p>
-                        <div className="flex items-center justify-between mt-1.5">
-                          <p className="text-[10px] text-gray-400 tabular-nums">{fmtDate(lap.tanggal_buat)}</p>
-                          <StatusBadge status={lap.status_terkini} />
-                        </div>
-                      </div>
+              {/* Laporan Rekap / Terbaru */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs hover:shadow-sm transition-all duration-300 p-5 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
+                    <div>
+                      <h2 className="text-sm font-bold text-gray-900">Laporan Rekap</h2>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        {showAllLaporan
+                          ? `Menampilkan seluruh ${laporanTerbaru.length} laporan pada periode ini`
+                          : "5 aktivitas laporan terkini"}
+                      </p>
                     </div>
-                  ))}
+                    <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-100 px-2.5 py-1 rounded-lg">
+                      {showAllLaporan ? `Semua (${laporanTerbaru.length})` : "5 Terakhir"}
+                    </span>
+                  </div>
+                  <div className={`space-y-2 ${showAllLaporan ? "max-h-[380px] overflow-y-auto pr-1" : ""}`}>
+                    {laporanTerbaru.length === 0 ? (
+                      <p className="text-xs text-gray-400 text-center py-6">Belum ada laporan pada periode ini</p>
+                    ) : (
+                      (showAllLaporan ? laporanTerbaru : laporanTerbaru.slice(0, 5)).map((lap, i) => {
+                        const isExpanded = expandedReportId === lap.id_laporan;
+                        return (
+                          <div
+                            key={lap.id_laporan}
+                            onClick={() => setExpandedReportId(isExpanded ? null : lap.id_laporan)}
+                            className="p-2.5 rounded-xl border border-gray-100 hover:border-gray-200 hover:bg-gray-50/70 transition-all cursor-pointer group"
+                            style={{ borderLeft: `3px solid ${i === 0 && !showAllLaporan ? "#7A0C0C" : "#cbd5e1"}` }}
+                          >
+                            <div className="flex items-start gap-3">
+                              <KategoriIcon kategori={lap.kategori_laporan} />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-[11px] font-bold text-gray-900 truncate">
+                                    #{lap.id_laporan} • {lap.nim ? `NIM: ${lap.nim}` : "Laporan"}
+                                  </p>
+                                  <StatusBadge status={lap.status_terkini} />
+                                </div>
+                                <p className={`text-[11px] text-gray-700 mt-1 ${isExpanded ? "whitespace-pre-wrap leading-relaxed" : "line-clamp-2"}`}>
+                                  {lap.deskripsi}
+                                </p>
+                                <div className="flex items-center justify-between mt-1 text-[10px] text-gray-400">
+                                  <span className="truncate">
+                                    {lap.lokasi_kampus ? `${lap.lokasi_kampus} • ` : ""}
+                                    {lap.lokasi}
+                                  </span>
+                                  <span className="tabular-nums shrink-0 ml-2">{fmtDate(lap.tanggal_buat)}</span>
+                                </div>
+
+                                {/* Tombol Lihat Selengkapnya pada Item Laporan */}
+                                <div className="mt-2 flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setExpandedReportId(isExpanded ? null : lap.id_laporan);
+                                    }}
+                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-[#7A0C0C] hover:text-[#9A1010] transition-colors cursor-pointer"
+                                  >
+                                    <span>{isExpanded ? "Tutup Detail" : "Lihat Selengkapnya"}</span>
+                                    {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Dropdown Detail Laporan */}
+                            {isExpanded && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="mt-3 pt-2.5 border-t border-gray-100 grid grid-cols-2 gap-2 text-[10px] bg-gray-50/90 -mx-1 p-2 rounded-lg"
+                              >
+                                <div>
+                                  <span className="text-gray-400 font-medium">Kategori:</span>
+                                  <p className="font-semibold text-gray-800">{lap.kategori_laporan}</p>
+                                </div>
+                                <div>
+                                  <span className="text-gray-400 font-medium">Kampus:</span>
+                                  <p className="font-semibold text-gray-800">{lap.lokasi_kampus || "-"}</p>
+                                </div>
+                                <div>
+                                  <span className="text-gray-400 font-medium">Tgl Kejadian:</span>
+                                  <p className="font-semibold text-gray-800">{lap.tanggal_kejadian || "-"}</p>
+                                </div>
+                                <div>
+                                  <span className="text-gray-400 font-medium">Lokasi Rinci:</span>
+                                  <p className="font-semibold text-gray-800 truncate" title={lap.lokasi}>{lap.lokasi}</p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
-                <button className="mt-4 w-full py-2 text-center text-[11px] font-bold text-[#7A0C0C] bg-red-50 hover:bg-red-100 border border-red-100 rounded-xl transition-colors">
-                  Lihat Selengkapnya
+
+                <button
+                  type="button"
+                  onClick={() => setShowAllLaporan((prev) => !prev)}
+                  className="mt-4 w-full py-2 flex items-center justify-center gap-1.5 text-[11px] font-bold text-[#7A0C0C] bg-red-50 hover:bg-red-100 border border-red-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  {showAllLaporan ? (
+                    <>
+                      <span>Tampilkan Lebih Sedikit</span>
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    </>
+                  ) : (
+                    <>
+                      <span>Lihat Selengkapnya</span>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </>
+                  )}
                 </button>
               </div>
 
