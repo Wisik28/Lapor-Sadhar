@@ -659,9 +659,8 @@ class LaporanController extends Controller
 
             // Urutkan lokasi terbanyak
             arsort($lokasiCounts);
-            $topLokasi = array_slice($lokasiCounts, 0, 5, true);
             $lokasiFormatted = [];
-            foreach ($topLokasi as $nama => $count) {
+            foreach ($lokasiCounts as $nama => $count) {
                 $lokasiFormatted[] = ['nama' => $nama, 'jumlah' => $count];
             }
 
@@ -697,8 +696,12 @@ class LaporanController extends Controller
             // Dominasi lokasi (lokasi terbanyak)
             $dominasiLokasi = count($lokasiFormatted) > 0 ? $lokasiFormatted[0]['nama'] : null;
 
-            // 5 laporan terbaru dalam cakupan admin (kolom ringan tanpa foto agar halaman rekap cukup 1 request)
-            $laporanTerbaru = Laporan::query()
+            // Laporan rekap dalam cakupan admin (default 5, atau sesuai limit_terbaru)
+            $limitTerbaru = $request->has('limit_terbaru')
+                ? max(1, min(100, (int) $request->query('limit_terbaru')))
+                : 5;
+
+            $laporanTerbaruQuery = Laporan::query()
                 ->select([
                     'laporan.id_laporan',
                     'laporan.nim',
@@ -710,9 +713,17 @@ class LaporanController extends Controller
                     'laporan.lokasi',
                     DB::raw('(SELECT s.status_laporan FROM status s WHERE s.id_laporan = laporan.id_laporan ORDER BY s.tanggal_merubah DESC, s.id_status DESC LIMIT 1) AS latest_status'),
                 ])
-                ->visibleToAdmin($admin)
+                ->visibleToAdmin($admin);
+
+            if ($bulan) {
+                $laporanTerbaruQuery->whereRaw("TO_CHAR(tanggal_buat, 'YYYY-MM') = ?", [$bulan]);
+            } elseif ($tahun) {
+                $laporanTerbaruQuery->whereRaw("TO_CHAR(tanggal_buat, 'YYYY') = ?", [$tahun]);
+            }
+
+            $laporanTerbaru = $laporanTerbaruQuery
                 ->orderBy('laporan.tanggal_buat', 'desc')
-                ->limit(5)
+                ->limit($limitTerbaru)
                 ->get()
                 ->map(fn ($item) => [
                     'id_laporan'       => $item->id_laporan,

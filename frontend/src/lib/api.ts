@@ -878,10 +878,11 @@ export const adminLaporanApi = {
   },
 
   /** Mengambil data rekap & analitik laporan untuk admin */
-  async getRekap(params?: { bulan?: string; tahun?: string }) {
+  async getRekap(params?: { bulan?: string; tahun?: string; limit_terbaru?: number }) {
     const searchParams = new URLSearchParams();
     if (params?.bulan) searchParams.set("bulan", params.bulan);
     else if (params?.tahun) searchParams.set("tahun", params.tahun);
+    if (params?.limit_terbaru) searchParams.set("limit_terbaru", String(params.limit_terbaru));
 
     const url = `${API_BASE_URL}/admin/rekap${searchParams.toString() ? "?" + searchParams.toString() : ""}`;
     const response = await safeFetch(url, {
