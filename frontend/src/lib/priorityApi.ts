@@ -67,6 +67,15 @@ export interface PriorityReportItem {
   safety_flags: string[];
   admin_notes?: string | null;
   reviewed_at?: string | null;
+
+  // Pengelompokan (Grouping) & Eskalasi Otomatis
+  group_id?: number | null;
+  is_grouped?: boolean;
+  group_member_count?: number;
+  group_unique_reporters?: number;
+  is_group_escalated?: boolean;
+  group_escalated_at?: string | null;
+  group_member_ids?: number[];
 }
 
 export interface PrioritySummary {
@@ -117,6 +126,37 @@ export interface PriorityDetailAssessment {
   reviewed_at?: string | null;
 }
 
+export interface PriorityGroupMember {
+  id_laporan: number;
+  is_primary: boolean;
+  nim?: string;
+  nama_pelapor: string;
+  tipe_user?: string | null;
+  kategori_laporan?: string;
+  deskripsi?: string;
+  lokasi_kampus?: string | null;
+  lokasi?: string;
+  tanggal_buat?: string;
+  tanggal_kejadian?: string;
+  foto?: FotoAttachmentSource;
+  status_terkini?: string;
+  pesan_tanggapan?: string;
+  similarity_confidence?: number | null;
+  similarity_reason?: string | null;
+}
+
+export interface PriorityGroupInfo {
+  id: number;
+  primary_laporan_id: number | null;
+  total_laporan_count: number;
+  unique_reporter_count: number;
+  is_escalated: boolean;
+  escalated_at?: string | null;
+  similarity_confidence?: number | null;
+  similarity_reason?: string | null;
+  members: PriorityGroupMember[];
+}
+
 export interface PriorityDetailData {
   laporan: PriorityDetailLaporan;
   assessment: PriorityDetailAssessment;
@@ -130,6 +170,7 @@ export interface PriorityDetailData {
     created_at: string;
     admin?: { nama_admin: string; jabatan: string };
   }>;
+  group?: PriorityGroupInfo | null;
 }
 
 export interface PriorityFilterParams {

@@ -34,11 +34,16 @@ class Laporan extends Model
         'kategori_lokasi',
         'tingkat_keparahan',
         'skala_keparahan',
+        'group_id',
+        'similarity_confidence',
+        'similarity_reason',
         'tanggal_rubah',
     ];
 
     protected $casts = [
-        'skala_keparahan' => 'integer',
+        'skala_keparahan'       => 'integer',
+        'group_id'              => 'integer',
+        'similarity_confidence' => 'float',
     ];
 
     protected $appends = ['nama_pelapor'];
@@ -56,6 +61,11 @@ class Laporan extends Model
     public function statuses()
     {
         return $this->hasMany(Status::class, 'id_laporan', 'id_laporan');
+    }
+
+    public function group()
+    {
+        return $this->belongsTo(LaporanGroup::class, 'group_id', 'id');
     }
 
     /**

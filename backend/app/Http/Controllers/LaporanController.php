@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 
 /**
@@ -41,7 +42,7 @@ class LaporanController extends Controller
      *
      * @return array<int, string>
      */
-    private function listLaporanColumns(bool $includeFoto = true): array
+    private function listLaporanColumns(bool $includeFoto = true, bool $includeGrouping = false): array
     {
         $columns = [
             'id_laporan',
@@ -58,6 +59,10 @@ class LaporanController extends Controller
             'skala_keparahan',
             'pesan_tanggapan',
         ];
+
+        if ($includeGrouping) {
+            $columns[] = 'group_id';
+        }
 
         if ($includeFoto) {
             $columns[] = 'foto';
@@ -349,19 +354,26 @@ class LaporanController extends Controller
         try {
             $admin = $request->attributes->get('admin_session')?->admin;
             $includeFoto = $request->has('include_foto') ? $request->boolean('include_foto') : true;
+            $hasGroupingSchema = Schema::hasTable('laporan_groups') && Schema::hasColumn('laporan', 'group_id');
+
+            $relations = [
+                'statuses' => function ($query) {
+                    $query->select(['id_status', 'id_laporan', 'status_laporan', 'tanggal_merubah']);
+                    $query->orderBy('tanggal_merubah', 'desc');
+                    $query->orderBy('id_status', 'desc');
+                },
+                'pelapor:nomor_identitas,tipe_user',
+                'pelapor.mahasiswa:nim,nama',
+                'pelapor.pegawai:nomor_identitas,nama',
+            ];
+
+            if ($hasGroupingSchema) {
+                $relations[] = 'group:id,primary_laporan_id,total_laporan_count,unique_reporter_count,is_escalated';
+            }
 
             $query = Laporan::query()
-                ->select($this->listLaporanColumns($includeFoto))
-                ->with([
-                    'statuses' => function ($query) {
-                        $query->select(['id_status', 'id_laporan', 'status_laporan', 'tanggal_merubah']);
-                        $query->orderBy('tanggal_merubah', 'desc');
-                        $query->orderBy('id_status', 'desc');
-                    },
-                    'pelapor:nomor_identitas,tipe_user',
-                    'pelapor.mahasiswa:nim,nama',
-                    'pelapor.pegawai:nomor_identitas,nama',
-                ])
+                ->select($this->listLaporanColumns($includeFoto, $hasGroupingSchema))
+                ->with($relations)
                 ->visibleToAdmin($admin)
                 ->orderBy('tanggal_buat', 'desc');
 
@@ -376,28 +388,34 @@ class LaporanController extends Controller
                 $rawLaporans = $query->get();
             }
 
-            $laporans = $rawLaporans->map(function ($laporan) use ($includeFoto) {
+            $laporans = $rawLaporans->map(function ($laporan) use ($includeFoto, $hasGroupingSchema) {
                 $statusTerbaru = $laporan->statuses->first();
+                $group = $hasGroupingSchema ? $laporan->group : null;
 
                 return [
-                    'id_laporan'        => $laporan->id_laporan,
-                    'nim'               => $laporan->nim,
-                    'nama_pelapor'      => $laporan->nama_pelapor ?? $laporan->pelapor?->mahasiswa?->nama ?? $laporan->pelapor?->pegawai?->nama ?? '-',
-                    'tipe_user'         => $laporan->pelapor?->tipe_user ?? 'Mahasiswa',
-                    'kategori_laporan'  => $laporan->kategori_laporan,
-                    'deskripsi'         => $laporan->deskripsi,
-                    'tanggal_kejadian'  => $laporan->tanggal_kejadian,
-                    'tanggal_buat'      => $laporan->tanggal_buat,
-                    'tanggal_rubah'     => $laporan->tanggal_rubah,
-                    'lokasi_kampus'     => $laporan->lokasi_kampus,
-                    'lokasi'            => $laporan->lokasi,
-                    'kategori_lokasi'   => $laporan->kategori_lokasi ?? 'Tidak Diketahui',
-                    'tingkat_keparahan' => $laporan->tingkat_keparahan ?? 'Sedang',
-                    'skala_keparahan'   => (int) ($laporan->skala_keparahan ?? 2),
-                    'foto'              => $includeFoto ? $laporan->foto : null,
-                    'pesan_tanggapan'  => $laporan->pesan_tanggapan ?? '',
-                    'status_terkini'   => $statusTerbaru?->status_laporan ?? 'Terkirim',
-                    'riwayat_status'   => $laporan->statuses,
+                    'id_laporan'               => $laporan->id_laporan,
+                    'nim'                      => $laporan->nim,
+                    'nama_pelapor'             => $laporan->nama_pelapor ?? $laporan->pelapor?->mahasiswa?->nama ?? $laporan->pelapor?->pegawai?->nama ?? '-',
+                    'tipe_user'                => $laporan->pelapor?->tipe_user ?? 'Mahasiswa',
+                    'kategori_laporan'         => $laporan->kategori_laporan,
+                    'deskripsi'                => $laporan->deskripsi,
+                    'tanggal_kejadian'         => $laporan->tanggal_kejadian,
+                    'tanggal_buat'             => $laporan->tanggal_buat,
+                    'tanggal_rubah'            => $laporan->tanggal_rubah,
+                    'lokasi_kampus'            => $laporan->lokasi_kampus,
+                    'lokasi'                   => $laporan->lokasi,
+                    'kategori_lokasi'          => $laporan->kategori_lokasi ?? 'Tidak Diketahui',
+                    'tingkat_keparahan'        => $laporan->tingkat_keparahan ?? 'Sedang',
+                    'skala_keparahan'          => (int) ($laporan->skala_keparahan ?? 2),
+                    'foto'                     => $includeFoto ? $laporan->foto : null,
+                    'pesan_tanggapan'          => $laporan->pesan_tanggapan ?? '',
+                    'status_terkini'           => $statusTerbaru?->status_laporan ?? 'Terkirim',
+                    'riwayat_status'           => $laporan->statuses,
+                    'group_id'                 => $hasGroupingSchema && $laporan->group_id ? (int) $laporan->group_id : null,
+                    'group_member_count'       => $group ? (int) $group->total_laporan_count : 1,
+                    'group_unique_reporters'   => $group ? (int) $group->unique_reporter_count : 1,
+                    'group_primary_laporan_id' => $group?->primary_laporan_id ? (int) $group->primary_laporan_id : null,
+                    'is_group_escalated'       => (bool) ($group?->is_escalated ?? false),
                 ];
             });
 
@@ -796,9 +814,14 @@ class LaporanController extends Controller
                 $request->input('pesan_tanggapan') ?? ''
             );
 
+            $syncedCount = (int) ($hasil['synced_count'] ?? 1);
+            $message = $syncedCount > 1
+                ? "Status laporan berhasil diperbarui dan disinkronkan ke {$syncedCount} laporan serupa dalam grup."
+                : 'Status laporan berhasil diperbarui.';
+
             return response()->json([
                 'status'  => 'success',
-                'message' => 'Status laporan berhasil diperbarui.',
+                'message' => $message,
                 'data'    => $hasil,
             ]);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {

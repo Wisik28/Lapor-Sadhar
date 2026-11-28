@@ -8,10 +8,12 @@ use App\Models\Priority\PriorityAssessment;
 use App\Models\Status;
 use App\Services\Priority\LocationCategorizer;
 use App\Services\Priority\LocationSeverityAssessor;
+use App\Services\Priority\ReportSimilarityGroupingService;
 use App\Support\SchemaVerification;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
 
@@ -25,6 +27,7 @@ class LaporanService
     private LocationSeverityAssessor $locationSeverityAssessor;
     private CloudinaryStorageService $cloudinaryStorage;
     private AdminNotificationService $adminNotificationService;
+    private ?ReportSimilarityGroupingService $similarityGroupingService;
 
     /**
      * Cache verifikasi kolom lokasi per koneksi PDO untuk mencegah query skema berulang.
@@ -37,12 +40,19 @@ class LaporanService
         ?LocationCategorizer $locationCategorizer = null,
         ?LocationSeverityAssessor $locationSeverityAssessor = null,
         ?CloudinaryStorageService $cloudinaryStorage = null,
-        ?AdminNotificationService $adminNotificationService = null
+        ?AdminNotificationService $adminNotificationService = null,
+        ?ReportSimilarityGroupingService $similarityGroupingService = null
     ) {
         $this->locationCategorizer = $locationCategorizer ?? new LocationCategorizer();
         $this->locationSeverityAssessor = $locationSeverityAssessor ?? new LocationSeverityAssessor($this->locationCategorizer);
         $this->cloudinaryStorage = $cloudinaryStorage ?? new CloudinaryStorageService();
         $this->adminNotificationService = $adminNotificationService ?? new AdminNotificationService();
+        $this->similarityGroupingService = $similarityGroupingService;
+    }
+
+    private function resolveSimilarityGroupingService(): ReportSimilarityGroupingService
+    {
+        return $this->similarityGroupingService ??= app(ReportSimilarityGroupingService::class);
     }
 
     /**
@@ -107,7 +117,7 @@ class LaporanService
         try {
             $persistedFoto = $this->persistFotoPayload($data['foto'] ?? null, $uploadedUrls);
 
-            return DB::transaction(function () use ($data, $locationAssessment, $hasLocationColumns, $persistedFoto) {
+            $result = DB::transaction(function () use ($data, $locationAssessment, $hasLocationColumns, $persistedFoto) {
                 $payload = [
                     'nim'              => $data['nim'],
                     'kategori_laporan' => $data['kategori_laporan'],
@@ -143,6 +153,19 @@ class LaporanService
 
                 return $result;
             });
+
+            // Jalankan deteksi laporan serupa hybrid (Tahap 1 DB + Tahap 2 AI Multimodal) di luar transaksi utama
+            // agar timeout / kegagalan API AI tidak pernah membatalkan penyimpanan laporan pelapor.
+            try {
+                $this->resolveSimilarityGroupingService()->processNewLaporan($result);
+            } catch (\Throwable $groupingError) {
+                Log::warning('Hybrid similarity grouping failed safely after report creation.', [
+                    'id_laporan' => $result->id_laporan,
+                    'error'      => $groupingError->getMessage(),
+                ]);
+            }
+
+            return $result;
         } catch (\Throwable $e) {
             foreach ($uploadedUrls as $url) {
                 $this->cloudinaryStorage->deleteByUrl($url);
@@ -310,8 +333,9 @@ class LaporanService
     public function deleteLaporan(int $id): bool
     {
         $oldFoto = null;
+        $oldGroupId = null;
 
-        $deleted = DB::transaction(function () use ($id, &$oldFoto) {
+        $deleted = DB::transaction(function () use ($id, &$oldFoto, &$oldGroupId) {
             $laporan = Laporan::with(['statuses' => function ($q) {
                 $q->orderBy('tanggal_merubah', 'desc');
                 $q->orderBy('id_status', 'desc');
@@ -327,6 +351,7 @@ class LaporanService
             }
 
             $oldFoto = $laporan->foto;
+            $oldGroupId = $laporan->group_id ? (int) $laporan->group_id : null;
 
             return $laporan->delete();
         });
@@ -334,6 +359,17 @@ class LaporanService
         if ($deleted) {
             foreach ($this->extractStoredPhotoItems($oldFoto) as $url) {
                 $this->cloudinaryStorage->deleteByUrl($url);
+            }
+
+            if ($oldGroupId !== null) {
+                try {
+                    $this->resolveSimilarityGroupingService()->recomputeGroupAfterMemberChange($oldGroupId);
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to recompute laporan group after user delete.', [
+                        'group_id' => $oldGroupId,
+                        'error'    => $e->getMessage(),
+                    ]);
+                }
             }
         }
 
@@ -346,8 +382,9 @@ class LaporanService
     public function deleteRejectedLaporanByAdmin(int $id): bool
     {
         $oldFoto = null;
+        $oldGroupId = null;
 
-        $deleted = DB::transaction(function () use ($id, &$oldFoto) {
+        $deleted = DB::transaction(function () use ($id, &$oldFoto, &$oldGroupId) {
             $laporan = Laporan::with(['statuses' => function ($q) {
                 $q->orderBy('tanggal_merubah', 'desc');
                 $q->orderBy('id_status', 'desc');
@@ -363,6 +400,7 @@ class LaporanService
             }
 
             $oldFoto = $laporan->foto;
+            $oldGroupId = $laporan->group_id ? (int) $laporan->group_id : null;
 
             return $laporan->delete();
         });
@@ -370,6 +408,17 @@ class LaporanService
         if ($deleted) {
             foreach ($this->extractStoredPhotoItems($oldFoto) as $url) {
                 $this->cloudinaryStorage->deleteByUrl($url);
+            }
+
+            if ($oldGroupId !== null) {
+                try {
+                    $this->resolveSimilarityGroupingService()->recomputeGroupAfterMemberChange($oldGroupId);
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to recompute laporan group after admin delete.', [
+                        'group_id' => $oldGroupId,
+                        'error'    => $e->getMessage(),
+                    ]);
+                }
             }
         }
 
@@ -387,6 +436,7 @@ class LaporanService
                 $query->orderBy('id_status', 'desc');
             },
             'pelapor.mahasiswa',
+            'pelapor.pegawai',
         ])
             ->visibleToAdmin($admin)
             ->orderBy('tanggal_buat', 'desc')
@@ -399,7 +449,51 @@ class LaporanService
     }
 
     /**
-     * Update status laporan (admin only)
+     * Normalisasi nama status ke tahapan kanonik untuk validasi urutan transisi status.
+     */
+    private function normalizeStatusStep(string $status): string
+    {
+        $lower = strtolower(trim($status));
+
+        return match ($lower) {
+            'sedang diverifikasi', 'diverifikasi' => 'Sedang Diverifikasi',
+            'terverifikasi'                       => 'Terverifikasi',
+            'proses', 'diproses'                  => 'Proses',
+            'selesai'                             => 'Selesai',
+            'ditolak'                             => 'Ditolak',
+            default                               => 'Terkirim',
+        };
+    }
+
+    /**
+     * Pastikan perubahan status mengikuti urutan bertahap yang sah
+     * (tidak boleh melompat langsung dari Terkirim ke Selesai, dst.).
+     */
+    private function validateStatusTransition(string $currentStatus, string $targetStatus): void
+    {
+        $currentStep = $this->normalizeStatusStep($currentStatus);
+        $targetStep = $this->normalizeStatusStep($targetStatus);
+
+        $allowedTargets = match ($currentStep) {
+            'Terkirim'            => ['Terkirim', 'Sedang Diverifikasi', 'Ditolak'],
+            'Sedang Diverifikasi' => ['Sedang Diverifikasi', 'Terverifikasi', 'Ditolak'],
+            'Terverifikasi'       => ['Terverifikasi', 'Proses', 'Ditolak'],
+            'Proses'              => ['Proses', 'Selesai', 'Ditolak'],
+            'Selesai'             => ['Selesai'],
+            default               => [],
+        };
+
+        if (! in_array($targetStep, $allowedTargets, true)) {
+            throw new \InvalidArgumentException(
+                "Perubahan status tidak dapat melompat dari \"{$currentStep}\" ke \"{$targetStep}\". "
+                . 'Perubahan status harus mengikuti urutan tahapan yang berlaku.'
+            );
+        }
+    }
+
+    /**
+     * Update status laporan (admin only) dengan validasi urutan status bertahap
+     * serta sinkronisasi otomatis ke seluruh anggota grup laporan yang sama.
      */
     public function updateStatusLaporan(int $id, string $status, string $pesan = ''): array
     {
@@ -419,16 +513,54 @@ class LaporanService
                 );
             }
 
-            $statusRecord = Status::create([
-                'id_laporan'      => $laporan->id_laporan,
-                'status_laporan'  => $status,
-                'tanggal_merubah' => now(),
-            ]);
+            $this->validateStatusTransition($latestStatus, $status);
 
-            // Selalu simpan tanggapan, termasuk saat admin mengosongkan tanggapan lama.
-            $laporan->pesan_tanggapan = $pesan;
-            $laporan->tanggal_rubah = now();
-            $laporan->save();
+            $now = now();
+            $targetLaporans = collect([$laporan]);
+
+            // Jika laporan tergabung dalam grup, sinkronkan status & tanggapan ke seluruh anggota aktif di grup
+            if ($laporan->group_id !== null) {
+                $siblings = Laporan::with([
+                    'statuses' => function ($query) {
+                        $query->orderBy('tanggal_merubah', 'desc');
+                        $query->orderBy('id_status', 'desc');
+                    },
+                ])
+                    ->where('group_id', $laporan->group_id)
+                    ->where('id_laporan', '<>', $laporan->id_laporan)
+                    ->orderBy('tanggal_buat', 'asc')
+                    ->orderBy('id_laporan', 'asc')
+                    ->get();
+
+                foreach ($siblings as $sibling) {
+                    $siblingLatest = (string) ($sibling->statuses->first()?->status_laporan ?? 'Terkirim');
+                    if (strcasecmp(trim($siblingLatest), 'Ditolak') !== 0) {
+                        $targetLaporans->push($sibling);
+                    }
+                }
+            }
+
+            $primaryStatusRecord = null;
+            $syncedIds = [];
+
+            foreach ($targetLaporans as $target) {
+                $statusRecord = Status::create([
+                    'id_laporan'      => $target->id_laporan,
+                    'status_laporan'  => $status,
+                    'tanggal_merubah' => $now,
+                ]);
+
+                if ((int) $target->id_laporan === (int) $laporan->id_laporan) {
+                    $primaryStatusRecord = $statusRecord;
+                }
+
+                // Selalu simpan tanggapan, termasuk saat admin mengosongkan tanggapan lama.
+                $target->pesan_tanggapan = $pesan;
+                $target->tanggal_rubah = $now;
+                $target->saveQuietly();
+
+                $syncedIds[] = (int) $target->id_laporan;
+            }
 
             $laporan->load([
                 'statuses' => function ($query) {
@@ -438,8 +570,11 @@ class LaporanService
             ]);
 
             return [
-                'laporan' => $laporan,
-                'status'  => $statusRecord,
+                'laporan'            => $laporan,
+                'status'             => $primaryStatusRecord,
+                'synced_count'       => count($syncedIds),
+                'synced_laporan_ids' => $syncedIds,
+                'group_id'           => $laporan->group_id ? (int) $laporan->group_id : null,
             ];
         });
     }
@@ -453,7 +588,9 @@ class LaporanService
         ?Admin $admin = null,
         ?string $catatan = null
     ): array {
-        return DB::transaction(function () use ($id, $targetKategori, $catatan) {
+        $oldGroupId = null;
+
+        $result = DB::transaction(function () use ($id, $targetKategori, $catatan, &$oldGroupId) {
             $laporan = Laporan::with([
                 'statuses' => function ($query) {
                     $query->orderBy('tanggal_merubah', 'desc');
@@ -478,6 +615,13 @@ class LaporanService
 
             $unitAsal = strcasecmp($oldKategori, 'Kebersihan') === 0 ? 'BLU' : 'BPS';
             $unitTujuan = strcasecmp($targetKategori, 'Kebersihan') === 0 ? 'BLU' : 'BPS';
+
+            if ($laporan->group_id !== null) {
+                $oldGroupId = (int) $laporan->group_id;
+                $laporan->group_id = null;
+                $laporan->similarity_confidence = null;
+                $laporan->similarity_reason = null;
+            }
 
             $laporan->kategori_laporan = $targetKategori;
             $laporan->tanggal_rubah = now();
@@ -509,6 +653,19 @@ class LaporanService
                 'tanggal_rubah'       => $laporan->tanggal_rubah,
             ];
         });
+
+        if ($oldGroupId !== null) {
+            try {
+                $this->resolveSimilarityGroupingService()->recomputeGroupAfterMemberChange($oldGroupId);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to recompute laporan group after category transfer.', [
+                    'group_id' => $oldGroupId,
+                    'error'    => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -687,6 +844,7 @@ class LaporanService
             'id_laporan'        => $laporan->id_laporan,
             'nim'               => $laporan->nim,
             'nama_pelapor'      => $laporan->pelapor?->mahasiswa?->nama ?? $laporan->pelapor?->pegawai?->nama,
+            'tipe_user'         => $laporan->pelapor?->tipe_user,
             'kategori_laporan'  => $laporan->kategori_laporan,
             'deskripsi'         => $laporan->deskripsi,
             'tanggal_kejadian'  => $laporan->tanggal_kejadian,
@@ -697,6 +855,7 @@ class LaporanService
             'kategori_lokasi'   => $laporan->kategori_lokasi ?: $locationAssessment['kategori_lokasi'],
             'tingkat_keparahan' => $laporan->tingkat_keparahan ?: $locationAssessment['tingkat_keparahan'],
             'skala_keparahan'   => (int) ($laporan->skala_keparahan ?: $locationAssessment['skala_keparahan']),
+            'group_id'          => $laporan->group_id ? (int) $laporan->group_id : null,
             'foto'              => $laporan->foto,
             'pesan_tanggapan'   => $laporan->pesan_tanggapan ?? '',
             'status_terkini'    => $latestStatus?->status_laporan ?? 'Terkirim',

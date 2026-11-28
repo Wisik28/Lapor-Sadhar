@@ -7,7 +7,7 @@ import PeriodFilter from "@/components/PeriodFilter";
 import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { authApi, adminLaporanApi } from "@/lib/api";
 import { formatUserFriendlyError } from "@/lib/networkError";
-import { getFotoList, getFotoUrl } from "@/lib/laporanPhoto";
+import { getReporterIdentityLabel } from "@/lib/reporterIdentity";
 import {
   Send, Search, X, CheckCircle2, Settings, Flag,
   RefreshCw, Download, FileSpreadsheet, FileText,
@@ -614,28 +614,24 @@ export default function AdminRekapPage() {
         autoTable(pdf, {
           startY: 25,
           head: [[
-            "ID", "NIM", "Nama Pelapor", "Kategori", "Deskripsi",
+            "ID", "NIM / NIP", "Nama Pelapor", "Kategori", "Deskripsi",
             "Tgl. Kejadian", "Tgl. Dibuat", "Kampus", "Lokasi", "Status",
             "URL Bukti Gambar",
           ]],
-          body: filteredReports.map((report) => {
-            const photoUrls = getFotoList(report.foto).map(getFotoUrl);
-            const photoText = photoUrls.length > 0 ? photoUrls.join("\n") : "-";
-
-            return [
-              report.id_laporan,
-              report.nim,
-              report.nama_pelapor || "-",
-              report.kategori_laporan,
-              report.deskripsi,
-              report.tanggal_kejadian,
-              report.tanggal_buat,
-              report.lokasi_kampus || "-",
-              report.lokasi,
-              report.status_terkini,
-              photoText,
-            ];
-          }),
+          body: filteredReports.map((report) => [
+            report.id_laporan,
+            report.nim
+              ? `${getReporterIdentityLabel(report.nim)}: ${report.nim}`
+              : "-",
+            report.nama_pelapor || "-",
+            report.kategori_laporan,
+            report.deskripsi,
+            report.tanggal_kejadian,
+            report.tanggal_buat,
+            report.lokasi_kampus || "-",
+            report.lokasi,
+            report.status_terkini,
+          ]),
           styles: { fontSize: 7, cellPadding: 2, overflow: "linebreak" },
           columnStyles: {
             0: { cellWidth: 10 },
@@ -681,7 +677,7 @@ export default function AdminRekapPage() {
         const worksheet = workbook.addWorksheet("Rekap Laporan");
         worksheet.columns = [
           { header: "ID Laporan", key: "id", width: 14 },
-          { header: "NIM", key: "nim", width: 18 },
+          { header: "NIM / NIP", key: "nim", width: 24 },
           { header: "Nama Pelapor", key: "nama", width: 28 },
           { header: "Kategori", key: "kategori", width: 18 },
           { header: "Deskripsi", key: "deskripsi", width: 45 },
@@ -692,29 +688,20 @@ export default function AdminRekapPage() {
           { header: "Status", key: "status", width: 22 },
           { header: "URL Bukti Gambar", key: "urlGambar", width: 45 },
         ];
-        worksheet.addRows(filteredReports.map((report) => {
-          const photoUrls = getFotoList(report.foto).map(getFotoUrl);
-          let urlGambarValue: unknown = "-";
-          if (photoUrls.length === 1) {
-            urlGambarValue = { text: photoUrls[0], hyperlink: photoUrls[0], tooltip: "Buka bukti gambar" };
-          } else if (photoUrls.length > 1) {
-            urlGambarValue = { text: photoUrls.join("\n"), hyperlink: photoUrls[0], tooltip: "Buka bukti gambar" };
-          }
-
-          return {
-            id: report.id_laporan,
-            nim: report.nim,
-            nama: report.nama_pelapor || "-",
-            kategori: report.kategori_laporan,
-            deskripsi: report.deskripsi,
-            tanggalKejadian: report.tanggal_kejadian,
-            tanggalDibuat: report.tanggal_buat,
-            kampus: report.lokasi_kampus || "-",
-            lokasi: report.lokasi,
-            status: report.status_terkini,
-            urlGambar: urlGambarValue,
-          };
-        }));
+        worksheet.addRows(filteredReports.map((report) => ({
+          id: report.id_laporan,
+          nim: report.nim
+            ? `${getReporterIdentityLabel(report.nim)}: ${report.nim}`
+            : "-",
+          nama: report.nama_pelapor || "-",
+          kategori: report.kategori_laporan,
+          deskripsi: report.deskripsi,
+          tanggalKejadian: report.tanggal_kejadian,
+          tanggalDibuat: report.tanggal_buat,
+          kampus: report.lokasi_kampus || "-",
+          lokasi: report.lokasi,
+          status: report.status_terkini,
+        })));
         worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
         worksheet.getRow(1).fill = {
           type: "pattern",

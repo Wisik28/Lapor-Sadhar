@@ -32,6 +32,8 @@ class PriorityAssessment extends Model
         'safety_flags',
         'reasons',
         'needs_review',
+        'is_group_escalated',
+        'group_unique_reporters',
         'admin_notes',
         'admin_id',
         'reviewed_at',
@@ -45,6 +47,8 @@ class PriorityAssessment extends Model
         'safety_flags'           => 'array',
         'reasons'                => 'array',
         'needs_review'           => 'boolean',
+        'is_group_escalated'     => 'boolean',
+        'group_unique_reporters' => 'integer',
         'reviewed_at'            => 'datetime',
     ];
 

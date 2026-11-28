@@ -156,5 +156,19 @@ return [
     */
     'aging_max_days'      => 14,
     'duplicate_max_count' => 5,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Aturan Eskalasi Otomatis untuk Grup Laporan Serupa
+    |--------------------------------------------------------------------------
+    | Jika jumlah pelapor unik dalam satu grup mencapai minimal 3 pelapor
+    | berbeda, seluruh laporan dalam grup dinaikkan ke prioritas tertinggi.
+    */
+    'group_escalation' => [
+        'min_unique_reporters' => 3,
+        'score'                => 100,
+        'priority_level'       => 'kritis',
+        'severity_level'       => 'berat',
+    ],
 ];
 
