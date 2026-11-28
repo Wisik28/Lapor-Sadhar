@@ -34,7 +34,7 @@ class AiSeverityAssessor
         'atap bocor deras', 'bocor', 'banjir', 'ambruk', 'jebol', 'tidak bisa digunakan',
         'mati total', 'lift macet', 'terjebak', 'laboratorium tidak bisa dipakai', 'kabel terbuka',
         'korsleting', 'kebakaran', 'runtuh', 'bahaya', 'saluran air pecah', 'atap ambruk', 
-        'kabel putus', 'kerusakan parah', 'kesetrum', 'tersengat', 'amblas', 'jebol'
+        'kabel putus', 'kerusakan parah', 'kesetrum', 'tersengat', 'amblas', 'jebol', 'keramik', 'lantai'
     ];
 
     /**

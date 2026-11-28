@@ -18,6 +18,7 @@ import {
 import Navbar from "@/components/Navbar";
 import { authApi, UserSession } from "@/lib/api";
 import { setAuthSession } from "@/lib/auth";
+import { getReporterIdentityLabel } from "@/lib/reporterIdentity";
 
 type ConfirmModalState =
   | {
@@ -263,7 +264,9 @@ export default function ProfilePage() {
               </div>
               <div className="rounded-lg bg-slate-50 px-3 py-2.5 sm:p-3.5">
                 <dt className="text-[10px] sm:text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Nomor Identitas (NIM / NIP)
+                  {(user?.nomor_identitas || user?.nim)
+                    ? `Nomor Identitas (${getReporterIdentityLabel(user?.nomor_identitas || user?.nim)})`
+                    : "Nomor Identitas (NIM / NIP)"}
                 </dt>
                 <dd className="mt-0.5 sm:mt-1 text-xs sm:text-base font-medium text-slate-900 break-all">
                   {user?.nomor_identitas || user?.nim || "—"}

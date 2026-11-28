@@ -42,4 +42,15 @@ return [
         'folder'     => env('CLOUDINARY_FOLDER', 'lapor-sadhar/laporan'),
     ],
 
+    'gemini' => [
+        'api_key'               => env('GEMINI_API_KEY'),
+        'model'                 => env('GEMINI_MODEL', 'gemini-2.5-flash'),
+        'base_url'              => env('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta'),
+        'timeout'               => (int) env('GEMINI_TIMEOUT', 20),
+        'similarity_enabled'    => filter_var(env('GEMINI_SIMILARITY_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+        'similarity_threshold'  => (float) env('GEMINI_SIMILARITY_THRESHOLD', 0.75),
+        'max_candidates'        => (int) env('GEMINI_SIMILARITY_MAX_CANDIDATES', 5),
+        'max_photos_per_report' => (int) env('GEMINI_SIMILARITY_MAX_PHOTOS', 2),
+    ],
+
 ];

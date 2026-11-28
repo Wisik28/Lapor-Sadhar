@@ -19,6 +19,10 @@ import {
 import { getFotoList, getFotoUrl, getThumbnailFotoUrl } from "@/lib/laporanPhoto";
 import { LOKASI_KAMPUS_OPTIONS, resolveLokasiKampus } from "@/lib/laporanCampus";
 import {
+  getReporterIdentityLabel,
+  resolveReporterRoleLabel,
+} from "@/lib/reporterIdentity";
+import {
   KATEGORI_LAPORAN_OPTIONS,
   canAdminManageLaporan,
   getKategoriTextColorClass,
@@ -443,15 +447,7 @@ export default function AdminDashboardPage() {
         const fasilitas = extractFasilitas(item);
 
         const pelaporNim = String(item.nim || "-");
-        const tipeUser = (item.tipe_user || "").toLowerCase();
-        let pelaporRole = "Mahasiswa";
-        if (
-          tipeUser.includes("karyawan") ||
-          tipeUser.includes("pegawai") ||
-          pelaporNim.length >= 12
-        ) {
-          pelaporRole = "Karyawan";
-        }
+        const pelaporRole = resolveReporterRoleLabel(pelaporNim, item.tipe_user);
 
         return {
           id: formatReportId(idRaw),
@@ -1017,7 +1013,7 @@ export default function AdminDashboardPage() {
                         setSearchTerm(e.target.value);
                         setCurrentPage(1);
                       }}
-                      placeholder="Cari ID laporan, nama pelapor, NIM, fasilitas, atau ruangan..."
+                      placeholder="Cari ID laporan, nama pelapor, NIM/NIP, fasilitas, atau ruangan..."
                       className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] transition-all min-h-[44px]"
                     />
                     {searchTerm && (
@@ -1446,7 +1442,7 @@ export default function AdminDashboardPage() {
                                 {report.pelaporNama}
                               </div>
                               <div className="text-xs text-gray-500 mt-0.5">
-                                NIM: {report.pelaporNim}
+                                {getReporterIdentityLabel(report.pelaporNim)}: {report.pelaporNim}
                               </div>
                               <span className="inline-block mt-1 text-[10px] font-medium px-2 py-0.5 rounded bg-gray-100 text-gray-600">
                                 {report.pelaporRole}
@@ -1585,10 +1581,13 @@ export default function AdminDashboardPage() {
 
                         {/* Footer Card: Pelapor & Tombol Detail (Touch Target 44px) */}
                         <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-2">
-                          <div className="text-xs">
+                          <div className="text-xs min-w-0">
                             <span className="text-gray-500">Pelapor: </span>
-                            <span className="font-semibold text-gray-800">
+                            <span className="font-semibold text-gray-800 block truncate">
                               {report.pelaporNama}
+                            </span>
+                            <span className="text-[11px] text-gray-500 block font-mono">
+                              {getReporterIdentityLabel(report.pelaporNim)}: {report.pelaporNim}
                             </span>
                           </div>
                           <button
@@ -1737,7 +1736,7 @@ export default function AdminDashboardPage() {
                     </div>
                     <div>
                       <span className="text-xs text-gray-400 block font-medium">
-                        NIM / Identitas
+                        {getReporterIdentityLabel(selectedReport.pelaporNim)}
                       </span>
                       <span className="font-semibold text-gray-900">
                         {selectedReport.pelaporNim} ({selectedReport.pelaporRole})

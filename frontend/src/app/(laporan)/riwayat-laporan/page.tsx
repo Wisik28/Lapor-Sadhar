@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Sidebar from "@/components/Sidebar";
 import Navbar from "@/components/Navbar";
 import ImagePreviewModal from "@/components/ImagePreviewModal";
 import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { laporanApi, type LaporanItem } from "@/lib/api";
-import { formatUserFriendlyError } from "@/lib/networkError";
+import { formatUserFriendlyError, isOffline } from "@/lib/networkError";
 import { useAuthProtection } from "@/lib/useAuth";
 import {
   getFotoList,
@@ -179,22 +179,53 @@ export default function UserRiwayatLaporanPage() {
       .filter((url) => url.length > 0);
   }, [selectedDetail]);
 
-  // ── Ambil Data Backend ──
-  const fetchLaporan = useCallback(async () => {
-    setLoading(true);
-    setFetchError("");
+  const lastEtagRef = useRef<string | null>(null);
+
+  // ── Ambil Data Backend (mendukung silent ETag polling agar sinkronisasi status tampil real-time) ──
+  const fetchLaporan = useCallback(async (silent = false) => {
+    if (silent && isOffline()) {
+      return;
+    }
+
+    if (!silent) {
+      setLoading(true);
+      setFetchError("");
+    }
+
     try {
       if (!nim) {
-        setLaporanList([]);
+        if (!silent) {
+          setLaporanList([]);
+        }
         return;
       }
-      const res = await laporanApi.getAll(nim);
+
+      const res = await laporanApi.getAll(nim, {
+        ifNoneMatch: silent ? lastEtagRef.current : undefined,
+      });
+
+      if (res.not_modified) {
+        if (res.etag) {
+          lastEtagRef.current = res.etag;
+        }
+        return;
+      }
+
+      if (res.etag) {
+        lastEtagRef.current = res.etag;
+      }
+
       if (res.status === "success" && Array.isArray(res.data)) {
         const sortedData = (res.data as LaporanItem[]).sort(
           (a, b) => b.id_laporan - a.id_laporan
         );
         setLaporanList(sortedData);
-      } else {
+        setSelectedDetail((prev) =>
+          prev
+            ? (sortedData.find((item) => item.id_laporan === prev.id_laporan) ?? prev)
+            : null
+        );
+      } else if (!silent) {
         setFetchError(
           formatUserFriendlyError(
             res.message,
@@ -204,27 +235,59 @@ export default function UserRiwayatLaporanPage() {
         );
       }
     } catch (error) {
-      setFetchError(
-        formatUserFriendlyError(
-          error,
-          "load",
-          "Gagal memuat data laporan. Silakan coba lagi."
-        )
-      );
+      if (!silent) {
+        setFetchError(
+          formatUserFriendlyError(
+            error,
+            "load",
+            "Gagal memuat data laporan. Silakan coba lagi."
+          )
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [nim]);
 
   useEffect(() => {
-    if (!authLoading) {
-      fetchLaporan();
-    }
+    if (authLoading) return;
+    let active = true;
+    Promise.resolve().then(() => {
+      if (active) {
+        void fetchLaporan(false);
+      }
+    });
+    return () => {
+      active = false;
+    };
   }, [authLoading, fetchLaporan]);
+
+  useEffect(() => {
+    if (authLoading || !nim) return;
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") {
+        void fetchLaporan(true);
+      }
+    };
+
+    const intervalId = window.setInterval(refreshIfVisible, 15000);
+    window.addEventListener("focus", refreshIfVisible);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshIfVisible);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
+  }, [authLoading, nim, fetchLaporan]);
 
   // Reset ke halaman 1 jika filter berubah
   useEffect(() => {
-    setCurrentPage(1);
+    const timer = window.setTimeout(() => setCurrentPage(1), 0);
+    return () => window.clearTimeout(timer);
   }, [searchTerm, filterStatus, filterKategori]);
 
   // ── Hitung KPI ──
@@ -484,7 +547,7 @@ export default function UserRiwayatLaporanPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={fetchLaporan}
+                    onClick={() => void fetchLaporan(false)}
                     disabled={loading}
                     aria-label="Muat ulang data"
                     title="Muat ulang data"
@@ -575,7 +638,7 @@ export default function UserRiwayatLaporanPage() {
                   </select>
 
                   <button
-                    onClick={fetchLaporan}
+                    onClick={() => void fetchLaporan(false)}
                     disabled={loading}
                     aria-label="Muat ulang data"
                     className="w-8 h-8 inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors cursor-pointer shrink-0"

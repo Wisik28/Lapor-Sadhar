@@ -6,6 +6,7 @@ import PeriodFilter from "@/components/PeriodFilter";
 import { NetworkErrorAlert } from "@/components/NetworkErrorAlert";
 import { authApi, adminLaporanApi } from "@/lib/api";
 import { formatUserFriendlyError } from "@/lib/networkError";
+import { getReporterIdentityLabel } from "@/lib/reporterIdentity";
 import {
   Send, Search, X, CheckCircle2, Settings, Flag,
   RefreshCw, Download, FileSpreadsheet, FileText,
@@ -605,12 +606,14 @@ export default function AdminRekapPage() {
         autoTable(pdf, {
           startY: 25,
           head: [[
-            "ID", "NIM", "Nama Pelapor", "Kategori", "Deskripsi",
+            "ID", "NIM / NIP", "Nama Pelapor", "Kategori", "Deskripsi",
             "Tgl. Kejadian", "Tgl. Dibuat", "Kampus", "Lokasi", "Status",
           ]],
           body: filteredReports.map((report) => [
             report.id_laporan,
-            report.nim,
+            report.nim
+              ? `${getReporterIdentityLabel(report.nim)}: ${report.nim}`
+              : "-",
             report.nama_pelapor || "-",
             report.kategori_laporan,
             report.deskripsi,
@@ -641,7 +644,7 @@ export default function AdminRekapPage() {
         const worksheet = workbook.addWorksheet("Rekap Laporan");
         worksheet.columns = [
           { header: "ID Laporan", key: "id", width: 14 },
-          { header: "NIM", key: "nim", width: 18 },
+          { header: "NIM / NIP", key: "nim", width: 24 },
           { header: "Nama Pelapor", key: "nama", width: 28 },
           { header: "Kategori", key: "kategori", width: 18 },
           { header: "Deskripsi", key: "deskripsi", width: 45 },
@@ -653,7 +656,9 @@ export default function AdminRekapPage() {
         ];
         worksheet.addRows(filteredReports.map((report) => ({
           id: report.id_laporan,
-          nim: report.nim,
+          nim: report.nim
+            ? `${getReporterIdentityLabel(report.nim)}: ${report.nim}`
+            : "-",
           nama: report.nama_pelapor || "-",
           kategori: report.kategori_laporan,
           deskripsi: report.deskripsi,

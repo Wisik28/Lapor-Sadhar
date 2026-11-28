@@ -4,6 +4,7 @@ namespace App\Services\Priority;
 
 use App\Models\Admin;
 use App\Models\Laporan;
+use App\Models\LaporanGroup;
 use App\Models\Priority\PriorityAssessment;
 use App\Models\Priority\PriorityFeedback;
 use App\Support\SchemaVerification;
@@ -57,7 +58,7 @@ class PriorityScoringService
 
             // Skema sudah pernah diverifikasi pada request sebelumnya: lewati ~8 query skema
             // (round-trip ke database jarak jauh). Verifikasi penuh tetap berjalan jika marker hilang.
-            if (SchemaVerification::isVerified('priority_schema')) {
+            if (SchemaVerification::isVerified('priority_schema_v2')) {
                 self::$verifiedLaporanColumnsByPdo[$pdoId] = true;
 
                 return self::$tablesVerifiedByPdo[$pdoId] = true;
@@ -103,6 +104,8 @@ class PriorityScoringService
                     $table->json('safety_flags')->nullable();
                     $table->json('reasons')->nullable();
                     $table->boolean('needs_review')->default(true);
+                    $table->boolean('is_group_escalated')->default(false);
+                    $table->unsignedInteger('group_unique_reporters')->default(1);
                     $table->text('admin_notes')->nullable();
                     $table->unsignedBigInteger('admin_id')->nullable();
                     $table->timestamp('reviewed_at')->nullable();
@@ -112,8 +115,9 @@ class PriorityScoringService
                     $table->index('priority_level');
                     $table->index('severity_level');
                     $table->index('needs_review');
+                    $table->index('is_group_escalated');
                 });
-            } elseif (!Schema::hasColumns('priority_assessments', ['kategori_lokasi', 'tingkat_keparahan_lokasi', 'skala_keparahan_lokasi'])) {
+            } elseif (!Schema::hasColumns('priority_assessments', ['kategori_lokasi', 'tingkat_keparahan_lokasi', 'skala_keparahan_lokasi', 'is_group_escalated', 'group_unique_reporters'])) {
                 Schema::table('priority_assessments', function (Blueprint $table) {
                     if (!Schema::hasColumn('priority_assessments', 'kategori_lokasi')) {
                         $table->string('kategori_lokasi', 60)->default('Tidak Diketahui');
@@ -123,6 +127,12 @@ class PriorityScoringService
                     }
                     if (!Schema::hasColumn('priority_assessments', 'skala_keparahan_lokasi')) {
                         $table->unsignedTinyInteger('skala_keparahan_lokasi')->default(2);
+                    }
+                    if (!Schema::hasColumn('priority_assessments', 'is_group_escalated')) {
+                        $table->boolean('is_group_escalated')->default(false);
+                    }
+                    if (!Schema::hasColumn('priority_assessments', 'group_unique_reporters')) {
+                        $table->unsignedInteger('group_unique_reporters')->default(1);
                     }
                 });
             }
@@ -143,7 +153,7 @@ class PriorityScoringService
 
             self::$tablesVerifiedByPdo[$pdoId] = true;
 
-            SchemaVerification::markVerified('priority_schema');
+            SchemaVerification::markVerified('priority_schema_v2');
             if (!empty(self::$verifiedLaporanColumnsByPdo[$pdoId])) {
                 SchemaVerification::markVerified('laporan_location_columns');
             }
@@ -163,7 +173,7 @@ class PriorityScoringService
         $pdoId = spl_object_id(DB::connection()->getPdo());
         unset(self::$tablesVerifiedByPdo[$pdoId]);
 
-        SchemaVerification::forget('priority_schema');
+        SchemaVerification::forget('priority_schema_v2');
     }
 
     /**
@@ -175,7 +185,8 @@ class PriorityScoringService
         float $locationWeight = 0.4,
         int $distinctReporters = 1,
         float $daysWaiting = 0.0,
-        array $safetyFlags = []
+        array $safetyFlags = [],
+        bool $isGroupEscalated = false
     ): array {
         $isFasilitas = strcasecmp($kategori, 'fasilitas') === 0;
 
@@ -243,14 +254,28 @@ class PriorityScoringService
             $level = $this->resolveLevelFromScore($score);
         }
 
+        // Aturan Eskalasi Grup: jika >= 3 pelapor unik terverifikasi dalam satu grup,
+        // naikkan seluruh anggota grup ke prioritas tertinggi agar tampil di posisi paling atas.
+        if ($isGroupEscalated) {
+            $escalationScore = function_exists('config')
+                ? (int) config('priority.group_escalation.score', 100)
+                : 100;
+            $escalationLevel = function_exists('config')
+                ? (string) config('priority.group_escalation.priority_level', 'kritis')
+                : 'kritis';
+            $score = max($score, $escalationScore);
+            $level = $escalationLevel;
+        }
+
         return [
-            'priority_score'      => $score,
-            'priority_level'      => $level,
-            'location_weight'     => $locationWeight,
-            'duplicate_factor'    => $duplicateFactor,
-            'aging_factor'        => $agingFactor,
-            'has_safety_override' => $hasSafetyOverride,
-            'breakdown'           => $breakdown,
+            'priority_score'       => $score,
+            'priority_level'       => $level,
+            'location_weight'      => $locationWeight,
+            'duplicate_factor'     => $duplicateFactor,
+            'aging_factor'         => $agingFactor,
+            'has_safety_override'  => $hasSafetyOverride,
+            'has_group_escalation' => $isGroupEscalated,
+            'breakdown'            => $breakdown,
         ];
     }
 
@@ -413,12 +438,15 @@ class PriorityScoringService
             }
         }
 
+        $groupsMap = $this->preloadGroupsForLaporans($missing);
+
         foreach ($missing as $laporan) {
             $distinctReporters = $recentLaporans !== null
                 ? $this->countNearbyReportersFromCollection($laporan, $recentLaporans, $driverName)
                 : null;
 
-            $prepared = $this->buildAssessmentPayload($laporan, null, $distinctReporters);
+            $groupContext = $this->resolveGroupContext($laporan, $groupsMap);
+            $prepared = $this->buildAssessmentPayload($laporan, null, $distinctReporters, $groupContext);
             $results->put($laporan->id_laporan, new PriorityAssessment($prepared['attributes']));
         }
 
@@ -515,6 +543,7 @@ class PriorityScoringService
         $laporanSyncGroups = [];
         $computedPayloads = [];
         $fallbackModels = [];
+        $groupsMap = $this->preloadGroupsForLaporans(array_map(static fn (array $pair) => $pair[0], $toCompute));
 
         foreach ($toCompute as [$laporan, $existing]) {
             $distinctReporters = null;
@@ -522,7 +551,8 @@ class PriorityScoringService
                 $distinctReporters = $this->countNearbyReportersFromCollection($laporan, $recentLaporans, $driverName);
             }
 
-            $prepared = $this->buildAssessmentPayload($laporan, $existing, $distinctReporters);
+            $groupContext = $this->resolveGroupContext($laporan, $groupsMap);
+            $prepared = $this->buildAssessmentPayload($laporan, $existing, $distinctReporters, $groupContext);
             $attributes = $prepared['attributes'];
             $syncData = $prepared['sync'];
 
@@ -582,6 +612,8 @@ class PriorityScoringService
                         'safety_flags'             => json_encode($attributes['safety_flags'], JSON_THROW_ON_ERROR),
                         'reasons'                  => json_encode($attributes['reasons'], JSON_THROW_ON_ERROR),
                         'needs_review'             => (bool) $attributes['needs_review'],
+                        'is_group_escalated'       => (bool) ($attributes['is_group_escalated'] ?? false),
+                        'group_unique_reporters'   => (int) ($attributes['group_unique_reporters'] ?? 1),
                         'admin_notes'              => $attributes['admin_notes'],
                         'admin_id'                 => $attributes['admin_id'],
                         'reviewed_at'              => $attributes['reviewed_at'] instanceof \DateTimeInterface
@@ -608,6 +640,8 @@ class PriorityScoringService
                     'safety_flags',
                     'reasons',
                     'needs_review',
+                    'is_group_escalated',
+                    'group_unique_reporters',
                     'admin_notes',
                     'admin_id',
                     'reviewed_at',
@@ -707,14 +741,138 @@ class PriorityScoringService
     }
 
     /**
+     * Sinkronkan penilaian & status eskalasi prioritas untuk seluruh laporan di dalam sebuah grup.
+     */
+    public function syncGroupPriority(LaporanGroup $group): void
+    {
+        try {
+            $members = Laporan::query()
+                ->select([
+                    'id_laporan',
+                    'nim',
+                    'kategori_laporan',
+                    'deskripsi',
+                    'tanggal_buat',
+                    'tanggal_kejadian',
+                    'lokasi_kampus',
+                    'lokasi',
+                    'kategori_lokasi',
+                    'tingkat_keparahan',
+                    'skala_keparahan',
+                    'group_id',
+                    DB::raw("CASE WHEN foto IS NOT NULL AND foto <> '' THEN 1 ELSE 0 END AS has_foto"),
+                ])
+                ->where('group_id', $group->id)
+                ->get();
+
+            if ($members->isEmpty()) {
+                return;
+            }
+
+            $this->assessAndSaveMany($members, true);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    /**
+     * Pra-muat seluruh record LaporanGroup untuk sekumpulan laporan guna mencegah N+1 query.
+     *
+     * @param  iterable<int, Laporan>  $laporans
+     * @return array<int, LaporanGroup>
+     */
+    private function preloadGroupsForLaporans(iterable $laporans): array
+    {
+        try {
+            if (! Schema::hasTable('laporan_groups')) {
+                return [];
+            }
+
+            $groupIds = [];
+            foreach ($laporans as $laporan) {
+                $gid = $laporan->group_id ?? null;
+                if ($gid !== null && (int) $gid > 0) {
+                    $groupIds[] = (int) $gid;
+                }
+            }
+
+            $groupIds = array_values(array_unique($groupIds));
+            if ($groupIds === []) {
+                return [];
+            }
+
+            return LaporanGroup::whereIn('id', $groupIds)
+                ->get()
+                ->keyBy('id')
+                ->all();
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * Ambil konteks eskalasi grup untuk satu laporan secara aman.
+     *
+     * @param  array<int, LaporanGroup>|null  $preloadedGroupsMap
+     * @return array{is_escalated: bool, unique_reporters: int, total_reports: int}
+     */
+    public function resolveGroupContext(Laporan $laporan, ?array $preloadedGroupsMap = null): array
+    {
+        $gid = $laporan->group_id ?? null;
+        if ($gid === null || (int) $gid <= 0) {
+            return [
+                'is_escalated'     => false,
+                'unique_reporters' => 1,
+                'total_reports'    => 1,
+            ];
+        }
+
+        $gid = (int) $gid;
+
+        try {
+            $group = null;
+            if ($preloadedGroupsMap !== null) {
+                $group = $preloadedGroupsMap[$gid] ?? null;
+            } elseif (Schema::hasTable('laporan_groups')) {
+                $group = LaporanGroup::find($gid);
+            }
+
+            if (! $group) {
+                return [
+                    'is_escalated'     => false,
+                    'unique_reporters' => 1,
+                    'total_reports'    => 1,
+                ];
+            }
+
+            $minReporters = max(2, (int) config('priority.group_escalation.min_unique_reporters', 3));
+            $uniqueReporters = max(1, (int) $group->unique_reporter_count);
+
+            return [
+                'is_escalated'     => (bool) $group->is_escalated || $uniqueReporters >= $minReporters,
+                'unique_reporters' => $uniqueReporters,
+                'total_reports'    => max(1, (int) $group->total_laporan_count),
+            ];
+        } catch (\Throwable) {
+            return [
+                'is_escalated'     => false,
+                'unique_reporters' => 1,
+                'total_reports'    => 1,
+            ];
+        }
+    }
+
+    /**
      * Susun atribut penilaian prioritas dan perubahan atribut lokasi laporan tanpa mengeksekusi query tulis.
      *
+     * @param  array{is_escalated: bool, unique_reporters: int, total_reports: int}|null  $groupContext
      * @return array{attributes: array<string, mixed>, sync: array<string, mixed>|null}
      */
     private function buildAssessmentPayload(
         Laporan $laporan,
         ?PriorityAssessment $existing,
-        ?int $precomputedDistinctReporters = null
+        ?int $precomputedDistinctReporters = null,
+        ?array $groupContext = null
     ): array {
         $kategori = $laporan->kategori_laporan ?? 'Fasilitas';
         $deskripsi = $laporan->deskripsi ?? '';
@@ -774,11 +932,26 @@ class PriorityScoringService
             $skalaKeparahan
         );
 
-        // 3. Hitung faktor lingkungan
+        // 3. Hitung faktor lingkungan & konteks eskalasi grup
         if ($precomputedDistinctReporters !== null) {
             $distinctReporters = $precomputedDistinctReporters;
         } else {
             $distinctReporters = DB::transactionLevel() === 0 ? $this->countNearbyReporters($laporan) : 1;
+        }
+
+        $resolvedGroup = $groupContext ?? $this->resolveGroupContext($laporan);
+        $isGroupEscalated = (bool) ($resolvedGroup['is_escalated'] ?? false);
+        $groupUniqueReporters = max(1, (int) ($resolvedGroup['unique_reporters'] ?? 1));
+        $effectiveDistinctReporters = max($distinctReporters, $groupUniqueReporters);
+
+        if ($isGroupEscalated) {
+            array_unshift(
+                $reasons,
+                sprintf(
+                    'Eskalasi prioritas otomatis: %d pelapor berbeda melaporkan masalah serupa di lokasi yang sama.',
+                    $groupUniqueReporters
+                )
+            );
         }
 
         $createdAt = $laporan->tanggal_buat ? Carbon::parse($laporan->tanggal_buat) : now();
@@ -789,12 +962,15 @@ class PriorityScoringService
             $kategori,
             $dimensions,
             $locationWeight,
-            $distinctReporters,
+            $effectiveDistinctReporters,
             $daysWaiting,
-            $aiResult['safety_flags']
+            $aiResult['safety_flags'],
+            $isGroupEscalated
         );
 
-        $effectiveSeverity = $existing?->admin_severity ?: $aiResult['suggested_severity'];
+        $effectiveSeverity = $isGroupEscalated
+            ? (string) config('priority.group_escalation.severity_level', 'berat')
+            : ($existing?->admin_severity ?: $aiResult['suggested_severity']);
 
         return [
             'sync'       => $syncData,
@@ -815,6 +991,8 @@ class PriorityScoringService
                 'safety_flags'             => $aiResult['safety_flags'],
                 'reasons'                  => $reasons,
                 'needs_review'             => $existing ? $existing->needs_review : true,
+                'is_group_escalated'       => $isGroupEscalated,
+                'group_unique_reporters'   => $groupUniqueReporters,
                 'admin_notes'              => $existing?->admin_notes,
                 'admin_id'                 => $existing?->admin_id,
                 'reviewed_at'              => $existing?->reviewed_at,

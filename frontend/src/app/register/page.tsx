@@ -209,7 +209,7 @@ export default function RegisterPage() {
                   </div>
                   <div>
                     <span className="text-xs font-bold text-slate-800 block">Karyawan / Dosen</span>
-                    <span className="text-[10px] text-slate-500">NIP / NPK / ID Pegawai</span>
+                    <span className="text-[10px] text-slate-500">NIP</span>
                   </div>
                 </button>
               </div>
@@ -236,7 +236,7 @@ export default function RegisterPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    {tipeUser === "mahasiswa" ? "NIM" : "NIP / NPK"} <span className="text-red-500">*</span>
+                    {tipeUser === "mahasiswa" ? "NIM" : "NIP"} <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -246,7 +246,7 @@ export default function RegisterPage() {
                     placeholder={
                       tipeUser === "mahasiswa"
                         ? "Contoh: 225314001"
-                        : "Contoh: KARYAWAN001"
+                        : "Contoh: 198501012010121001"
                     }
                     className="w-full h-11 sm:h-9 px-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#7A0C0C] focus:border-[#7A0C0C] bg-white text-base sm:text-sm text-slate-800 placeholder:text-slate-400 transition-all outline-none"
                   />

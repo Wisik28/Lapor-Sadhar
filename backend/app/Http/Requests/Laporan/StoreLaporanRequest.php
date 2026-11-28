@@ -32,7 +32,7 @@ class StoreLaporanRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'nim.required'              => 'NIM pelapor wajib diisi.',
+            'nim.required'              => 'NIM / NIP pelapor wajib diisi.',
             'nim.exists'                => 'Identitas pelapor tidak ditemukan di sistem.',
             'kategori_laporan.required' => 'Kategori laporan wajib dipilih.',
             'kategori_laporan.in'       => 'Kategori harus Fasilitas atau Kebersihan.',

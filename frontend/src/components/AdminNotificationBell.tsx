@@ -22,6 +22,7 @@ import {
 } from "@/lib/api";
 import { subscribeAdminNotificationSync } from "@/lib/notificationEvents";
 import { formatUserFriendlyError, isAbortError } from "@/lib/networkError";
+import { getReporterIdentityLabel } from "@/lib/reporterIdentity";
 
 const POLL_INTERVAL_MS = 4000;
 const TIME_TICK_INTERVAL_MS = 30000;
@@ -660,7 +661,7 @@ export default function AdminNotificationBell({
                               </span>
                               {item.nim_pelapor && (
                                 <span className="text-[10px] text-slate-400 shrink-0">
-                                  ({item.nim_pelapor})
+                                  ({getReporterIdentityLabel(item.nim_pelapor)}: {item.nim_pelapor})
                                 </span>
                               )}
                             </p>

@@ -17,6 +17,7 @@ import {
   resolveAdminSeenKey,
 } from "@/lib/adminSeenReports";
 import { LOKASI_KAMPUS_OPTIONS, resolveLokasiKampus } from "@/lib/laporanCampus";
+import { getReporterIdentityLabel } from "@/lib/reporterIdentity";
 import {
   ShieldAlert,
   AlertTriangle,
@@ -29,6 +30,7 @@ import {
   Search,
   Building,
   Inbox,
+  Layers,
   X,
 } from "lucide-react";
 import {
@@ -318,6 +320,14 @@ function AdminPriorityDashboardContent() {
     };
   }, [authLoading, authUser, apiSearchQuery, loadPriorityData]);
 
+  const activePriorityReports = useMemo(
+    () =>
+      reports.filter(
+        (item) => normalizeAdminStatus(item.status_terkini) !== "Ditolak"
+      ),
+    [reports]
+  );
+
   const hasPeriodFilter =
     isReadOnly &&
     (selectedDay !== "Semua" ||
@@ -326,10 +336,10 @@ function AdminPriorityDashboardContent() {
 
   const periodReports = useMemo(() => {
     if (!hasPeriodFilter) {
-      return reports;
+      return activePriorityReports;
     }
 
-    return reports.filter((item) => {
+    return activePriorityReports.filter((item) => {
       const parts = extractReportDateParts(
         item.tanggal_buat || item.tanggal_kejadian
       );
@@ -343,11 +353,11 @@ function AdminPriorityDashboardContent() {
 
       return matchesDay && matchesMonth && matchesYear;
     });
-  }, [reports, hasPeriodFilter, selectedDay, selectedMonth, selectedYear]);
+  }, [activePriorityReports, hasPeriodFilter, selectedDay, selectedMonth, selectedYear]);
 
   const displayedReports = useMemo(() => {
     if (!isReadOnly) {
-      return reports;
+      return activePriorityReports;
     }
 
     const searchLower = debouncedSearch.trim().toLowerCase();
@@ -361,6 +371,13 @@ function AdminPriorityDashboardContent() {
         searchLower === "" ||
         formattedId.includes(searchLower) ||
         String(item.id_laporan).includes(searchLower) ||
+        Boolean(
+          item.group_member_ids?.some(
+            (memberId) =>
+              String(memberId).includes(searchLower) ||
+              String(memberId).padStart(3, "0").includes(searchLower)
+          )
+        ) ||
         (item.nama_pelapor || "").toLowerCase().includes(searchLower) ||
         (item.nim || "").toLowerCase().includes(searchLower) ||
         (item.deskripsi || "").toLowerCase().includes(searchLower) ||
@@ -401,7 +418,7 @@ function AdminPriorityDashboardContent() {
     });
   }, [
     isReadOnly,
-    reports,
+    activePriorityReports,
     periodReports,
     debouncedSearch,
     lokasiFilter,
@@ -445,7 +462,11 @@ function AdminPriorityDashboardContent() {
       return;
     }
 
-    const matched = reports.find((item) => item.id_laporan === requestedReportId);
+    const matched = reports.find(
+      (item) =>
+        item.id_laporan === requestedReportId ||
+        Boolean(item.group_member_ids?.includes(requestedReportId))
+    );
     if (matched) {
       handledQueryIdRef.current = requestedReportId;
       let active = true;
@@ -497,7 +518,7 @@ function AdminPriorityDashboardContent() {
         <div className="max-w-7xl mx-auto space-y-6">
           {/* Kartu Ringkasan Jumlah Laporan Berdasarkan Prioritas */}
           {(() => {
-            const summarySource = hasPeriodFilter ? periodReports : reports;
+            const summarySource = hasPeriodFilter ? periodReports : activePriorityReports;
             const useServerSummary = !hasPeriodFilter && Boolean(summary);
             const totalCount = useServerSummary
               ? (summary?.total_laporan ?? summarySource.length)
@@ -544,7 +565,7 @@ function AdminPriorityDashboardContent() {
                       {totalCount}
                     </span>
                     <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                      Total seluruh laporan terdaftar
+                      Total laporan yang perlu ditangani
                     </p>
                   </div>
                   <div className="absolute top-0 right-0 w-2 h-full bg-[#7A0C0C]" />
@@ -651,7 +672,7 @@ function AdminPriorityDashboardContent() {
                   <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="Cari ID laporan, nama pelapor, NIM, lokasi, atau deskripsi..."
+                    placeholder="Cari ID laporan, nama pelapor, NIM/NIP, lokasi, atau deskripsi..."
                     value={search}
                     onChange={(e) => {
                       setSearch(e.target.value);
@@ -818,7 +839,6 @@ function AdminPriorityDashboardContent() {
                     <option value="Terkirim">Terkirim</option>
                     <option value="Diverifikasi">Diverifikasi</option>
                     <option value="Diproses">Diproses</option>
-                    <option value="Ditolak">Ditolak</option>
                     <option value="Selesai">Selesai</option>
                   </select>
                 </div>
@@ -881,7 +901,7 @@ function AdminPriorityDashboardContent() {
                   <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
-                    placeholder="Cari deskripsi, lokasi, pelapor, atau nomor laporan..."
+                    placeholder="Cari deskripsi, lokasi, pelapor, NIM/NIP, atau nomor laporan..."
                     value={search}
                     onChange={(e) => {
                       setSearch(e.target.value);
@@ -939,7 +959,6 @@ function AdminPriorityDashboardContent() {
                     <option value="Diverifikasi">Diverifikasi</option>
                     <option value="Diproses">Diproses</option>
                     <option value="Selesai">Selesai</option>
-                    <option value="Ditolak">Ditolak</option>
                   </select>
                 </div>
               </div>
@@ -992,7 +1011,8 @@ function AdminPriorityDashboardContent() {
                       <table className="w-full text-left border-collapse">
                         <thead>
                           <tr className="bg-slate-50/80 border-b border-slate-200/70 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                            <th className="py-4 px-4 sm:px-6">Peringkat & Skor</th>
+                            <th className="py-4 px-4 sm:px-6 whitespace-nowrap">ID</th>
+                            <th className="py-4 px-4 whitespace-nowrap">Skor</th>
                             <th className="py-4 px-4">Pelapor</th>
                             <th className="py-4 px-4">Tanggal</th>
                             <th className="py-4 px-4">Kategori & Lokasi</th>
@@ -1001,7 +1021,7 @@ function AdminPriorityDashboardContent() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-xs">
-                          {paginatedReports.map((item, index) => {
+                          {paginatedReports.map((item) => {
                             const isTopPriority = item.priority_level === "kritis" || item.severity_level === "berat";
                             const isUnread =
                               normalizeAdminStatus(item.status_terkini) === "Terkirim" &&
@@ -1020,7 +1040,7 @@ function AdminPriorityDashboardContent() {
                                 tabIndex={0}
                                 role="button"
                                 title="Klik untuk melihat detail laporan"
-                                className={`cursor-pointer transition-colors outline-none focus-visible:bg-slate-100 ${
+                                className={`group cursor-pointer transition-colors outline-none focus-visible:bg-slate-100 ${
                                   isUnread
                                     ? "bg-blue-50/35 hover:bg-blue-50/65 active:bg-blue-100/50"
                                     : isTopPriority
@@ -1028,32 +1048,39 @@ function AdminPriorityDashboardContent() {
                                       : "hover:bg-slate-50 active:bg-slate-100/80"
                                 }`}
                               >
-                                {/* Kolom Peringkat & Skor */}
+                                {/* Kolom ID */}
                                 <td
-                                  className={`py-4 px-4 sm:px-6 ${
+                                  className={`py-4 px-4 sm:px-6 whitespace-nowrap ${
                                     isUnread ? "border-l-[3px] border-l-[#3B82F6]" : ""
                                   }`}
                                 >
-                                  <div className="flex items-center gap-3">
-                                    <div className="flex items-center gap-1.5 min-w-[34px]">
-                                      {isUnread && (
-                                        <span
-                                          title="Laporan baru belum dibuka"
-                                          className="relative flex h-2 w-2 shrink-0"
-                                        >
-                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                                          <span className="relative inline-flex rounded-full h-2 w-2 bg-[#3B82F6]" />
-                                        </span>
-                                      )}
-                                      <span className="w-6 text-center font-bold text-gray-400 text-xs font-mono">
-                                        #{(currentPage - 1) * itemsPerPage + index + 1}
+                                  <div className="flex items-center gap-2">
+                                    {isUnread && (
+                                      <span
+                                        title="Laporan baru belum dibuka"
+                                        className="relative flex h-2 w-2 shrink-0"
+                                      >
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-[#3B82F6]" />
                                       </span>
-                                    </div>
-                                    <PriorityScoreBadge
-                                      score={item.priority_score}
-                                      level={item.priority_level}
-                                    />
+                                    )}
+                                    <span className="font-mono font-bold text-xs text-[#7A0C0C] block group-hover:underline">
+                                      {String(item.id_laporan).padStart(3, "0")}
+                                    </span>
                                   </div>
+                                  {isUnread && (
+                                    <span className="inline-block mt-1 text-[10px] font-semibold text-[#3B82F6] bg-blue-100/70 px-1.5 py-0.5 rounded-md">
+                                      Baru
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* Kolom Skor */}
+                                <td className="py-4 px-4">
+                                  <PriorityScoreBadge
+                                    score={item.priority_score}
+                                    level={item.priority_level}
+                                  />
                                 </td>
 
                                 {/* Kolom Pelapor */}
@@ -1064,7 +1091,12 @@ function AdminPriorityDashboardContent() {
                                     </span>
                                     {item.nim && (
                                       <span className="text-[10px] text-gray-400 block font-mono">
-                                        NIM: {item.nim}
+                                        {getReporterIdentityLabel(item.nim)}: {item.nim}
+                                      </span>
+                                    )}
+                                    {(item.group_member_count ?? 1) > 1 && (
+                                      <span className="text-[10px] font-semibold text-[#7A0C0C] block">
+                                        +{(item.group_member_count ?? 1) - 1} laporan serupa
                                       </span>
                                     )}
                                   </div>
@@ -1109,9 +1141,35 @@ function AdminPriorityDashboardContent() {
 
                                 {/* Kolom Deskripsi Laporan (Menggantikan Kolom Tingkat Kerusakan & Alasan AI) */}
                                 <td className="py-4 px-4 max-w-sm">
-                                  <p className="text-gray-600 line-clamp-2 text-xs leading-relaxed" title={item.deskripsi}>
-                                    {item.deskripsi || "-"}
-                                  </p>
+                                  <div className="space-y-1.5">
+                                    <p className="text-gray-600 line-clamp-2 text-xs leading-relaxed" title={item.deskripsi}>
+                                      {item.deskripsi || "-"}
+                                    </p>
+                                    {(item.group_member_count ?? 1) > 1 && (
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span
+                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                            item.is_group_escalated
+                                              ? "bg-red-50 text-red-700 border-red-200"
+                                              : "bg-amber-50 text-amber-800 border-amber-200"
+                                          }`}
+                                          title={
+                                            item.is_group_escalated
+                                              ? `Eskalasi otomatis (${item.group_unique_reporters ?? item.group_member_count} pelapor berbeda)`
+                                              : `${item.group_member_count} laporan serupa tergabung (${item.group_unique_reporters ?? 1} pelapor berbeda)`
+                                          }
+                                        >
+                                          <Layers className="w-3 h-3 shrink-0" />
+                                          <span>{item.group_member_count} Laporan Serupa</span>
+                                        </span>
+                                        {item.is_group_escalated && (
+                                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-[#7A0C0C] text-white">
+                                            Eskalasi ({item.group_unique_reporters ?? 3} Pelapor)
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
                                 </td>
 
                                 {/* Kolom Status (konsisten dengan /admin/dashboard) */}

@@ -5,13 +5,14 @@ namespace App\Http\Controllers\Priority;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\Laporan;
+use App\Models\LaporanGroup;
 use App\Services\Priority\PriorityScoringService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Schema;
 
 class PriorityDashboardController extends Controller
 {
@@ -55,13 +56,84 @@ class PriorityDashboardController extends Controller
         return [];
     }
 
+    /**
+     * Periksa apakah skema pengelompokan laporan (laporan_groups & laporan.group_id) tersedia.
+     */
+    private function hasGroupingSchema(): bool
+    {
+        try {
+            return Schema::hasTable('laporan_groups') && Schema::hasColumn('laporan', 'group_id');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Kecualikan laporan berstatus terbaru "Ditolak" dari tabel & ringkasan Dashboard Prioritas.
+     */
+    private function applyNotRejectedFilter(object $query): object
+    {
+        return $query->whereRaw(
+            "LOWER(COALESCE((SELECT s.status_laporan FROM status s WHERE s.id_laporan = laporan.id_laporan ORDER BY s.tanggal_merubah DESC, s.id_status DESC LIMIT 1), 'Terkirim')) <> 'ditolak'"
+        );
+    }
+
+    /**
+     * Tampilkan hanya 1 baris representatif (tiket utama / paling awal) untuk setiap grup laporan,
+     * sementara laporan tunggal (group_id IS NULL) tetap ditampilkan seperti biasa.
+     */
+    private function applyGroupRepresentativeFilter(object $query, bool $hasGroupingSchema, string $groupAlias = 'lg'): object
+    {
+        if (! $hasGroupingSchema) {
+            return $query;
+        }
+
+        return $query->where(function ($q) use ($groupAlias) {
+            $q->whereNull('laporan.group_id')
+                ->orWhereNull("{$groupAlias}.id")
+                ->orWhereColumn('laporan.id_laporan', "{$groupAlias}.primary_laporan_id");
+        });
+    }
+
+    /**
+     * Muat daftar ID anggota per group_id dalam satu query ringan (tanpa N+1).
+     *
+     * @param  array<int, int>  $groupIds
+     * @return array<int, array<int, int>>
+     */
+    private function loadGroupMemberIdsMap(array $groupIds): array
+    {
+        $uniqueIds = array_values(array_unique(array_filter($groupIds, static fn ($id): bool => (int) $id > 0)));
+        if ($uniqueIds === []) {
+            return [];
+        }
+
+        $rows = DB::table('laporan')
+            ->select(['id_laporan', 'group_id'])
+            ->whereIn('group_id', $uniqueIds)
+            ->orderBy('tanggal_buat', 'asc')
+            ->orderBy('id_laporan', 'asc')
+            ->get();
+
+        $map = [];
+        foreach ($rows as $row) {
+            $gid = (int) $row->group_id;
+            $map[$gid][] = (int) $row->id_laporan;
+        }
+
+        return $map;
+    }
+
     private function hasMissingAssessments(?Admin $admin): bool
     {
-        return Laporan::query()
+        $query = Laporan::query()
             ->leftJoin('priority_assessments', 'priority_assessments.id_laporan', '=', 'laporan.id_laporan')
             ->visibleToAdmin($admin)
-            ->whereNull('priority_assessments.id')
-            ->exists();
+            ->whereNull('priority_assessments.id');
+
+        $this->applyNotRejectedFilter($query);
+
+        return $query->exists();
     }
 
     /**
@@ -69,7 +141,7 @@ class PriorityDashboardController extends Controller
      *
      * @return array<string, int|float>
      */
-    private function buildSummaryFromSql(?Admin $admin): array
+    private function buildSummaryFromSql(?Admin $admin, bool $hasGroupingSchema = false): array
     {
         $needsReviewCond = DB::connection()->getDriverName() === 'pgsql'
             ? 'pa.needs_review IS TRUE'
@@ -86,6 +158,13 @@ class PriorityDashboardController extends Controller
                 COALESCE(SUM(CASE WHEN {$needsReviewCond} THEN 1 ELSE 0 END), 0) AS perlu_konfirmasi,
                 COALESCE(SUM(pa.priority_score), 0) AS sum_scores
             ");
+
+        if ($hasGroupingSchema) {
+            $query->leftJoin('laporan_groups as lg', 'lg.id', '=', 'laporan.group_id');
+            $this->applyGroupRepresentativeFilter($query, true, 'lg');
+        }
+
+        $this->applyNotRejectedFilter($query);
 
         if ($admin) {
             if ($campus = $admin->resolvedCampus()) {
@@ -117,9 +196,9 @@ class PriorityDashboardController extends Controller
      *
      * @return array<int, mixed>
      */
-    private function lightweightLaporanColumns(): array
+    private function lightweightLaporanColumns(bool $hasGroupingSchema = false): array
     {
-        return [
+        $columns = [
             'laporan.id_laporan',
             'laporan.nim',
             'laporan.kategori_laporan',
@@ -131,8 +210,15 @@ class PriorityDashboardController extends Controller
             'laporan.kategori_lokasi',
             'laporan.tingkat_keparahan',
             'laporan.skala_keparahan',
-            DB::raw("CASE WHEN laporan.foto IS NOT NULL AND laporan.foto <> '' THEN 1 ELSE 0 END AS has_foto"),
         ];
+
+        if ($hasGroupingSchema) {
+            $columns[] = 'laporan.group_id';
+        }
+
+        $columns[] = DB::raw("CASE WHEN laporan.foto IS NOT NULL AND laporan.foto <> '' THEN 1 ELSE 0 END AS has_foto");
+
+        return $columns;
     }
 
     /**
@@ -211,17 +297,27 @@ class PriorityDashboardController extends Controller
             $now = now();
 
             $hasTable = $this->scoringService->hasAssessmentTable();
+            $hasGroupingSchema = $this->hasGroupingSchema();
+            $isPgsql = DB::connection()->getDriverName() === 'pgsql';
 
             // Jalur cepat SQL: filtering, sorting, summary, dan pagination dieksekusi langsung di database
             // apabila seluruh laporan pada cakupan admin sudah memiliki baris priority_assessments.
             if ($hasTable && ! $this->hasMissingAssessments($admin)) {
-                $summaryData = $this->buildSummaryFromSql($admin);
+                $summaryData = $this->buildSummaryFromSql($admin, $hasGroupingSchema);
 
                 $baseQuery = Laporan::query()
                     ->join('priority_assessments as pa', 'pa.id_laporan', '=', 'laporan.id_laporan')
                     ->leftJoin('pelapor', 'pelapor.nomor_identitas', '=', 'laporan.nim')
                     ->leftJoin('user_mahasiswa', 'user_mahasiswa.nim', '=', 'pelapor.nomor_identitas')
+                    ->leftJoin('user_pegawai', 'user_pegawai.nomor_identitas', '=', 'pelapor.nomor_identitas')
                     ->visibleToAdmin($admin);
+
+                if ($hasGroupingSchema) {
+                    $baseQuery->leftJoin('laporan_groups as lg', 'lg.id', '=', 'laporan.group_id');
+                    $this->applyGroupRepresentativeFilter($baseQuery, true, 'lg');
+                }
+
+                $this->applyNotRejectedFilter($baseQuery);
 
                 if ($katFilter !== null) {
                     $baseQuery->whereRaw('LOWER(laporan.kategori_laporan) = ?', [$katFilter]);
@@ -243,46 +339,90 @@ class PriorityDashboardController extends Controller
                 }
                 if ($searchQuery !== null) {
                     $like = '%' . $this->escapeLike($searchQuery) . '%';
-                    $baseQuery->where(function ($q) use ($like) {
+                    $baseQuery->where(function ($q) use ($like, $hasGroupingSchema) {
                         $q->whereRaw("LOWER(laporan.deskripsi) LIKE ? ESCAPE '!'", [$like])
                             ->orWhereRaw("LOWER(laporan.lokasi) LIKE ? ESCAPE '!'", [$like])
                             ->orWhereRaw("LOWER(COALESCE(laporan.lokasi_kampus, '')) LIKE ? ESCAPE '!'", [$like])
-                            ->orWhereRaw("LOWER(COALESCE(user_mahasiswa.nama, 'Civitas USD')) LIKE ? ESCAPE '!'", [$like])
+                            ->orWhereRaw("LOWER(COALESCE(user_mahasiswa.nama, user_pegawai.nama, 'Civitas USD')) LIKE ? ESCAPE '!'", [$like])
+                            ->orWhereRaw("LOWER(COALESCE(laporan.nim, '')) LIKE ? ESCAPE '!'", [$like])
                             ->orWhereRaw("CAST(laporan.id_laporan AS TEXT) LIKE ? ESCAPE '!'", [$like]);
+
+                        if ($hasGroupingSchema) {
+                            $q->orWhereRaw(
+                                "laporan.group_id IS NOT NULL AND EXISTS (
+                                    SELECT 1 FROM laporan gm
+                                    LEFT JOIN pelapor gp ON gp.nomor_identitas = gm.nim
+                                    LEFT JOIN user_mahasiswa gmu ON gmu.nim = gp.nomor_identitas
+                                    LEFT JOIN user_pegawai gpu ON gpu.nomor_identitas = gp.nomor_identitas
+                                    WHERE gm.group_id = laporan.group_id
+                                      AND (
+                                          LOWER(gm.deskripsi) LIKE ? ESCAPE '!'
+                                          OR LOWER(COALESCE(gmu.nama, gpu.nama, '')) LIKE ? ESCAPE '!'
+                                          OR LOWER(COALESCE(gm.nim, '')) LIKE ? ESCAPE '!'
+                                          OR CAST(gm.id_laporan AS TEXT) LIKE ? ESCAPE '!'
+                                      )
+                                )",
+                                [$like, $like, $like, $like]
+                            );
+                        }
                     });
                 }
 
                 $total = (clone $baseQuery)->count();
                 $lastPage = (int) max(1, ceil($total / $perPage));
 
+                $selectColumns = array_merge($this->lightweightLaporanColumns($hasGroupingSchema), [
+                    DB::raw('COALESCE(user_mahasiswa.nama, user_pegawai.nama) AS pelapor_nama'),
+                    'pelapor.tipe_user AS pelapor_tipe_user',
+                    DB::raw('(SELECT s.status_laporan FROM status s WHERE s.id_laporan = laporan.id_laporan ORDER BY s.tanggal_merubah DESC, s.id_status DESC LIMIT 1) AS latest_status'),
+                    'pa.kategori_lokasi AS pa_kategori_lokasi',
+                    'pa.tingkat_keparahan_lokasi AS pa_tingkat_keparahan_lokasi',
+                    'pa.skala_keparahan_lokasi AS pa_skala_keparahan_lokasi',
+                    'pa.priority_score AS pa_priority_score',
+                    'pa.priority_level AS pa_priority_level',
+                    'pa.severity_level AS pa_severity_level',
+                    'pa.severity_source AS pa_severity_source',
+                    'pa.ai_suggested_severity AS pa_ai_suggested_severity',
+                    'pa.admin_severity AS pa_admin_severity',
+                    'pa.confidence AS pa_confidence',
+                    'pa.needs_review AS pa_needs_review',
+                    'pa.reasons AS pa_reasons',
+                    'pa.safety_flags AS pa_safety_flags',
+                    'pa.admin_notes AS pa_admin_notes',
+                    'pa.reviewed_at AS pa_reviewed_at',
+                ]);
+
+                if ($hasGroupingSchema) {
+                    $selectColumns = array_merge($selectColumns, [
+                        'lg.total_laporan_count AS lg_total_laporan_count',
+                        'lg.unique_reporter_count AS lg_unique_reporter_count',
+                        'lg.is_escalated AS lg_is_escalated',
+                        'lg.escalated_at AS lg_escalated_at',
+                    ]);
+                }
+
                 $rowsQuery = $baseQuery
-                    ->select(array_merge($this->lightweightLaporanColumns(), [
-                        'user_mahasiswa.nama AS pelapor_nama',
-                        DB::raw('(SELECT s.status_laporan FROM status s WHERE s.id_laporan = laporan.id_laporan ORDER BY s.tanggal_merubah DESC, s.id_status DESC LIMIT 1) AS latest_status'),
-                        'pa.kategori_lokasi AS pa_kategori_lokasi',
-                        'pa.tingkat_keparahan_lokasi AS pa_tingkat_keparahan_lokasi',
-                        'pa.skala_keparahan_lokasi AS pa_skala_keparahan_lokasi',
-                        'pa.priority_score AS pa_priority_score',
-                        'pa.priority_level AS pa_priority_level',
-                        'pa.severity_level AS pa_severity_level',
-                        'pa.severity_source AS pa_severity_source',
-                        'pa.ai_suggested_severity AS pa_ai_suggested_severity',
-                        'pa.admin_severity AS pa_admin_severity',
-                        'pa.confidence AS pa_confidence',
-                        'pa.needs_review AS pa_needs_review',
-                        'pa.reasons AS pa_reasons',
-                        'pa.safety_flags AS pa_safety_flags',
-                        'pa.admin_notes AS pa_admin_notes',
-                        'pa.reviewed_at AS pa_reviewed_at',
-                    ]))
-                    ->orderByDesc('pa.priority_score')
-                    ->orderBy('laporan.tanggal_buat', 'asc');
+                    ->select($selectColumns)
+                    ->orderByDesc('pa.priority_score');
+
+                if ($hasGroupingSchema) {
+                    $escalatedSortExpr = $isPgsql
+                        ? 'CASE WHEN lg.is_escalated IS TRUE THEN 1 ELSE 0 END'
+                        : 'CASE WHEN lg.is_escalated = 1 THEN 1 ELSE 0 END';
+                    $rowsQuery->orderByRaw("{$escalatedSortExpr} DESC");
+                }
+
+                $rowsQuery->orderBy('laporan.tanggal_buat', 'asc');
 
                 $rows = $request->has('page')
                     ? $rowsQuery->forPage($page, $perPage)->get()
                     : $rowsQuery->get();
 
-                $pagedItems = $rows->map(function ($row) use ($now) {
+                $groupMemberIdsMap = $hasGroupingSchema
+                    ? $this->loadGroupMemberIdsMap($rows->pluck('group_id')->filter()->map(fn ($id) => (int) $id)->all())
+                    : [];
+
+                $pagedItems = $rows->map(function ($row) use ($now, $hasGroupingSchema, $groupMemberIdsMap) {
                     $statusName = $row->latest_status ?? 'Terkirim';
                     $createdAt = $row->tanggal_buat ? Carbon::parse($row->tanggal_buat) : $now;
                     $diffDays = (int) $createdAt->diffInDays($now);
@@ -293,10 +433,26 @@ class PriorityDashboardController extends Controller
                     $safetyFlags = $this->decodeJsonArray($row->pa_safety_flags);
                     $reviewedAt = $row->pa_reviewed_at ? Carbon::parse($row->pa_reviewed_at)->toIso8601String() : null;
 
+                    $groupId = $hasGroupingSchema && ! empty($row->group_id) ? (int) $row->group_id : null;
+                    $memberIds = $groupId !== null
+                        ? ($groupMemberIdsMap[$groupId] ?? [(int) $row->id_laporan])
+                        : [(int) $row->id_laporan];
+                    $memberCount = $groupId !== null
+                        ? max(count($memberIds), (int) ($row->lg_total_laporan_count ?? 1))
+                        : 1;
+                    $uniqueReporters = $groupId !== null
+                        ? max(1, (int) ($row->lg_unique_reporter_count ?? 1))
+                        : 1;
+                    $isGroupEscalated = $groupId !== null && (bool) ($row->lg_is_escalated ?? false);
+                    $groupEscalatedAt = ($groupId !== null && ! empty($row->lg_escalated_at))
+                        ? Carbon::parse($row->lg_escalated_at)->toIso8601String()
+                        : null;
+
                     return [
                         'id_laporan'               => $row->id_laporan,
                         'nim'                      => $row->nim,
                         'nama_pelapor'             => $row->pelapor_nama ?? 'Civitas USD',
+                        'tipe_user'                => $row->pelapor_tipe_user,
                         'kategori_laporan'         => $row->kategori_laporan,
                         'deskripsi'                => $row->deskripsi,
                         'tanggal_buat'             => $row->tanggal_buat,
@@ -326,6 +482,15 @@ class PriorityDashboardController extends Controller
                         'safety_flags'             => $safetyFlags,
                         'admin_notes'              => $row->pa_admin_notes,
                         'reviewed_at'              => $reviewedAt,
+
+                        // Metadata Grouping & Eskalasi
+                        'group_id'                 => $groupId,
+                        'is_grouped'               => $memberCount > 1,
+                        'group_member_count'       => $memberCount,
+                        'group_unique_reporters'   => $uniqueReporters,
+                        'is_group_escalated'       => $isGroupEscalated,
+                        'group_escalated_at'       => $groupEscalatedAt,
+                        'group_member_ids'         => $memberIds,
                     ];
                 })->values();
 
@@ -343,20 +508,45 @@ class PriorityDashboardController extends Controller
 
             // Fallback murni read-only untuk data legacy yang belum dibackfill ke priority_assessments
             // (tanpa write-on-read ke database).
-            $laporans = Laporan::query()
-                ->select(array_merge($this->lightweightLaporanColumns(), [
-                    'user_mahasiswa.nama AS pelapor_nama',
-                    DB::raw('(SELECT s.status_laporan FROM status s WHERE s.id_laporan = laporan.id_laporan ORDER BY s.tanggal_merubah DESC, s.id_status DESC LIMIT 1) AS latest_status'),
-                ]))
+            $fallbackSelect = array_merge($this->lightweightLaporanColumns($hasGroupingSchema), [
+                DB::raw('COALESCE(user_mahasiswa.nama, user_pegawai.nama) AS pelapor_nama'),
+                'pelapor.tipe_user AS pelapor_tipe_user',
+                DB::raw('(SELECT s.status_laporan FROM status s WHERE s.id_laporan = laporan.id_laporan ORDER BY s.tanggal_merubah DESC, s.id_status DESC LIMIT 1) AS latest_status'),
+            ]);
+
+            if ($hasGroupingSchema) {
+                $fallbackSelect = array_merge($fallbackSelect, [
+                    'lg.total_laporan_count AS lg_total_laporan_count',
+                    'lg.unique_reporter_count AS lg_unique_reporter_count',
+                    'lg.is_escalated AS lg_is_escalated',
+                    'lg.escalated_at AS lg_escalated_at',
+                ]);
+            }
+
+            $laporansQuery = Laporan::query()
+                ->select($fallbackSelect)
                 ->leftJoin('pelapor', 'pelapor.nomor_identitas', '=', 'laporan.nim')
                 ->leftJoin('user_mahasiswa', 'user_mahasiswa.nim', '=', 'pelapor.nomor_identitas')
-                ->visibleToAdmin($admin)
-                ->get();
+                ->leftJoin('user_pegawai', 'user_pegawai.nomor_identitas', '=', 'pelapor.nomor_identitas')
+                ->visibleToAdmin($admin);
+
+            if ($hasGroupingSchema) {
+                $laporansQuery->leftJoin('laporan_groups as lg', 'lg.id', '=', 'laporan.group_id');
+                $this->applyGroupRepresentativeFilter($laporansQuery, true, 'lg');
+            }
+
+            $this->applyNotRejectedFilter($laporansQuery);
+
+            $laporans = $laporansQuery->get();
 
             $assessments = $this->scoringService->assessReadOnlyMany($laporans);
             $summaryData = $this->buildSummaryFromAssessments($assessments);
 
-            $items = $laporans->map(function ($laporan) use ($assessments, $now) {
+            $groupMemberIdsMap = $hasGroupingSchema
+                ? $this->loadGroupMemberIdsMap($laporans->pluck('group_id')->filter()->map(fn ($id) => (int) $id)->all())
+                : [];
+
+            $items = $laporans->map(function ($laporan) use ($assessments, $now, $hasGroupingSchema, $groupMemberIdsMap) {
                 $assessment = $assessments->get($laporan->id_laporan);
                 $statusName = $laporan->latest_status ?? 'Terkirim';
 
@@ -366,10 +556,26 @@ class PriorityDashboardController extends Controller
 
                 $lamaMenunggu = $diffDays > 0 ? "{$diffDays} hari lalu" : ($diffHours > 0 ? "{$diffHours} jam lalu" : 'Baru saja');
 
+                $groupId = $hasGroupingSchema && ! empty($laporan->group_id) ? (int) $laporan->group_id : null;
+                $memberIds = $groupId !== null
+                    ? ($groupMemberIdsMap[$groupId] ?? [(int) $laporan->id_laporan])
+                    : [(int) $laporan->id_laporan];
+                $memberCount = $groupId !== null
+                    ? max(count($memberIds), (int) ($laporan->lg_total_laporan_count ?? 1))
+                    : 1;
+                $uniqueReporters = $groupId !== null
+                    ? max(1, (int) ($laporan->lg_unique_reporter_count ?? 1))
+                    : 1;
+                $isGroupEscalated = $groupId !== null && (bool) ($laporan->lg_is_escalated ?? $assessment?->is_group_escalated ?? false);
+                $groupEscalatedAt = ($groupId !== null && ! empty($laporan->lg_escalated_at))
+                    ? Carbon::parse($laporan->lg_escalated_at)->toIso8601String()
+                    : null;
+
                 return [
                     'id_laporan'               => $laporan->id_laporan,
                     'nim'                      => $laporan->nim,
                     'nama_pelapor'             => $laporan->pelapor_nama ?? 'Civitas USD',
+                    'tipe_user'                => $laporan->pelapor_tipe_user,
                     'kategori_laporan'         => $laporan->kategori_laporan,
                     'deskripsi'                => $laporan->deskripsi,
                     'tanggal_buat'             => $laporan->tanggal_buat,
@@ -399,6 +605,15 @@ class PriorityDashboardController extends Controller
                     'safety_flags'             => $assessment?->safety_flags ?? [],
                     'admin_notes'              => $assessment?->admin_notes,
                     'reviewed_at'              => $assessment?->reviewed_at?->toIso8601String(),
+
+                    // Metadata Grouping & Eskalasi
+                    'group_id'                 => $groupId,
+                    'is_grouped'               => $memberCount > 1,
+                    'group_member_count'       => $memberCount,
+                    'group_unique_reporters'   => $uniqueReporters,
+                    'is_group_escalated'       => $isGroupEscalated,
+                    'group_escalated_at'       => $groupEscalatedAt,
+                    'group_member_ids'         => $memberIds,
                 ];
             });
 
@@ -420,11 +635,15 @@ class PriorityDashboardController extends Controller
                         return false;
                     }
                     if ($searchQuery !== null) {
+                        $memberIdsStr = implode(' ', $it['group_member_ids'] ?? []);
+
                         return str_contains(strtolower($it['deskripsi']), $searchQuery)
                             || str_contains(strtolower($it['lokasi']), $searchQuery)
                             || str_contains(strtolower((string) ($it['lokasi_kampus'] ?? '')), $searchQuery)
                             || str_contains(strtolower($it['nama_pelapor']), $searchQuery)
-                            || str_contains((string) $it['id_laporan'], $searchQuery);
+                            || str_contains(strtolower((string) ($it['nim'] ?? '')), $searchQuery)
+                            || str_contains((string) $it['id_laporan'], $searchQuery)
+                            || str_contains($memberIdsStr, $searchQuery);
                     }
 
                     return true;
@@ -432,11 +651,14 @@ class PriorityDashboardController extends Controller
             }
 
             $sortedItems = $items->sort(function ($a, $b) {
-                if ($a['priority_score'] === $b['priority_score']) {
-                    return strcmp((string) $a['tanggal_buat'], (string) $b['tanggal_buat']);
+                if ($a['priority_score'] !== $b['priority_score']) {
+                    return $b['priority_score'] <=> $a['priority_score'];
+                }
+                if (($a['is_group_escalated'] ?? false) !== ($b['is_group_escalated'] ?? false)) {
+                    return ($b['is_group_escalated'] ? 1 : 0) <=> ($a['is_group_escalated'] ? 1 : 0);
                 }
 
-                return $b['priority_score'] <=> $a['priority_score'];
+                return strcmp((string) $a['tanggal_buat'], (string) $b['tanggal_buat']);
             })->values();
 
             $total = $sortedItems->count();
@@ -476,7 +698,14 @@ class PriorityDashboardController extends Controller
     public function show(Request $request, $id): JsonResponse
     {
         try {
-            $laporan = Laporan::with(['statuses', 'pelapor.mahasiswa', 'pelapor.pegawai'])->findOrFail($id);
+            $laporan = Laporan::with([
+                'statuses' => function ($query) {
+                    $query->orderBy('tanggal_merubah', 'desc');
+                    $query->orderBy('id_status', 'desc');
+                },
+                'pelapor.mahasiswa',
+                'pelapor.pegawai',
+            ])->findOrFail($id);
             $admin = $request->attributes->get('admin_session')?->admin;
             if ($admin && ! $admin->canAccessLaporan($laporan)) {
                 return response()->json([
@@ -487,8 +716,62 @@ class PriorityDashboardController extends Controller
 
             $assessment = $this->scoringService->assessReadOnly($laporan);
 
+            $groupPayload = null;
+            if ($this->hasGroupingSchema() && ! empty($laporan->group_id)) {
+                $group = LaporanGroup::find($laporan->group_id);
+                if ($group) {
+                    $members = Laporan::with([
+                        'statuses' => function ($query) {
+                            $query->orderBy('tanggal_merubah', 'desc');
+                            $query->orderBy('id_status', 'desc');
+                        },
+                        'pelapor.mahasiswa',
+                        'pelapor.pegawai',
+                    ])
+                        ->where('group_id', $group->id)
+                        ->orderBy('tanggal_buat', 'asc')
+                        ->orderBy('id_laporan', 'asc')
+                        ->get();
+
+                    $groupPayload = [
+                        'id'                    => (int) $group->id,
+                        'primary_laporan_id'    => $group->primary_laporan_id ? (int) $group->primary_laporan_id : null,
+                        'total_laporan_count'   => max($members->count(), (int) $group->total_laporan_count),
+                        'unique_reporter_count' => max(1, (int) $group->unique_reporter_count),
+                        'is_escalated'          => (bool) $group->is_escalated,
+                        'escalated_at'          => $group->escalated_at?->toIso8601String(),
+                        'similarity_confidence' => $group->similarity_confidence !== null ? (float) $group->similarity_confidence : null,
+                        'similarity_reason'     => $group->similarity_reason,
+                        'members'               => $members->map(function (Laporan $member) use ($group) {
+                            return [
+                                'id_laporan'            => (int) $member->id_laporan,
+                                'is_primary'            => (int) $member->id_laporan === (int) $group->primary_laporan_id,
+                                'nim'                   => $member->nim,
+                                'nama_pelapor'          => $member->nama_pelapor ?? 'Civitas USD',
+                                'tipe_user'             => $member->pelapor?->tipe_user,
+                                'kategori_laporan'      => $member->kategori_laporan,
+                                'deskripsi'             => $member->deskripsi,
+                                'lokasi_kampus'         => $member->lokasi_kampus,
+                                'lokasi'                => $member->lokasi,
+                                'tanggal_buat'          => $member->tanggal_buat,
+                                'tanggal_kejadian'      => $member->tanggal_kejadian,
+                                'foto'                  => $member->foto,
+                                'status_terkini'        => $member->statuses->first()?->status_laporan ?? 'Terkirim',
+                                'pesan_tanggapan'       => $member->pesan_tanggapan ?? '',
+                                'similarity_confidence' => $member->similarity_confidence !== null ? (float) $member->similarity_confidence : null,
+                                'similarity_reason'     => $member->similarity_reason,
+                            ];
+                        })->values()->all(),
+                    ];
+                }
+            }
+
             $locWeight = $this->scoringService->resolveLocationWeight($laporan->lokasi ?? '');
-            $distinctReporters = $this->scoringService->countNearbyReporters($laporan);
+            $distinctReporters = max(
+                $this->scoringService->countNearbyReporters($laporan),
+                (int) ($groupPayload['unique_reporter_count'] ?? 1)
+            );
+            $isGroupEscalated = (bool) ($groupPayload['is_escalated'] ?? $assessment->is_group_escalated ?? false);
             $createdAt = $laporan->tanggal_buat ? Carbon::parse($laporan->tanggal_buat) : now();
             $daysWaiting = (float) max(0, $createdAt->diffInDays(now()));
 
@@ -498,7 +781,8 @@ class PriorityDashboardController extends Controller
                 $locWeight,
                 $distinctReporters,
                 $daysWaiting,
-                $assessment->safety_flags ?? []
+                $assessment->safety_flags ?? [],
+                $isGroupEscalated
             );
 
             $feedback = [];
@@ -517,6 +801,7 @@ class PriorityDashboardController extends Controller
                     'assessment' => $assessment,
                     'breakdown'  => $calculation['breakdown'],
                     'feedback'   => $feedback,
+                    'group'      => $groupPayload,
                 ],
             ]);
         } catch (ModelNotFoundException $e) {
@@ -534,71 +819,14 @@ class PriorityDashboardController extends Controller
 
     /**
      * PATCH /api/admin/priority/reports/{id}/severity
-     * Admin menetapkan atau menimpa (override) tingkat kerusakan
+     * Prioritas bersifat read-only bagi Admin (dihitung dan dieskalasi otomatis oleh sistem).
      */
     public function updateSeverity(Request $request, $id): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'severity_level' => 'required|string|in:berat,sedang,ringan',
-            'admin_notes'    => 'nullable|string|max:1000',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'status'  => 'error',
-                'message' => $validator->errors()->first(),
-                'errors'  => $validator->errors(),
-            ], 422);
-        }
-
-        try {
-            $session = $request->attributes->get('admin_session');
-            $admin = $session?->admin;
-            $adminId = $session?->admin_id;
-
-            $laporan = Laporan::findOrFail($id);
-            if ($admin && ! $admin->canEditLaporan($laporan)) {
-                return response()->json([
-                    'status'  => 'error',
-                    'message' => 'Anda tidak memiliki wewenang untuk mengubah prioritas laporan ini.',
-                ], 403);
-            }
-
-            $latestStatus = $laporan->statuses()
-                ->orderBy('tanggal_merubah', 'desc')
-                ->orderBy('id_status', 'desc')
-                ->value('status_laporan') ?? 'Terkirim';
-
-            if (strcasecmp(trim((string) $latestStatus), 'Ditolak') === 0) {
-                return response()->json([
-                    'status'  => 'error',
-                    'message' => 'Laporan yang berstatus "Ditolak" tidak dapat ditindaklanjuti atau diubah prioritasnya lagi.',
-                ], 403);
-            }
-
-            $updated = $this->scoringService->overrideSeverityByAdmin(
-                (int) $id,
-                $request->input('severity_level'),
-                $request->input('admin_notes'),
-                $adminId
-            );
-
-            return response()->json([
-                'status'  => 'success',
-                'message' => 'Tingkat kerusakan dan skor prioritas berhasil diperbarui oleh admin.',
-                'data'    => $updated,
-            ]);
-        } catch (ModelNotFoundException $e) {
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'Laporan tidak ditemukan.',
-            ], 404);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'status'  => 'error',
-                'message' => 'Gagal memperbarui prioritas: '.$e->getMessage(),
-            ], 500);
-        }
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Prioritas laporan dihitung dan dieskalasi secara otomatis oleh sistem sehingga bersifat read-only bagi Admin.',
+        ], 403);
     }
 
     /**
@@ -610,12 +838,13 @@ class PriorityDashboardController extends Controller
         try {
             $admin = $request->attributes->get('admin_session')?->admin;
             $hasTable = $this->scoringService->hasAssessmentTable();
+            $hasGroupingSchema = $this->hasGroupingSchema();
 
             if ($hasTable) {
                 if (! $this->hasMissingAssessments($admin)) {
                     return response()->json([
                         'status' => 'success',
-                        'data'   => $this->buildSummaryFromSql($admin),
+                        'data'   => $this->buildSummaryFromSql($admin, $hasGroupingSchema),
                     ]);
                 }
 
@@ -629,6 +858,13 @@ class PriorityDashboardController extends Controller
                         'priority_assessments.severity_level',
                         'priority_assessments.needs_review',
                     ]);
+
+                if ($hasGroupingSchema) {
+                    $rowsQuery->leftJoin('laporan_groups as lg', 'lg.id', '=', 'laporan.group_id');
+                    $this->applyGroupRepresentativeFilter($rowsQuery, true, 'lg');
+                }
+
+                $this->applyNotRejectedFilter($rowsQuery);
 
                 if ($admin) {
                     if ($campus = $admin->resolvedCampus()) {
@@ -649,7 +885,7 @@ class PriorityDashboardController extends Controller
                 }
 
                 $missingLaporans = Laporan::query()
-                    ->select($this->lightweightLaporanColumns())
+                    ->select($this->lightweightLaporanColumns($hasGroupingSchema))
                     ->whereIn('laporan.id_laporan', $missingIds)
                     ->get();
                 $assessed = $this->scoringService->assessReadOnlyMany($missingLaporans);
@@ -666,10 +902,18 @@ class PriorityDashboardController extends Controller
                 ]);
             }
 
-            $laporans = Laporan::query()
-                ->select($this->lightweightLaporanColumns())
-                ->visibleToAdmin($admin)
-                ->get();
+            $laporansQuery = Laporan::query()
+                ->select($this->lightweightLaporanColumns($hasGroupingSchema))
+                ->visibleToAdmin($admin);
+
+            if ($hasGroupingSchema) {
+                $laporansQuery->leftJoin('laporan_groups as lg', 'lg.id', '=', 'laporan.group_id');
+                $this->applyGroupRepresentativeFilter($laporansQuery, true, 'lg');
+            }
+
+            $this->applyNotRejectedFilter($laporansQuery);
+
+            $laporans = $laporansQuery->get();
             $assessments = $this->scoringService->assessReadOnlyMany($laporans);
 
             return response()->json([
@@ -693,10 +937,14 @@ class PriorityDashboardController extends Controller
         try {
             $admin = $request->attributes->get('admin_session')?->admin;
             $this->scoringService->ensureTablesExist();
-            $laporans = Laporan::query()
-                ->select($this->lightweightLaporanColumns())
-                ->visibleToAdmin($admin)
-                ->get();
+            $hasGroupingSchema = $this->hasGroupingSchema();
+            $laporansQuery = Laporan::query()
+                ->select($this->lightweightLaporanColumns($hasGroupingSchema))
+                ->visibleToAdmin($admin);
+
+            $this->applyNotRejectedFilter($laporansQuery);
+
+            $laporans = $laporansQuery->get();
             $assessments = $this->scoringService->assessAndSaveMany($laporans, true);
             $count = $assessments->count();
 

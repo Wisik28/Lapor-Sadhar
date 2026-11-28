@@ -21,6 +21,7 @@ import {
   getFotoUrl as getBaseFotoUrl,
   getThumbnailFotoUrl,
 } from "@/lib/laporanPhoto";
+import { getReporterIdentityLabel } from "@/lib/reporterIdentity";
 import {
   Search,
   FileText,
@@ -671,7 +672,7 @@ export default function AdminRiwayatLaporanPage() {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Cari NIM, deskripsi, lokasi, atau ID Laporan..."
+                placeholder="Cari NIM/NIP, deskripsi, lokasi, atau ID Laporan..."
                 className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm outline-none focus:border-[#7A0C0C] transition-colors"
               />
               {searchTerm && (
@@ -781,7 +782,7 @@ export default function AdminRiwayatLaporanPage() {
                         >
                           <td className="px-4 py-3.5 align-middle whitespace-nowrap text-xs text-slate-500">
                             <span className="font-bold text-slate-900 block">
-                              NIM: {lap.nim || "-"}
+                              {getReporterIdentityLabel(lap.nim)}: {lap.nim || "-"}
                             </span>
                             <span className="text-[11px] text-slate-400">
                               ID Laporan #{lap.id_laporan}
@@ -1086,7 +1087,7 @@ export default function AdminRiwayatLaporanPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                 <div>
                   <p className="text-xs text-slate-400 font-medium mb-0.5">
-                    NIM / Nama Pelapor
+                    {getReporterIdentityLabel(selectedDetail.nim)} / Nama Pelapor
                   </p>
                   <p className="font-bold text-slate-800">
                     {selectedDetail.nim || "-"}{" "}
